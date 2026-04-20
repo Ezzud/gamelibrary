@@ -1,0 +1,47 @@
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+* {
+  @apply selection:bg-steam-600 selection:text-white;
+}
+
+body {
+  @apply bg-steam-900 text-white;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(5, 30, 52);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(27, 77, 124);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(45, 120, 180);
+}
+
+@keyframes game-card-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.game-card-enter {
+  opacity: 0;
+  animation-name: game-card-fade-up;
+  animation-duration: 360ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: forwards;
+}

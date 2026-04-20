@@ -1,0 +1,519 @@
+import { useState, useEffect } from 'react'
+import {
+    ArrowLeft,
+    Play,
+    Clock3,
+    FolderOpen,
+    Settings,
+    HardDrive,
+    Gamepad2,
+    Loader,
+    Copy,
+    Check
+} from 'lucide-react'
+import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard } from 'react-icons/fa'
+import { FaSteam, FaXbox } from 'react-icons/fa'
+import { SiEpicgames, SiGogdotcom } from 'react-icons/si'
+import GameConfigPanel from './GameConfigPanel'
+import { getGameSize as fetchGameSize } from '../services/GameDataManager'
+import { launchGame, openGameFolder } from '../services/GameLauncher'
+import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, saveGameConfig } from '../services/ConfigManager'
+import LaunchFilePickerModal from './LaunchFilePickerModal'
+
+const MIN_LAUNCH_LOADING_MS = 5000
+
+const waitForMinimumLaunchLoading = async (startedAt: number) => {
+    const elapsed = Date.now() - startedAt
+    const remaining = MIN_LAUNCH_LOADING_MS - elapsed
+    if (remaining > 0) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, remaining))
+    }
+}
+
+const formatLastPlayed = (playedAt?: string | null) => {
+    if (!playedAt) {
+        return 'Not played yet'
+    }
+
+    const playedAtMs = new Date(playedAt).getTime()
+    if (Number.isNaN(playedAtMs)) {
+        return 'Not played yet'
+    }
+
+    const diffMs = Date.now() - playedAtMs
+    if (diffMs < 15 * 60 * 1000) {
+        return 'Last played recently'
+    }
+
+    const units = [
+        { label: 'year', ms: 365 * 24 * 60 * 60 * 1000 },
+        { label: 'month', ms: 30 * 24 * 60 * 60 * 1000 },
+        { label: 'week', ms: 7 * 24 * 60 * 60 * 1000 },
+        { label: 'day', ms: 24 * 60 * 60 * 1000 },
+        { label: 'hour', ms: 60 * 60 * 1000 },
+        { label: 'minute', ms: 60 * 1000 },
+    ]
+
+    for (const unit of units) {
+        if (diffMs >= unit.ms) {
+            const value = Math.floor(diffMs / unit.ms)
+            return `Last played ${value} ${unit.label}${value > 1 ? 's' : ''} ago`
+        }
+    }
+
+    return 'Last played recently'
+}
+
+interface Game {
+    id: string
+    name: string
+    path: string
+    platform: string
+    coverUrl?: string
+    thumbnailUrl?: string
+    size?: number
+}
+
+interface GameDetailViewProps {
+    game: Game
+    onBack: () => void
+    onGameUpdated?: () => void
+    onLaunchError: (message: string) => void
+    onLaunchSuccess: () => Promise<void> | void
+}
+
+/**
+ * GameDetailView component - displays detailed information about a selected game
+ * Params: game, onBack, onGameUpdated - game data and handlers
+ * Returns: JSX.Element - detail view layout
+ */
+const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onLaunchSuccess }: GameDetailViewProps) => {
+    const [isLaunching, setIsLaunching] = useState(false)
+    const [showConfig, setShowConfig] = useState(false)
+    const [showLaunchFilePicker, setShowLaunchFilePicker] = useState(false)
+    const [availableLaunchFiles, setAvailableLaunchFiles] = useState<string[]>([])
+    const [selectedLaunchFile, setSelectedLaunchFile] = useState('')
+    const [pendingLaunchConfig, setPendingLaunchConfig] = useState<any>(null)
+    const [gameSize, setGameSize] = useState<string>('')
+    const [loadingSize, setLoadingSize] = useState(true)
+    const [gameCache, setGameCache] = useState<Game | null>(null)
+    const [specialTags, setSpecialTags] = useState<string[]>([])
+    const [lastPlayedAt, setLastPlayedAt] = useState<string | null>(null)
+    const [copiedPath, setCopiedPath] = useState(false)
+    const backgroundThumbnailUrl = game.thumbnailUrl || (game.coverUrl ? game.coverUrl.replace('t_cover_big', 't_thumb') : '')
+
+    const tagVisuals: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+        hypervisor: {
+            label: 'HYPERVISOR',
+            className: 'bg-[#8b1f1f] text-white',
+            icon: <FaMicrochip className="w-3.5 h-3.5" />,
+        },
+        onlinefixed: {
+            label: 'ONLINEFIXED',
+            className: 'bg-[#1f8f4e] text-white',
+            icon: <FaUsers className="w-3.5 h-3.5" />,
+        },
+        cracked: {
+            label: 'CRACKED',
+            className: 'bg-black text-white',
+            icon: <FaLockOpen className="w-3.5 h-3.5" />,
+        },
+        nonpc: {
+            label: 'NONPC',
+            className: 'bg-[#c8a227] text-[#1b2838]',
+            icon: <FaGamepad className="w-3.5 h-3.5" />,
+        },
+        vr: {
+            label: 'VR',
+            className: 'bg-[#2a70c9] text-white',
+            icon: <FaVrCardboard className="w-3.5 h-3.5" />,
+        },
+    }
+
+    useEffect(() => {
+        getGameSize()
+        getGameCache()
+        getGameSpecialTags()
+        getGamePlayHistory()
+    }, [game.id])
+
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            getGamePlayHistory()
+        }, 15 * 60 * 1000)
+
+        return () => window.clearInterval(intervalId)
+    }, [game.id])
+
+    const getGameCache = async () => {
+        if (game.id) {
+            let cache = await loadGameCache(game.id)
+            if (cache) {
+                setGameCache(cache)
+            }
+        }
+    }
+
+    const getGameSpecialTags = async () => {
+        try {
+            const config = await loadGameConfig(game.id)
+            const tags = Array.isArray((config as any)?.specialTags) ? (config as any).specialTags : []
+            setSpecialTags(tags.filter((tag: unknown) => typeof tag === 'string'))
+        } catch (error) {
+            console.error('Failed to load game special tags:', error)
+            setSpecialTags([])
+        }
+    }
+
+    const getGamePlayHistory = async () => {
+        try {
+            const plays = await getPlayHistory(game.id)
+            if (!Array.isArray(plays) || plays.length < 1) {
+                setLastPlayedAt(null)
+                return
+            }
+
+            const sortedPlays = [...plays].sort(
+                (a: any, b: any) => new Date(a.playedAt).getTime() - new Date(b.playedAt).getTime()
+            )
+
+            setLastPlayedAt(sortedPlays[sortedPlays.length - 1]?.playedAt || null)
+        } catch (error) {
+            console.error('Failed to load game play history:', error)
+            setLastPlayedAt(null)
+        }
+    }
+
+
+    /**
+     * Gets the size of the game directory
+     * Params: none
+     * Returns: Promise<void>
+     */
+    const getGameSize = async () => {
+        try {
+            const size = await fetchGameSize(game.path)
+            const sizeGB = (size / 1024 / 1024 / 1024).toFixed(2)
+            setGameSize(`${sizeGB} GB`)
+        } catch (error) {
+            console.error('Failed to get game size:', error)
+            setGameSize('Unknown')
+        } finally {
+            setLoadingSize(false)
+        }
+    }
+
+    /**
+     * Handles launching the game
+     * Params: none
+     * Returns: Promise<void>
+     */
+    const handleLaunch = async () => {
+        if (isLaunching) {
+            return
+        }
+
+        const config = await loadGameConfig(game.id)
+        const allLaunchFiles = (config?.allLaunchFiles || []).filter((file: string | undefined) => !!file)
+
+        if (!config?.lockedLaunchFile && allLaunchFiles.length > 1) {
+            const initialSelection = config?.defaultLaunchFile && allLaunchFiles.includes(config.defaultLaunchFile)
+                ? config.defaultLaunchFile
+                : allLaunchFiles[0]
+
+            setPendingLaunchConfig(config)
+            setAvailableLaunchFiles(allLaunchFiles)
+            setSelectedLaunchFile(initialSelection)
+            setShowLaunchFilePicker(true)
+            return
+        }
+
+        setIsLaunching(true)
+        const launchStartedAt = Date.now()
+        try {
+            await launchGame(game.path, game.id)
+            try {
+                await addPlayHistoryEntry(game.id)
+                await onLaunchSuccess()
+                await getGamePlayHistory()
+            } catch (historyError) {
+                console.warn('Game launched but failed to update play history:', historyError)
+            }
+        } catch (error) {
+            console.error('Failed to launch game:', error)
+            const message = error instanceof Error ? error.message : String(error)
+            onLaunchError(`Failed to launch ${game.name}: ${message}`)
+        } finally {
+            await waitForMinimumLaunchLoading(launchStartedAt)
+            setIsLaunching(false)
+        }
+    }
+
+    const handleConfirmLaunchFile = async () => {
+        if (!selectedLaunchFile) {
+            return
+        }
+
+        setShowLaunchFilePicker(false)
+        setIsLaunching(true)
+        const launchStartedAt = Date.now()
+
+        try {
+            await saveGameConfig(game.id, {
+                ...pendingLaunchConfig,
+                defaultLaunchFile: selectedLaunchFile,
+                lockedLaunchFile: true,
+                allLaunchFiles: pendingLaunchConfig?.allLaunchFiles || availableLaunchFiles,
+            })
+
+            await launchGame(game.path, game.id)
+            try {
+                await addPlayHistoryEntry(game.id)
+                await onLaunchSuccess()
+                await getGamePlayHistory()
+            } catch (historyError) {
+                console.warn('Game launched but failed to update play history:', historyError)
+            }
+        } catch (error) {
+            console.error('Failed to save launch file preference or launch game:', error)
+            const message = error instanceof Error ? error.message : String(error)
+            onLaunchError(`Failed to launch ${game.name}: ${message}`)
+        } finally {
+            await waitForMinimumLaunchLoading(launchStartedAt)
+            setIsLaunching(false)
+            setPendingLaunchConfig(null)
+            setAvailableLaunchFiles([])
+        }
+    }
+
+    /**
+     * Handles opening the game folder
+     * Params: none
+     * Returns: Promise<void>
+     */
+    const handleOpenFolder = async () => {
+        try {
+            await openGameFolder(game.path)
+        } catch (error) {
+            console.error('Failed to open folder:', error)
+        }
+    }
+
+    const handleCopyPath = async () => {
+        try {
+            await navigator.clipboard.writeText(game.path)
+            setCopiedPath(true)
+            window.setTimeout(() => setCopiedPath(false), 1600)
+        } catch (error) {
+            console.error('Failed to copy game path:', error)
+        }
+    }
+
+    /**
+     * Gets the platform icon component
+     * Params: platform - platform name
+     * Returns: JSX.Element - icon component
+     */
+    const getPlatformIcon = (platform: string) => {
+        const iconClass = 'w-6 h-6'
+        switch (platform) {
+            case 'Steam':
+                return <FaSteam className={`${iconClass} text-white`} />
+            case 'Epic Games':
+                return <SiEpicgames className={`${iconClass} text-white`} />
+            case 'GOG':
+                return <SiGogdotcom className={`${iconClass} text-[#8d4bbb]`} />
+            case 'Xbox':
+                return <FaXbox className={`${iconClass} text-[#107c10]`} />
+            default:
+                return <Gamepad2 className={iconClass} />
+        }
+    }
+
+    if (showConfig) {
+        return (
+            <GameConfigPanel
+                game={game}
+                onBack={() => setShowConfig(false)}
+                onConfigSaved={onGameUpdated}
+            />
+        )
+    }
+
+    return (
+        <>
+            <LaunchFilePickerModal
+                isOpen={showLaunchFilePicker}
+                gameName={game.name}
+                launchFiles={availableLaunchFiles}
+                selectedLaunchFile={selectedLaunchFile}
+                onSelect={setSelectedLaunchFile}
+                onConfirm={handleConfirmLaunchFile}
+                onCancel={() => {
+                    setShowLaunchFilePicker(false)
+                    setPendingLaunchConfig(null)
+                    setAvailableLaunchFiles([])
+                }}
+            />
+
+            <div className="flex-1 overflow-auto flex flex-col bg-gradient-to-br from-steam-900 via-[#0e1725] to-[#18263b] relative">
+                {backgroundThumbnailUrl && (
+                    <div
+                        className="pointer-events-none absolute inset-x-0 top-0 h-[56vh] bg-cover bg-center opacity-30"
+                        style={{
+                            backgroundImage: `url(${backgroundThumbnailUrl.replace('t_thumb', 't_1080p')})`,
+                            WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.95) 50%, rgba(0,0,0,0) 100%)',
+                            maskImage: 'linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.95) 50%, rgba(0,0,0,0) 100%)',
+                        }}
+                    />
+                )}
+
+                {/* Header with Back Button */}
+                <div className="relative z-10 p-6 bg-gradient-to-r from-steam-800/95 via-[#1a2b43]/95 to-steam-800/95 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
+                    <button
+                        onClick={onBack}
+                        className="flex items-center gap-2 text-steam-300 hover:text-white transition-all duration-200 hover:-translate-x-0.5 mb-4"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                        Back to Library
+                    </button>
+                    <h2 className="text-3xl font-bold bg-gradient-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{game.name}</h2>
+                </div>
+
+                {/* Main Content */}
+                <div className="relative z-10 flex-1 p-6 flex flex-col lg:flex-row gap-6 items-start">
+                    {/* Cover Art */}
+                    <div className="w-full lg:w-[240px] lg:shrink-0">
+                        <div className="w-full max-w-[240px] rounded-xl overflow-hidden bg-steam-800/85 aspect-[2/3] shadow-[0_18px_34px_rgba(0,0,0,0.28)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_42px_rgba(0,0,0,0.34)]">
+                            {game.coverUrl ? (
+                                <img
+                                    src={game.coverUrl}
+                                    alt={game.name}
+                                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                                />
+                            ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-steam-700 to-steam-800 flex items-center justify-center">
+                                    <Gamepad2 className="w-24 h-24 text-steam-500" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Game Info and Actions */}
+                    <div className="w-full flex-1 flex flex-col">
+                        {/* Info Cards */}
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                            {/* Platform */}
+                            <div className="bg-[#16263b]/85 rounded-xl p-4 shadow-[0_12px_24px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]">
+                                <p className="text-steam-400 text-sm mb-2">PLATFORM</p>
+                                <div className="flex items-center gap-2">
+                                    {getPlatformIcon(gameCache?.platform || game.platform)}
+                                    <span className="font-semibold">{gameCache?.platform || game.platform}</span>
+                                </div>
+                            </div>
+
+                            {/* Size */}
+                            <div className="bg-[#13253b]/85 rounded-xl p-4 shadow-[0_12px_24px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]">
+                                <p className="text-steam-400 text-sm mb-2">SIZE</p>
+                                <div className="flex items-center gap-2">
+                                    {loadingSize ? (
+                                        <Loader className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <>
+                                            <HardDrive className="w-5 h-5" />
+                                            <span className="font-semibold">{gameSize}</span>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Location */}
+                            <div className="bg-[#112033]/85 rounded-xl p-4 col-span-2 shadow-[0_12px_24px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]">
+                                <p className="text-steam-400 text-sm mb-2">LOCATION</p>
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="font-mono text-sm truncate text-steam-100 flex-1">{game.path}</p>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button
+                                            onClick={handleCopyPath}
+                                            className="w-8 h-8 rounded-md bg-[#2f4f70] hover:bg-[#3a648d] text-steam-100 transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] active:scale-[0.97] inline-flex items-center justify-center"
+                                            title={copiedPath ? 'Copied' : 'Copy path'}
+                                            aria-label={copiedPath ? 'Copied' : 'Copy path'}
+                                        >
+                                            {copiedPath ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
+                                        </button>
+                                        <button
+                                            onClick={handleOpenFolder}
+                                            className="w-8 h-8 rounded-md bg-[#2f4f70] hover:bg-[#3a648d] text-steam-100 transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] active:scale-[0.97] inline-flex items-center justify-center"
+                                            title="Open folder"
+                                            aria-label="Open folder"
+                                        >
+                                            <FolderOpen className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Play History */}
+                            <div className="bg-[#13263a]/85 rounded-xl p-4 col-span-2 shadow-[0_12px_24px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]">
+                                <p className="text-steam-400 text-sm mb-3">PLAY HISTORY</p>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2 text-[#4fd673]">
+                                        <Clock3 className="w-4 h-4" />
+                                        <span>{formatLastPlayed(lastPlayedAt)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap justify-between items-end gap-4 mt-auto w-full">
+                            <div className="flex flex-wrap items-center gap-2 min-h-[48px]">
+                                {specialTags
+                                    .filter((tag) => tagVisuals[tag])
+                                    .map((tag) => {
+                                        const visual = tagVisuals[tag]
+                                        return (
+                                            <span
+                                                key={tag}
+                                                className={`px-2.5 py-1.5 rounded-md text-[11px] font-semibold tracking-wide inline-flex items-center gap-1.5 ${visual.className}`}
+                                                title={visual.label}
+                                            >
+                                                {visual.icon}
+                                                {visual.label}
+                                            </span>
+                                        )
+                                    })}
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={handleLaunch}
+                                    disabled={isLaunching}
+                                    className="w-[260px] bg-[#1f8f4e] hover:bg-[#27a45a] disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
+                                >
+                                    {isLaunching ? (
+                                        <Loader className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <Play className="w-5 h-5" />
+                                    )}
+                                    Play
+                                </button>
+
+                                <button
+                                    onClick={() => setShowConfig(true)}
+                                    className="w-12 h-12 p-0 bg-[#2f455f] hover:bg-[#3c5978] text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.2)]"
+                                    title="Settings"
+                                    aria-label="Settings"
+                                >
+                                    <Settings className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </>
+    )
+}
+
+export default GameDetailView

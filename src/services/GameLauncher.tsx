@@ -1,0 +1,20 @@
+import { invoke } from '@tauri-apps/api/core'
+import { Logger } from '../utils/Logger'
+
+export const launchGame = async (gamePath: string, gameId: string) => {
+	try {
+		await invoke('launch_game', { gamePath, gameId })
+	} catch (err) {
+		Logger.error(`Error occurred while launching game at ${gamePath}:`, err)
+		throw err
+	}
+}
+
+export const openGameFolder = async (gamePath: string) => {
+	try {
+		await invoke('open_game_folder', { path: gamePath })
+	} catch (err) {
+		Logger.error(`Error occurred while opening game folder at ${gamePath}:`, err)
+		throw err
+	}
+}
