@@ -108,7 +108,7 @@ jobs:
       - detect_version_change
       - build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && needs.detect_version_change.outputs.version_changed == 'true'
+    if: github.ref == 'refs/heads/master' && needs.detect_version_change.outputs.version_changed == 'true'
     permissions:
       contents: write
 
