@@ -252,7 +252,7 @@ async fn download_and_launch_installer(app: tauri::AppHandle, version: String) -
         return Err("Invalid version format".to_string());
     }
 
-    let file_name = format!("gamelibrary_{}_x64-setup.exe", normalized_version);
+    let file_name = "gamelibrary_x64-setup.exe";
     let download_url = format!(
         "https://github.com/Ezzud/gamelibrary/releases/download/v{}/{}",
         normalized_version, file_name

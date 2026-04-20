@@ -9,6 +9,7 @@ import { Logger } from './utils/Logger'
 import { addPlayHistoryEntry, getAppConfig, getPlayHistory, loadGameCache, loadGameConfig, loadGameList, saveGameConfig, saveGameInfoCache, setTwitchCredentials } from './services/ConfigManager'
 import { initIGDB, searchGame } from './services/GameDataManager'
 import { launchGame } from './services/GameLauncher'
+import { getVersion } from '@tauri-apps/api/app'
 
 interface Game {
     id: string
@@ -25,6 +26,9 @@ interface LaunchToast {
     message: string
     visible: boolean
     started: boolean
+    durationMs: number
+    actionLabel?: string
+    onClick?: () => void
 }
 
 interface LastPlayedCard {
@@ -35,8 +39,10 @@ interface LastPlayedCard {
 }
 
 type IGDBConnectionStatus = 'checking' | 'missing' | 'invalid' | 'connected'
+type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'Update'
 
 const MIN_LAUNCH_LOADING_MS = 5000
+const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
     const elapsed = Date.now() - startedAt
@@ -68,6 +74,37 @@ function App() {
     const [pickerSelectedLaunchFile, setPickerSelectedLaunchFile] = useState('')
     const [pickerPendingConfig, setPickerPendingConfig] = useState<any>(null)
     const [igdbConnectionStatus, setIgdbConnectionStatus] = useState<IGDBConnectionStatus>('checking')
+    const [settingsInitialCategory, setSettingsInitialCategory] = useState<ConfigCategory>('General')
+
+    const compareSemver = (currentVersion: string, latestVersion: string) => {
+        const normalize = (version: string) =>
+            version
+                .replace(/^v/i, '')
+                .split('.')
+                .map((part) => {
+                    const numericPart = part.match(/^\d+/)?.[0]
+                    return numericPart ? Number.parseInt(numericPart, 10) : 0
+                })
+
+        const current = normalize(currentVersion)
+        const latest = normalize(latestVersion)
+        const length = Math.max(current.length, latest.length)
+
+        for (let index = 0; index < length; index++) {
+            const currentPart = current[index] ?? 0
+            const latestPart = latest[index] ?? 0
+
+            if (latestPart > currentPart) {
+                return 1
+            }
+
+            if (latestPart < currentPart) {
+                return -1
+            }
+        }
+
+        return 0
+    }
 
     const detectPlatformsFromCache = async (gamesToCheck: Array<{ id: string; platform?: string }>) => {
         const cacheEntries = await Promise.all(
@@ -84,9 +121,21 @@ function App() {
         }
     }
 
-    const showLaunchToast = (message: string) => {
+    const showLaunchToast = (
+        message: string,
+        options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }
+    ) => {
+        const durationMs = options?.durationMs ?? 3000
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        setLaunchToasts((prev) => [{ id, message, visible: false, started: false }, ...prev])
+        setLaunchToasts((prev) => [{
+            id,
+            message,
+            visible: false,
+            started: false,
+            durationMs,
+            actionLabel: options?.actionLabel,
+            onClick: options?.onClick,
+        }, ...prev])
 
         window.requestAnimationFrame(() => {
             setLaunchToasts((prev) => prev.map((toast) =>
@@ -98,11 +147,41 @@ function App() {
             setLaunchToasts((prev) => prev.map((toast) =>
                 toast.id === id ? { ...toast, visible: false } : toast
             ))
-        }, 3000)
+        }, durationMs)
 
         window.setTimeout(() => {
             setLaunchToasts((prev) => prev.filter((toast) => toast.id !== id))
-        }, 3300)
+        }, durationMs + 300)
+    }
+
+    const checkForStartupUpdateNotice = async () => {
+        try {
+            const localVersion = await getVersion()
+            const response = await fetch(`${GITHUB_REPO_LATEST_RELEASE_API_URL}?t=${Date.now()}`)
+            if (!response.ok) {
+                throw new Error(`GitHub latest release fetch failed with status ${response.status}`)
+            }
+
+            const data = await response.json() as { tag_name?: string }
+            const latestVersion = (data.tag_name || '').trim().replace(/^v/i, '')
+            if (!latestVersion) {
+                return
+            }
+
+            if (compareSemver(localVersion, latestVersion) > 0) {
+                showLaunchToast(`An update is available (${latestVersion})`, {
+                    durationMs: 10000,
+                    actionLabel: 'Update now',
+                    onClick: () => {
+                        setSettingsInitialCategory('Update')
+                        setIsSettingsOpen(true)
+                        setSelectedGame(null)
+                    },
+                })
+            }
+        } catch (error) {
+            Logger.warn('Startup update check failed:', error)
+        }
     }
 
     const refreshLastPlayedCards = async (gamesForLookup?: Game[]) => {
@@ -260,6 +339,10 @@ function App() {
         await loadGames()
         return { success: true }
     }
+
+    useEffect(() => {
+        void checkForStartupUpdateNotice()
+    }, [])
 
     useEffect(() => {
         const bootstrap = async () => {
@@ -585,6 +668,7 @@ function App() {
     }
 
     const handleOpenSettings = () => {
+        setSettingsInitialCategory('General')
         setIsSettingsOpen(true)
         setSelectedGame(null)
     }
@@ -600,17 +684,27 @@ function App() {
                 {launchToasts.map((toast) => (
                     <div
                         key={toast.id}
+                        onClick={() => {
+                            if (!toast.onClick) {
+                                return
+                            }
+                            toast.onClick()
+                            setLaunchToasts((prev) => prev.filter((item) => item.id !== toast.id))
+                        }}
                         className={`pointer-events-auto w-80 rounded-lg bg-[#21364f] border border-[#3a5f84] text-white shadow-[0_10px_26px_rgba(0,0,0,0.35)] overflow-hidden transform transition-all duration-300 ${
                             toast.visible ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
-                        }`}
+                        } ${toast.onClick ? 'cursor-pointer' : ''}`}
                     >
-                        <div className="px-3 py-2 text-sm">{toast.message}</div>
+                        <div className="px-3 py-2 text-sm">
+                            <div>{toast.message}</div>
+                            {toast.actionLabel && <div className="underline mt-1">{toast.actionLabel}</div>}
+                        </div>
                         <div className="h-1 bg-[#325170]/50">
                             <div
                                 className="h-full bg-[#6ec1ff]"
                                 style={{
                                     width: toast.started ? '0%' : '100%',
-                                    transition: 'width 3000ms linear',
+                                    transition: `width ${toast.durationMs}ms linear`,
                                 }}
                             />
                         </div>
@@ -650,12 +744,14 @@ function App() {
                         isRefetchingTags={isRefetchingTags}
                         scanProgress={scanProgress}
                         scanStatusMessage={scanStatusMessage}
+                        initialCategory={settingsInitialCategory}
                         onScanPlatforms={handleScanPlatforms}
                         onCustomFolderAdded={handleCustomFolderAdded}
                         onRefreshGames={loadGames}
                         onRefetchSpecialTags={handleRefetchSpecialTags}
                         onRemoveDuplicates={handleRemoveDuplicates}
                         onConnectIGDB={handleConnectIGDB}
+                        onShowToast={showLaunchToast}
                     />
                 ) : selectedGame ? (
                     <GameDetailView

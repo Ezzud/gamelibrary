@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { appDataDir, appLocalDataDir } from '@tauri-apps/api/path'
 import {
   Check,
   AlertCircle,
+  Info,
   Database,
   CheckCircle2,
   FolderPlus,
@@ -37,23 +39,29 @@ import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import { getVersion } from '@tauri-apps/api/app'
 
-type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'Update'
+type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'Update' | 'About'
 
 interface AppConfigProps {
   isScanning?: boolean
   isRefetchingTags?: boolean
   scanProgress?: number
   scanStatusMessage?: string
+  initialCategory?: ConfigCategory
   onScanPlatforms: (platforms: string[]) => Promise<void> | void
   onCustomFolderAdded: (folderPath: string) => Promise<void> | void
   onRefreshGames: () => Promise<void> | void
   onRefetchSpecialTags: () => Promise<void> | void
   onRemoveDuplicates: () => Promise<void> | void
   onConnectIGDB: (clientId: string, clientSecret: string) => Promise<{ success: boolean; message?: string }>
+  onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
 }
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox']
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
+const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
+const REPO_BRANCH = 'master'
+const APP_NAME = 'gamelibrary'
+const APP_AUTHOR = 'Ezzud'
 
 type UpdateCheckStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'
 
@@ -113,14 +121,16 @@ const AppConfig = ({
   isRefetchingTags = false,
   scanProgress = 0,
   scanStatusMessage = 'Idle',
+  initialCategory = 'General',
   onScanPlatforms,
   onCustomFolderAdded,
   onRefreshGames,
   onRefetchSpecialTags,
   onRemoveDuplicates,
-  onConnectIGDB
+  onConnectIGDB,
+  onShowToast,
 }: AppConfigProps) => {
-  const [activeCategory, setActiveCategory] = useState<ConfigCategory>('General')
+  const [activeCategory, setActiveCategory] = useState<ConfigCategory>(initialCategory)
   const [customFolders, setCustomFolders] = useState<string[]>([])
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set(['Steam']))
   const [isClearingCache, setIsClearingCache] = useState(false)
@@ -138,6 +148,8 @@ const AppConfig = ({
   const [currentVersion, setCurrentVersion] = useState('Unknown')
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
+  const [aboutAppLocation, setAboutAppLocation] = useState<string>('Loading...')
+  const [aboutDataLocation, setAboutDataLocation] = useState<string>('Loading...')
   const isAnyMaintenanceActionRunning = isClearingCache || isClearingPlayHistory || isRemovingLibrary || isRemovingDuplicates
 
   const categories = useMemo(
@@ -145,7 +157,8 @@ const AppConfig = ({
       { key: 'General' as const, label: 'General', icon: Settings2 },
       { key: 'Library' as const, label: 'Library', icon: Wrench },
       { key: 'Scanning' as const, label: 'Scanning', icon: ScanSearch },
-      { key: 'Update' as const, label: 'Update', icon: RefreshCw }
+      { key: 'Update' as const, label: 'Update', icon: RefreshCw },
+      { key: 'About' as const, label: 'About', icon: Info }
     ],
     []
   )
@@ -207,6 +220,39 @@ const AppConfig = ({
 
     void loadCredentials()
   }, [])
+
+  useEffect(() => {
+    const loadAboutPaths = async () => {
+      try {
+        const [localPath, appDataPath] = await Promise.all([appLocalDataDir(), appDataDir()])
+        const normalizedLocalPath = localPath.replace(/[\\/]+$/, '')
+        const normalizedAppDataPath = appDataPath.replace(/[\\/]+$/, '')
+
+        setAboutAppLocation(`${normalizedLocalPath}\\gamelibrary`)
+        setAboutDataLocation(`${normalizedAppDataPath}\\GameLibrary`)
+      } catch (error) {
+        Logger.warn('Failed to load About paths:', error)
+        setAboutAppLocation('Unavailable')
+        setAboutDataLocation('Unavailable')
+      }
+    }
+
+    const loadCurrentVersion = async () => {
+      try {
+        const localVersion = await getVersion()
+        setCurrentVersion(localVersion)
+      } catch (error) {
+        Logger.warn('Failed to load app version for About section:', error)
+      }
+    }
+
+    void loadAboutPaths()
+    void loadCurrentVersion()
+  }, [])
+
+  useEffect(() => {
+    setActiveCategory(initialCategory)
+  }, [initialCategory])
 
   useEffect(() => {
     if (activeCategory !== 'Update' || updateStatus === 'checking') {
@@ -393,8 +439,24 @@ const AppConfig = ({
       Logger.success(`Update installer downloaded and launched: ${installerPath}`)
     } catch (error) {
       Logger.error('Failed to download or launch update installer:', error)
+      const rawErrorMessage = error instanceof Error ? error.message : String(error)
+      const errorCode = rawErrorMessage.match(/\b([45]\d{2})\b/)?.[1] || 'UNKNOWN'
+      onShowToast?.(`Update download failed (code: ${errorCode})`, { durationMs: 5000 })
     } finally {
       setIsInstallingUpdate(false)
+    }
+  }
+
+  const handleOpenDirectory = async (path: string) => {
+    if (!path || path === 'Unavailable' || path === 'Loading...') {
+      return
+    }
+
+    try {
+      await invoke('open_game_folder', { path })
+    } catch (error) {
+      Logger.error(`Failed to open folder ${path}:`, error)
+      onShowToast?.('Failed to open folder.', { durationMs: 5000 })
     }
   }
 
@@ -837,6 +899,54 @@ const AppConfig = ({
               </div>
 
               
+            </div>
+          </div>
+        )}
+
+        {activeCategory === 'About' && (
+          <div className="rounded-xl bg-steam-800 p-5 space-y-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_14px_30px_rgba(0,0,0,0.2)]">
+            <div>
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Info className="w-4 h-4 text-steam-300" />
+                About
+              </h3>
+              <p className="text-xs text-steam-400 mt-1">App and repository information.</p>
+            </div>
+
+            <div className="rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] space-y-3">
+              <div className="text-sm text-steam-200">App name: <span className="text-steam-100 font-medium">{APP_NAME}</span></div>
+              <div className="text-sm text-steam-200">Author: <span className="text-steam-100 font-medium">{APP_AUTHOR}</span></div>
+              <div className="text-sm text-steam-200">App version: <span className="text-steam-100 font-medium">{currentVersion}</span></div>
+              <div className="text-sm text-steam-200">Repository URL: <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline">{GITHUB_REPO_URL}</a></div>
+              <div className="text-sm text-steam-200">Branch followed: <span className="text-steam-100 font-medium">{REPO_BRANCH}</span></div>
+
+              <div className="pt-2 border-t border-steam-700/60 space-y-2">
+                <div className="text-sm text-steam-200 flex items-center justify-between gap-3">
+                  <span className="truncate">App location: <span className="text-steam-100 font-medium">{aboutAppLocation}</span></span>
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenDirectory(aboutAppLocation)}
+                    className="w-8 h-8 shrink-0 rounded-md bg-steam-600 hover:bg-steam-500 transition-colors inline-flex items-center justify-center"
+                    aria-label="Open app location"
+                    title="Open app location"
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="text-sm text-steam-200 flex items-center justify-between gap-3">
+                  <span className="truncate">Data location: <span className="text-steam-100 font-medium">{aboutDataLocation}</span></span>
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenDirectory(aboutDataLocation)}
+                    className="w-8 h-8 shrink-0 rounded-md bg-steam-600 hover:bg-steam-500 transition-colors inline-flex items-center justify-center"
+                    aria-label="Open data location"
+                    title="Open data location"
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
