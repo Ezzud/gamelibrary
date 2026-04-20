@@ -1,8 +1,9 @@
 import { exists, readDir } from "@tauri-apps/plugin-fs";
 import { open } from "@tauri-apps/plugin-dialog";
+import { appDataDir } from "@tauri-apps/api/path";
 import { Logger } from "../utils/Logger";
 import { searchGame } from "./GameDataManager";
-import { addGamesToList, saveGameConfig, saveGameInfoCache, loadGameList, loadGameConfig, removeGameFromList, getCustomScanFolders  } from "./ConfigManager";
+import { addGamesToList, saveGameConfig, saveGameInfoCache, loadGameList, loadGameConfig, removeGameFromList, getCustomScanFolders, loadGameCache  } from "./ConfigManager";
 import type { GameCacheConfig, GameConfig, GameListEntry } from "./ConfigManager";
 
 
@@ -34,6 +35,17 @@ const blacklistedLaunchFiles = [
     "UnityCrashHandler64.exe",
     "UnrealCEFSubProcess.exe"
 ]
+const GOGGalaxyDefaultPaths = [
+    "Program Files (x86)/GOG Galaxy/Games",
+    "Program Files/GOG Galaxy/Games",
+    "GOG Galaxy/Games"
+]
+const GOGGalaxyOtherPaths = [
+    "GOG Galaxy/Games"
+]
+const GOGGamesPaths = [
+    "GOG Games"
+];
 
 export interface ScanProgressUpdate {
     percent: number;
@@ -167,7 +179,7 @@ async function hasSteamworksVersionedWin64File(gamePath: string, targetFileName:
     return false;
 }
 
-export async function findSpecialTagsForGamePath(gamePath: string): Promise<string[]> {
+export async function findSpecialTagsForGamePath(gamePath: string, gameId: string): Promise<string[]> {
     const specialTags: string[] = [];
     const addSpecialTag = (tag: string) => {
         if (!specialTags.includes(tag)) {
@@ -179,6 +191,25 @@ export async function findSpecialTagsForGamePath(gamePath: string): Promise<stri
         const entries = await readDir(gamePath);
         const normalizedGamePath = gamePath.replace(/[\\/]+$/, "");
         const gameFolderName = normalizedGamePath.split(/[\\/]/).pop()?.toLowerCase() || "";
+        const gameCache = await loadGameCache(gameId);
+        const platform = gameCache.platform;
+        switch (platform) {
+            case "Steam":
+                addSpecialTag("steam");
+                break;
+            case "GOG":
+                addSpecialTag("gog");
+                break;
+            case "EpicGames":
+                addSpecialTag("epic");
+                break;
+            case "EA":
+                addSpecialTag("ea");
+                break;
+            case "Xbox":
+                addSpecialTag("xbox");
+                break;
+        }
 
         if (entries.find((e) => !e.isDirectory && e.name.toLowerCase() === "vbs.cmd")) {
             addSpecialTag("hypervisor");
@@ -247,7 +278,7 @@ export async function refetchAllSpecialTags(onProgress?: ScanProgressCallback) {
                 `Refetching tags ${index + 1}/${games.length}: ${game.name}`
             );
 
-            const specialTags = await findSpecialTagsForGamePath(game.path);
+            const specialTags = await findSpecialTagsForGamePath(game.path, game.id);
             const existingConfig = await loadGameConfig(game.id);
             const mergedConfig: GameConfig = {
                 customArguments: existingConfig?.customArguments || '',
@@ -315,6 +346,115 @@ export async function scanAndAddSteamGames(onProgress?: ScanProgressCallback) {
     } catch (err) {
         Logger.error('Error occurred while scanning and adding Steam games:', err);
         reportProgress(onProgress, 100, 'Steam scan failed.');
+    }
+}
+
+async function getMainDriveLetter() {
+    try {
+        const appDataPath = await appDataDir();
+        const matched = appDataPath.match(/^([A-Za-z]):/);
+        return matched ? matched[1].toUpperCase() : 'C';
+    } catch {
+        return 'C';
+    }
+}
+
+export async function fetchGOGGames() {
+    const games: any[] = [];
+    const seenGameNames = new Set<string>();
+    const seenGamePaths = new Set<string>();
+
+    const addDiscoveredGame = (game: {
+        name: string;
+        path: string;
+        defaultLaunchFile: string | null;
+        allLaunchFiles: string[] | null;
+    }) => {
+        const normalizedName = game.name.toLowerCase().trim();
+        const normalizedPath = game.path.replace(/\\/g, '/').toLowerCase();
+
+        if (seenGameNames.has(normalizedName) || seenGamePaths.has(normalizedPath)) {
+            Logger.warn(`Skipping duplicate game discovery: ${game.name} at ${game.path}`);
+            return;
+        }
+
+        seenGameNames.add(normalizedName);
+        seenGamePaths.add(normalizedPath);
+        games.push({ id: null, ...game });
+    };
+
+    const scanLibraryRoot = async (libraryRoot: string) => {
+        try {
+            const pathExists = await exists(libraryRoot);
+            if (!pathExists) {
+                return;
+            }
+
+            Logger.success(`Found GOG library at: ${libraryRoot}`);
+            const entries = await readDir(libraryRoot);
+
+            for (const entry of entries) {
+                if (!entry.isDirectory) {
+                    continue;
+                }
+
+                const gamePath = `${libraryRoot}/${entry.name}`;
+                const launchFiles = await getAllLaunchFiles(gamePath);
+                if (launchFiles.length < 1) {
+                    Logger.warn(`No launch files found for game at ${gamePath}, skipping.`);
+                    continue;
+                }
+                if (blacklistedGames.find(g => g.toLowerCase() === entry.name.toLowerCase())) {
+                    Logger.warn(`Game ${entry.name} is blacklisted, skipping.`);
+                    continue;
+                }
+
+                addDiscoveredGame({
+                    name: entry.name,
+                    path: gamePath,
+                    defaultLaunchFile: launchFiles[0] || null,
+                    allLaunchFiles: launchFiles.length > 0 ? launchFiles : null
+                });
+            }
+        } catch (err) {
+            Logger.error(`Error occurred while fetching GOG games at ${libraryRoot}:`, err);
+        }
+    };
+
+    const mainDrive = await getMainDriveLetter();
+    for (const basePath of GOGGalaxyDefaultPaths) {
+        const fullPath = `${mainDrive}:/${basePath}`;
+        await scanLibraryRoot(fullPath);
+    }
+
+    const allDrivePaths = [...GOGGalaxyOtherPaths, ...GOGGamesPaths];
+    for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+        for (const basePath of allDrivePaths) {
+            const fullPath = `${drive}:/${basePath}`;
+            await scanLibraryRoot(fullPath);
+        }
+    }
+
+    return games;
+}
+
+export async function scanAndAddGOGGames(onProgress?: ScanProgressCallback) {
+    try {
+        reportProgress(onProgress, 0, 'Preparing GOG scan...');
+        reportProgress(onProgress, 15, 'Discovering GOG games...');
+        const games = await fetchGOGGames();
+        Logger.info(`Found ${games.length} games in GOG libraries.`);
+        reportProgress(onProgress, 55, `Found ${games.length} GOG games. Registering...`);
+
+        await registerGames(games, "GOG", (update) => {
+            const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
+            reportProgress(onProgress, mappedPercent, update.message);
+        });
+
+        reportProgress(onProgress, 100, 'GOG scan complete.');
+    } catch (err) {
+        Logger.error('Error occurred while scanning and adding GOG games:', err);
+        reportProgress(onProgress, 100, 'GOG scan failed.');
     }
 }
 
@@ -612,7 +752,7 @@ export async function registerGames(games: any[], platform: string, onProgress?:
         // If game folder contains a file ending with "VR.exe", add tag "vr" to game config
         // If game folder name ends with "VR", add tag "vr" to game config
         // If game folder contains a file named "OnlineFix64.dll", add tag "onlinefixed" to game config
-        const specialTags = await findSpecialTagsForGamePath(game.path);
+        const specialTags = await findSpecialTagsForGamePath(game.path, game.id);
 
 
         const gameConfig: GameConfig = {

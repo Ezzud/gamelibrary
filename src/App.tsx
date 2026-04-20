@@ -4,7 +4,7 @@ import GameLibrary from './components/GameLibrary'
 import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
-import { fetchAllCustomFolderGames, refetchAllSpecialTags, registerGames, removeDuplicateGames, scanAndAddCustomFolderGames, scanAndAddSteamGames } from './services/GameScanner'
+import { fetchAllCustomFolderGames, refetchAllSpecialTags, registerGames, removeDuplicateGames, scanAndAddCustomFolderGames, scanAndAddGOGGames, scanAndAddSteamGames } from './services/GameScanner'
 import { Logger } from './utils/Logger'
 import { addPlayHistoryEntry, getAppConfig, getPlayHistory, loadGameCache, loadGameConfig, loadGameList, saveGameConfig, saveGameInfoCache, setTwitchCredentials } from './services/ConfigManager'
 import { initIGDB, searchGame } from './services/GameDataManager'
@@ -265,14 +265,40 @@ function App() {
 
                 const cachedGames = await loadGameList()
                 const hasSteamGames = (cachedGames?.games || []).some((game: { platform: string }) => game.platform === 'Steam')
+                const hasGOGGames = (cachedGames?.games || []).some((game: { platform: string }) => game.platform === 'GOG')
 
+                const optionalScans: Array<'Steam' | 'GOG'> = []
                 if (hasSteamGames) {
-                    setScanStatusMessage('Scanning Steam games...')
-                    await scanAndAddSteamGames((update) => {
-                        const mappedPercent = Math.round(60 + (update.percent * 0.4))
-                        setScanProgress(mappedPercent)
-                        setScanStatusMessage(`Steam: ${update.message}`)
-                    })
+                    optionalScans.push('Steam')
+                }
+                if (hasGOGGames) {
+                    optionalScans.push('GOG')
+                }
+
+                if (optionalScans.length < 1) {
+                    setScanProgress(100)
+                    setScanStatusMessage('Initial scan complete (Steam/GOG skipped: no Steam or GOG games found).')
+                }
+
+                for (let index = 0; index < optionalScans.length; index++) {
+                    const platform = optionalScans[index]
+                    const rangeStart = Math.round(60 + (index / optionalScans.length) * 40)
+                    const rangeEnd = Math.round(60 + ((index + 1) / optionalScans.length) * 40)
+
+                    setScanStatusMessage(`Scanning ${platform} games...`)
+                    if (platform === 'Steam') {
+                        await scanAndAddSteamGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`Steam: ${update.message}`)
+                        })
+                    } else {
+                        await scanAndAddGOGGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`GOG: ${update.message}`)
+                        })
+                    }
                 }
 
                 await loadGames()
@@ -429,6 +455,13 @@ function App() {
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
+                    case 'GOG':
+                        await scanAndAddGOGGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
+                        })
+                        break
                     default:
                         Logger.warn(`Scanning for platform ${platform} is not implemented yet.`)
                         setScanStatusMessage(`Skipping ${platform}: not implemented.`)
@@ -490,16 +523,40 @@ function App() {
             })
 
             const hasSteamGames = games.some((game) => game.platform === 'Steam')
+            const hasGOGGames = games.some((game) => game.platform === 'GOG')
+
+            const optionalScans: Array<'Steam' | 'GOG'> = []
             if (hasSteamGames) {
-                setScanStatusMessage('Refreshing library: scanning Steam games...')
-                await scanAndAddSteamGames((update) => {
-                    const mappedPercent = Math.round(60 + (update.percent * 0.4))
-                    setScanProgress(mappedPercent)
-                    setScanStatusMessage(`Steam: ${update.message}`)
-                })
-            } else {
+                optionalScans.push('Steam')
+            }
+            if (hasGOGGames) {
+                optionalScans.push('GOG')
+            }
+
+            if (optionalScans.length < 1) {
                 setScanProgress(100)
-                setScanStatusMessage('Refresh scan complete (Steam skipped: no Steam games found).')
+                setScanStatusMessage('Refresh scan complete (Steam/GOG skipped: no Steam or GOG games found).')
+            }
+
+            for (let index = 0; index < optionalScans.length; index++) {
+                const platform = optionalScans[index]
+                const rangeStart = Math.round(60 + (index / optionalScans.length) * 40)
+                const rangeEnd = Math.round(60 + ((index + 1) / optionalScans.length) * 40)
+
+                setScanStatusMessage(`Refreshing library: scanning ${platform} games...`)
+                if (platform === 'Steam') {
+                    await scanAndAddSteamGames((update) => {
+                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        setScanProgress(mappedPercent)
+                        setScanStatusMessage(`Steam: ${update.message}`)
+                    })
+                } else {
+                    await scanAndAddGOGGames((update) => {
+                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        setScanProgress(mappedPercent)
+                        setScanStatusMessage(`GOG: ${update.message}`)
+                    })
+                }
             }
 
             await loadGames()

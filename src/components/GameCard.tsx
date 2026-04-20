@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { FolderOpen, Gamepad2, Loader2, Play, Settings, Trash2 } from 'lucide-react'
-import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard } from 'react-icons/fa'
+import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
+import { SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
 import { loadGameConfig } from '../services/ConfigManager'
 
 interface Game {
@@ -133,6 +134,31 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
   }, [game.id])
 
   const tagVisuals: Record<string, { label: string; className: string; icon: ReactElement }> = {
+    steam: {
+      label: 'STEAM',
+      className: 'bg-[#1d3961] text-white',
+      icon: <SiSteam className="w-3.5 h-3.5" />,
+    },
+    gog: {
+      label: 'GOG',
+      className: 'bg-[#86328a] text-white',
+      icon: <SiGogdotcom className="w-3.5 h-3.5" />,
+    },
+    epic: {
+      label: 'EPIC GAMES',
+      className: 'bg-black text-white',
+      icon: <SiEpicgames className="w-3.5 h-3.5" />,
+    },
+    ea: {
+      label: 'EA',
+      className: 'bg-[#ff4747] text-white',
+      icon: <SiEa className="w-3.5 h-3.5" />,
+    },
+    xbox: {
+      label: 'XBOX',
+      className: 'bg-[#107c10] text-white',
+      icon: <FaXbox className="w-3.5 h-3.5" />,
+    },
     hypervisor: {
       label: 'HYPERVISOR',
       className: 'bg-[#8b1f1f] text-white',
