@@ -58,6 +58,10 @@ jobs:
   build:
     name: Build Tauri App
     runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_TERM_PROGRESS_WHEN: always
 
     steps:
       - name: Checkout
@@ -77,11 +81,16 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build app
-        run: pnpm tauri build
+        run: pnpm tauri build --verbose
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
