@@ -52,7 +52,7 @@ interface AppConfigProps {
 }
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox']
-const GITHUB_REPO_PACKAGE_JSON_URL = 'https://raw.githubusercontent.com/Ezzud/gamelibrary/main/package.json'
+const GITHUB_REPO_PACKAGE_JSON_URL = 'https://raw.githubusercontent.com/Ezzud/gamelibrary/master/package.json'
 const GITHUB_REPO_RELEASES_URL = 'https://github.com/Ezzud/gamelibrary/releases/latest'
 
 type UpdateCheckStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'
