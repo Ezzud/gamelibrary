@@ -38,31 +38,36 @@ jobs:
           echo "[Detect Version Change] Current package.json version: $CURRENT_VERSION"
           echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
 
-          BEFORE_SHA="${{ github.event.before }}"
-          ZERO_SHA="0000000000000000000000000000000000000000"
-          echo "[Detect Version Change] BEFORE_SHA: ${BEFORE_SHA:-<empty>}"
-
           VERSION_CHANGED="false"
+          LATEST_RELEASE_TAG=""
+          LATEST_RELEASE_VERSION=""
 
-          if [[ -z "${BEFORE_SHA:-}" || "$BEFORE_SHA" == "$ZERO_SHA" ]]; then
-            echo "[Detect Version Change] No valid previous SHA (new branch or first push)."
+          echo "[Detect Version Change] Fetching tags..."
+          git fetch --force --tags origin
+
+          LATEST_RELEASE_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          echo "[Detect Version Change] Latest release tag: ${LATEST_RELEASE_TAG:-<none>}"
+
+          if [[ -z "$LATEST_RELEASE_TAG" ]]; then
+            echo "[Detect Version Change] No existing release tag found. Treating as changed."
             VERSION_CHANGED="true"
           else
             PREV_FILE=$(mktemp)
-            if git show "$BEFORE_SHA:package.json" > "$PREV_FILE" 2>/dev/null; then
-              PREV_VERSION=$(node -e "const fs=require('fs'); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,'utf8')); process.stdout.write(j.version || '')" "$PREV_FILE")
-              echo "[Detect Version Change] Previous package.json version at BEFORE_SHA: ${PREV_VERSION:-<missing>}"
+            if git show "$LATEST_RELEASE_TAG:package.json" > "$PREV_FILE" 2>/dev/null; then
+              LATEST_RELEASE_VERSION=$(node -e "const fs=require('fs'); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,'utf8')); process.stdout.write(j.version || '')" "$PREV_FILE")
+              echo "[Detect Version Change] package.json version at $LATEST_RELEASE_TAG: ${LATEST_RELEASE_VERSION:-<missing>}"
             else
-              PREV_VERSION=""
-              echo "[Detect Version Change] Could not read package.json at BEFORE_SHA. Treating as changed."
+              LATEST_RELEASE_VERSION=""
+              echo "[Detect Version Change] Could not read package.json at $LATEST_RELEASE_TAG. Treating as changed."
             fi
             rm -f "$PREV_FILE"
 
-            if [[ -z "$PREV_VERSION" || "$PREV_VERSION" != "$CURRENT_VERSION" ]]; then
+            if [[ -z "$LATEST_RELEASE_VERSION" || "$LATEST_RELEASE_VERSION" != "$CURRENT_VERSION" ]]; then
               VERSION_CHANGED="true"
             fi
           fi
 
+          echo "[Detect Version Change] Latest release package version: ${LATEST_RELEASE_VERSION:-<none>}"
           echo "[Detect Version Change] version_changed=$VERSION_CHANGED"
           echo "version_changed=$VERSION_CHANGED" >> "$GITHUB_OUTPUT"
 
