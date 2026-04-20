@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import {
   Check,
   AlertCircle,
@@ -52,8 +53,7 @@ interface AppConfigProps {
 }
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox']
-const GITHUB_REPO_PACKAGE_JSON_URL = 'https://raw.githubusercontent.com/Ezzud/gamelibrary/master/package.json'
-const GITHUB_REPO_RELEASES_URL = 'https://github.com/Ezzud/gamelibrary/releases/latest'
+const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
 
 type UpdateCheckStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'
 
@@ -137,6 +137,7 @@ const AppConfig = ({
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckStatus>('idle')
   const [currentVersion, setCurrentVersion] = useState('Unknown')
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const isAnyMaintenanceActionRunning = isClearingCache || isClearingPlayHistory || isRemovingLibrary || isRemovingDuplicates
 
   const categories = useMemo(
@@ -157,16 +158,16 @@ const AppConfig = ({
       const localVersion = await getVersion()
       setCurrentVersion(localVersion)
 
-      const response = await fetch(`${GITHUB_REPO_PACKAGE_JSON_URL}?t=${Date.now()}`)
+      const response = await fetch(`${GITHUB_REPO_LATEST_RELEASE_API_URL}?t=${Date.now()}`)
       if (!response.ok) {
-        throw new Error(`GitHub version fetch failed with status ${response.status}`)
+        throw new Error(`GitHub latest release fetch failed with status ${response.status}`)
       }
 
-      const data = await response.json() as { version?: string }
-      const repoVersion = (data.version || '').trim()
+      const data = await response.json() as { tag_name?: string }
+      const repoVersion = (data.tag_name || '').trim().replace(/^v/i, '')
 
       if (!repoVersion) {
-        throw new Error('GitHub version is missing in package.json')
+        throw new Error('GitHub latest release tag is missing')
       }
 
       setLatestVersion(repoVersion)
@@ -378,6 +379,22 @@ const AppConfig = ({
       setCredentialsStatus({ type: 'error', message: 'Failed to validate credentials.' })
     } finally {
       setIsConnectingCredentials(false)
+    }
+  }
+
+  const handleInstallUpdate = async () => {
+    if (isInstallingUpdate || !latestVersion) {
+      return
+    }
+
+    setIsInstallingUpdate(true)
+    try {
+      const installerPath = await invoke<string>('download_and_launch_installer', { version: latestVersion })
+      Logger.success(`Update installer downloaded and launched: ${installerPath}`)
+    } catch (error) {
+      Logger.error('Failed to download or launch update installer:', error)
+    } finally {
+      setIsInstallingUpdate(false)
     }
   }
 
@@ -765,7 +782,7 @@ const AppConfig = ({
             <div className="rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] space-y-3">
               <div className="text-sm text-steam-200">Current version: <span className="text-steam-100 font-medium">{currentVersion}</span></div>
 
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
                 <div className="min-h-9 flex items-center">
                   {updateStatus === 'checking' && (
                     <div className="inline-flex items-center gap-2 text-steam-200">
@@ -795,30 +812,31 @@ const AppConfig = ({
                     </div>
                   )}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => void checkForUpdates()}
-                  disabled={updateStatus === 'checking'}
-                  className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
-                >
-                  {updateStatus === 'checking' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Check Update
-                </button>
-              </div>
-
-              {updateStatus === 'update-available' && (
-                <div>
+                <div className="ml-auto flex items-center gap-2">
+                  {updateStatus === 'update-available' && (
+                    <button
+                      type="button"
+                      onClick={() => void handleInstallUpdate()}
+                      disabled={isInstallingUpdate}
+                      className="px-4 py-2 rounded-lg bg-[#8a4f16] hover:bg-[#9f5d1e] disabled:opacity-50 disabled:cursor-not-allowed text-[#fff1dc] transition-colors inline-flex items-center gap-2"
+                    >
+                      {isInstallingUpdate ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                      {isInstallingUpdate ? 'Downloading...' : 'Update now'}
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => window.open(GITHUB_REPO_RELEASES_URL, '_blank', 'noopener,noreferrer')}
-                    className="px-4 py-2 rounded-lg bg-[#8a4f16] hover:bg-[#9f5d1e] text-[#fff1dc] transition-colors inline-flex items-center gap-2"
+                    onClick={() => void checkForUpdates()}
+                    disabled={updateStatus === 'checking'}
+                    className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
                   >
-                    <RefreshCw className="w-4 h-4" />
-                    Update now
+                    {updateStatus === 'checking' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    Check Update
                   </button>
                 </div>
-              )}
+              </div>
+
+              
             </div>
           </div>
         )}

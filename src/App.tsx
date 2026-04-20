@@ -69,6 +69,21 @@ function App() {
     const [pickerPendingConfig, setPickerPendingConfig] = useState<any>(null)
     const [igdbConnectionStatus, setIgdbConnectionStatus] = useState<IGDBConnectionStatus>('checking')
 
+    const detectPlatformsFromCache = async (gamesToCheck: Array<{ id: string; platform?: string }>) => {
+        const cacheEntries = await Promise.all(
+            gamesToCheck.map(async (game) => {
+                const cache = await loadGameCache(game.id)
+                const platform = (cache?.platform || game.platform || '').trim().toLowerCase()
+                return platform
+            })
+        )
+
+        return {
+            hasSteamGames: cacheEntries.some((platform) => platform === 'steam'),
+            hasGOGGames: cacheEntries.some((platform) => platform === 'gog'),
+        }
+    }
+
     const showLaunchToast = (message: string) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         setLaunchToasts((prev) => [{ id, message, visible: false, started: false }, ...prev])
@@ -264,8 +279,8 @@ function App() {
                 })
 
                 const cachedGames = await loadGameList()
-                const hasSteamGames = (cachedGames?.games || []).some((game: { platform: string }) => game.platform === 'Steam')
-                const hasGOGGames = (cachedGames?.games || []).some((game: { platform: string }) => game.platform === 'GOG')
+                const scanCandidates = (cachedGames?.games || []) as Array<{ id: string; platform?: string }>
+                const { hasSteamGames, hasGOGGames } = await detectPlatformsFromCache(scanCandidates)
 
                 const optionalScans: Array<'Steam' | 'GOG'> = []
                 if (hasSteamGames) {
@@ -522,8 +537,7 @@ function App() {
                 setScanStatusMessage(`Custom folders: ${update.message}`)
             })
 
-            const hasSteamGames = games.some((game) => game.platform === 'Steam')
-            const hasGOGGames = games.some((game) => game.platform === 'GOG')
+            const { hasSteamGames, hasGOGGames } = await detectPlatformsFromCache(games)
 
             const optionalScans: Array<'Steam' | 'GOG'> = []
             if (hasSteamGames) {

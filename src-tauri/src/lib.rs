@@ -242,6 +242,63 @@ fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Res
 }
 
 #[tauri::command]
+async fn download_and_launch_installer(app: tauri::AppHandle, version: String) -> Result<String, String> {
+    let normalized_version = version.trim().trim_start_matches('v').to_string();
+    if normalized_version.is_empty()
+        || !normalized_version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    {
+        return Err("Invalid version format".to_string());
+    }
+
+    let file_name = format!("gamelibrary_{}_x64-setup.exe", normalized_version);
+    let download_url = format!(
+        "https://github.com/Ezzud/gamelibrary/releases/download/v{}/{}",
+        normalized_version, file_name
+    );
+
+    let base_local_dir = app
+        .path()
+        .local_data_dir()
+        .map_err(|err| format!("Failed to resolve LocalAppData directory: {}", err))?;
+    let updates_dir = base_local_dir.join("gamelibrary").join("updates");
+
+    fs::create_dir_all(&updates_dir)
+        .map_err(|err| format!("Failed to create updates directory {}: {}", updates_dir.display(), err))?;
+
+    let installer_path = updates_dir.join(&file_name);
+
+    let response = reqwest::Client::new()
+        .get(&download_url)
+        .send()
+        .await
+        .map_err(|err| format!("Failed to download installer: {}", err))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Installer download failed with status {} for {}",
+            response.status(),
+            download_url
+        ));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|err| format!("Failed to read installer bytes: {}", err))?;
+
+    fs::write(&installer_path, &bytes)
+        .map_err(|err| format!("Failed to write installer to {}: {}", installer_path.display(), err))?;
+
+    Command::new(&installer_path)
+        .spawn()
+        .map_err(|err| format!("Failed to launch installer {}: {}", installer_path.display(), err))?;
+
+    Ok(installer_path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 async fn igdb_get_access_token(client_id: String, client_secret: String) -> Result<String, String> {
     let token_url = format!(
         "https://id.twitch.tv/oauth2/token?client_id={}&client_secret={}&grant_type=client_credentials",
@@ -301,19 +358,47 @@ async fn igdb_post(endpoint: String, body: String, client_id: String, access_tok
     Ok(text)
 }
 
+fn cleanup_updates_dir_on_startup(app: &tauri::AppHandle) {
+    let local_data_dir = match app.path().local_data_dir() {
+        Ok(path) => path,
+        Err(err) => {
+            eprintln!("[startup-cleanup] Failed to resolve LocalAppData directory: {}", err);
+            return;
+        }
+    };
+
+    let updates_dir = local_data_dir.join("gamelibrary").join("updates");
+    if !updates_dir.exists() {
+        return;
+    }
+
+    if let Err(err) = fs::remove_dir_all(&updates_dir) {
+        eprintln!(
+            "[startup-cleanup] Failed to remove updates directory {}: {}",
+            updates_dir.display(),
+            err
+        );
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+    .setup(|app| {
+        cleanup_updates_dir_on_startup(app.handle());
+        Ok(())
+    })
     .invoke_handler(tauri::generate_handler![
         greet,
         igdb_get_access_token,
         igdb_post,
         get_directory_size,
         open_game_folder,
-        launch_game
+        launch_game,
+        download_and_launch_installer
     ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
