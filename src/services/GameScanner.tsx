@@ -3,9 +3,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir } from "@tauri-apps/api/path";
 import { Logger } from "../utils/Logger";
 import { searchGame } from "./GameDataManager";
-import { addGamesToList, saveGameConfig, saveGameInfoCache, loadGameList, loadGameConfig, removeGameFromList, getCustomScanFolders, loadGameCache  } from "./ConfigManager";
+import { addGamesToList, saveGameConfig, saveGameInfoCache, loadGameList, loadGameConfig, removeGameFromList, getCustomScanFolders, getIgnoredFolders, loadGameCache } from "./ConfigManager";
 import type { GameCacheConfig, GameConfig, GameListEntry } from "./ConfigManager";
-
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -35,6 +34,16 @@ const blacklistedLaunchFiles = [
     "UnityCrashHandler64.exe",
     "UnrealCEFSubProcess.exe"
 ]
+const nonGameLaunchFilePatterns = [
+    /^setup/i,
+    /^unins/i,
+    /^uninstall/i,
+    /^vc_redist/i,
+    /^dxsetup/i,
+    /^crashreport/i,
+    /^eula/i,
+    /^launcher\s*installer/i,
+]
 const GOGGalaxyDefaultPaths = [
     "Program Files (x86)/GOG Galaxy/Games",
     "Program Files/GOG Galaxy/Games",
@@ -53,6 +62,23 @@ export interface ScanProgressUpdate {
 }
 
 type ScanProgressCallback = (update: ScanProgressUpdate) => void;
+
+function normalizePathForCompare(value: string) {
+    return value.replace(/\\/g, '/').replace(/\/+$/, '').trim().toLowerCase();
+}
+
+function createIgnoredPathMatcher(ignoredFolders: string[]) {
+    const normalizedIgnoredFolders = ignoredFolders
+        .map((folder) => normalizePathForCompare(folder))
+        .filter(Boolean);
+
+    return (candidatePath: string) => {
+        const normalizedCandidatePath = normalizePathForCompare(candidatePath);
+        return normalizedIgnoredFolders.some(
+            (ignoredFolder) => normalizedCandidatePath === ignoredFolder || normalizedCandidatePath.startsWith(`${ignoredFolder}/`)
+        );
+    };
+}
 
 function reportProgress(onProgress: ScanProgressCallback | undefined, percent: number, message: string) {
     if (!onProgress) {
@@ -306,9 +332,15 @@ export async function scanAndAddCustomFolderGames(onProgress?: ScanProgressCallb
             reportProgress(onProgress, 100, 'No custom folders configured.');
             return;
         }
+        const ignoredFolders = await getIgnoredFolders();
+        const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
 
         for (let index = 0; index < allCustomFolders.length; index++) {
             const folder = allCustomFolders[index];
+            if (isIgnoredPath(folder)) {
+                Logger.info(`Skipping ignored custom scan folder: ${folder}`);
+                continue;
+            }
             const rangeStart = mapProgress(index, 0, allCustomFolders.length, 0, 100);
             const rangeEnd = mapProgress(index + 1, 0, allCustomFolders.length, 0, 100);
 
@@ -363,6 +395,8 @@ export async function fetchGOGGames() {
     const games: any[] = [];
     const seenGameNames = new Set<string>();
     const seenGamePaths = new Set<string>();
+    const ignoredFolders = await getIgnoredFolders();
+    const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
 
     const addDiscoveredGame = (game: {
         name: string;
@@ -370,6 +404,11 @@ export async function fetchGOGGames() {
         defaultLaunchFile: string | null;
         allLaunchFiles: string[] | null;
     }) => {
+        if (isIgnoredPath(game.path)) {
+            Logger.info(`Skipping ignored game path: ${game.path}`);
+            return;
+        }
+
         const normalizedName = game.name.toLowerCase().trim();
         const normalizedPath = game.path.replace(/\\/g, '/').toLowerCase();
 
@@ -477,9 +516,16 @@ export async function getAllLaunchFiles(gamePath: string) {
     try {
         const entries = await readDir(gamePath);
         const launchFiles = [];
+        const folderName = gamePath.split('/').pop()?.toLowerCase() || '';
         for (const entry of entries) {
             if (!entry.isDirectory && (entry.name.endsWith('.exe') || entry.name.endsWith('.bat'))) {
-                if(!blacklistedLaunchFiles.find(f => f.toLowerCase() === entry.name.toLowerCase())) {
+                const normalizedEntryName = entry.name.toLowerCase();
+                const baseFileName = normalizedEntryName.replace(/\.(exe|bat)$/i, '');
+                const isBlacklisted = blacklistedLaunchFiles.find(f => f.toLowerCase() === normalizedEntryName);
+                const matchesNonGamePattern = nonGameLaunchFilePatterns.some((pattern) => pattern.test(baseFileName));
+                const nameLooksRelatedToFolder = folderName.length > 3 && (baseFileName.includes(folderName) || folderName.includes(baseFileName));
+
+                if(!isBlacklisted && (!matchesNonGamePattern || nameLooksRelatedToFolder)) {
                     launchFiles.push(entry.name);
                 } else {
                     Logger.warn(`Launch file ${entry.name} is blacklisted, skipping.`);
@@ -506,6 +552,8 @@ export async function fetchAllCustomFolderGames(folderPath: string) {
     const games: any[] = [];
     const seenGameNames = new Set<string>();
     const seenGamePaths = new Set<string>();
+    const ignoredFolders = await getIgnoredFolders();
+    const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
 
     const normalizedFolderPath = folderPath.replace(/\\/g, '/').replace(/\/+$/, '');
 
@@ -515,6 +563,11 @@ export async function fetchAllCustomFolderGames(folderPath: string) {
         defaultLaunchFile: string | null;
         allLaunchFiles: string[] | null;
     }) => {
+        if (isIgnoredPath(game.path)) {
+            Logger.info(`Skipping ignored game path: ${game.path}`);
+            return;
+        }
+
         const normalizedName = game.name.toLowerCase().trim();
         const normalizedPath = game.path.replace(/\\/g, '/').toLowerCase();
 
@@ -532,6 +585,11 @@ export async function fetchAllCustomFolderGames(folderPath: string) {
         const folderExists = await exists(normalizedFolderPath);
         if (!folderExists) {
             Logger.warn(`Custom folder does not exist: ${normalizedFolderPath}`);
+            return games;
+        }
+
+        if (isIgnoredPath(normalizedFolderPath)) {
+            Logger.info(`Custom games folder is ignored, skipping: ${normalizedFolderPath}`);
             return games;
         }
 
@@ -574,6 +632,8 @@ export async function fetchAllSteamGames() {
     const games: any[] = [];
     const seenGameNames = new Set<string>();
     const seenGamePaths = new Set<string>();
+    const ignoredFolders = await getIgnoredFolders();
+    const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
 
     const addDiscoveredGame = (game: {
         name: string;
@@ -581,6 +641,11 @@ export async function fetchAllSteamGames() {
         defaultLaunchFile: string | null;
         allLaunchFiles: string[] | null;
     }) => {
+        if (isIgnoredPath(game.path)) {
+            Logger.info(`Skipping ignored game path: ${game.path}`);
+            return;
+        }
+
         const normalizedName = game.name.toLowerCase().trim();
         const normalizedPath = game.path.replace(/\\/g, '/').toLowerCase();
 

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import GameCard from './GameCard'
-import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, KeyRound, Link2, Loader, Play, RefreshCw, ShieldCheck, Tags } from 'lucide-react'
+import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, KeyRound, Link2, Loader, Play, RefreshCw, ShieldCheck, Tags, Trash2 } from 'lucide-react'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiEpicgames, SiGogdotcom } from 'react-icons/si'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
-import { addPlayHistoryEntry, loadGameConfig, removeGameFromList, saveGameConfig } from '../services/ConfigManager'
+import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, removeCustomScanFolder, removeGameFromList, saveGameConfig } from '../services/ConfigManager'
+import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 
@@ -81,6 +82,7 @@ interface GameLibraryProps {
   games: Game[]
   onGameSelect: (game: Game) => void
   onLaunchError: (message: string) => void
+  onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
   onLaunchSuccess: () => Promise<void> | void
   igdbConnectionStatus: 'checking' | 'missing' | 'invalid' | 'connected'
   onConnectIGDB: (clientId: string, clientSecret: string) => Promise<{ success: boolean; message?: string }>
@@ -98,7 +100,7 @@ interface GameLibraryProps {
  * Params: games, onGameSelect, isLoading, scanProgress - data and handlers
  * Returns: JSX.Element - game library grid layout
  */
-const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdbConnectionStatus, onConnectIGDB, onOpenSettings, onRefresh, onScanPlatforms, isLoading, isLoadingGames, scanProgress, scanStatusMessage }: GameLibraryProps) => {
+const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunchSuccess, igdbConnectionStatus, onConnectIGDB, onOpenSettings, onRefresh, onScanPlatforms, isLoading, isLoadingGames, scanProgress, scanStatusMessage }: GameLibraryProps) => {
   const [pickerGame, setPickerGame] = useState<Game | null>(null)
   const [pickerLaunchFiles, setPickerLaunchFiles] = useState<string[]>([])
   const [pickerSelectedLaunchFile, setPickerSelectedLaunchFile] = useState('')
@@ -117,6 +119,11 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
   const [isPlatformMenuOpen, setIsPlatformMenuOpen] = useState(false)
   const [isTagMenuOpen, setIsTagMenuOpen] = useState(false)
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false)
+  const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set())
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false)
+  const [isAddingCustomFolder, setIsAddingCustomFolder] = useState(false)
+  const [customFolders, setCustomFolders] = useState<string[]>([])
+  const [removingCustomFolderPath, setRemovingCustomFolderPath] = useState<string | null>(null)
   const [gameTagsById, setGameTagsById] = useState<Record<string, string[]>>({})
   const platformMenuRef = useRef<HTMLDivElement | null>(null)
   const tagMenuRef = useRef<HTMLDivElement | null>(null)
@@ -147,6 +154,27 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
       window.removeEventListener('contextmenu', handleAnyOutsideClick)
     }
   }, [isPlatformMenuOpen, isTagMenuOpen, isSortMenuOpen])
+
+  useEffect(() => {
+    const loadCustomFolders = async () => {
+      try {
+        const folders = await getCustomScanFolders()
+        const normalizedFolders = Array.isArray(folders) ? folders.filter(Boolean) : []
+        setCustomFolders(normalizedFolders)
+        if (normalizedFolders.length > 0) {
+          setSelectedPlatforms((prev) => {
+            const next = new Set(prev)
+            next.add('Custom Folders')
+            return next
+          })
+        }
+      } catch (error) {
+        Logger.warn('Failed to load custom folders for tutorial scan menu:', error)
+      }
+    }
+
+    void loadCustomFolders()
+  }, [])
 
   useEffect(() => {
     const loadTagsForGames = async () => {
@@ -185,6 +213,14 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
   ).sort((a, b) => a.localeCompare(b))
 
   const hasActiveFilters = searchQuery.trim().length > 0 || platformFilter !== 'All' || tagFilter !== 'All'
+
+  useEffect(() => {
+    setSelectedGameIds((prev) => {
+      const validIds = new Set(games.map((game) => game.id))
+      const next = new Set(Array.from(prev).filter((id) => validIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [games])
 
   const displayedGames = [...games]
     .filter((game) => {
@@ -381,10 +417,113 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
     }
 
     try {
+      await addIgnoredFolder(game.path)
       await removeGameFromList(game.id)
+      const folderName = game.path.split(/[\\/]/).filter(Boolean).pop() || game.name
+      onShowToast?.(`Folder "${folderName}" is now ignored by GameLibrary`, { durationMs: 4000 })
+      setSelectedGameIds((prev) => {
+        const next = new Set(prev)
+        next.delete(game.id)
+        return next
+      })
       await onRefresh()
     } catch (error) {
       Logger.error(`Failed to delete game ${game.name}:`, error)
+    }
+  }
+
+  const handleToggleGameSelection = (gameId: string, isSelected: boolean) => {
+    setSelectedGameIds((prev) => {
+      const next = new Set(prev)
+      if (isSelected) {
+        next.add(gameId)
+      } else {
+        next.delete(gameId)
+      }
+      return next
+    })
+  }
+
+  const handleDeleteSelectedGames = async () => {
+    if (selectedGameIds.size < 1 || isDeletingSelected) {
+      return
+    }
+
+    const selectedGames = games.filter((game) => selectedGameIds.has(game.id))
+    if (selectedGames.length < 1) {
+      return
+    }
+
+    const confirmed = window.confirm(`Delete ${selectedGames.length} selected game(s) from your library?`)
+    if (!confirmed) {
+      return
+    }
+
+    setIsDeletingSelected(true)
+    try {
+      for (const game of selectedGames) {
+        await addIgnoredFolder(game.path)
+        await removeGameFromList(game.id)
+        const folderName = game.path.split(/[\\/]/).filter(Boolean).pop() || game.name
+        onShowToast?.(`Folder "${folderName}" is now ignored by GameLibrary`, { durationMs: 4000 })
+      }
+      setSelectedGameIds(new Set())
+      await onRefresh()
+    } catch (error) {
+      Logger.error('Failed to delete selected games:', error)
+    } finally {
+      setIsDeletingSelected(false)
+    }
+  }
+
+  const handleAddCustomFolderInEmptyState = async () => {
+    if (isAddingCustomFolder) {
+      return
+    }
+
+    setIsAddingCustomFolder(true)
+    try {
+      const selectedFolder = await chooseFolder()
+      if (!selectedFolder) {
+        return
+      }
+
+      await addCustomScanFolder(selectedFolder)
+      setCustomFolders((prev) => {
+        if (prev.includes(selectedFolder)) {
+          return prev
+        }
+        return [...prev, selectedFolder]
+      })
+      setSelectedPlatforms((prev) => {
+        const next = new Set(prev)
+        next.add('Custom Folders')
+        return next
+      })
+      onShowToast?.('Custom folder added to scan configuration.', { durationMs: 4000 })
+    } catch (error) {
+      Logger.error('Failed to add custom folder from scan menu:', error)
+      onShowToast?.('Failed to add custom folder.', { durationMs: 4000 })
+    } finally {
+      setIsAddingCustomFolder(false)
+    }
+  }
+
+  const handleRemoveCustomFolderInEmptyState = async (folderPath: string) => {
+    if (removingCustomFolderPath) {
+      return
+    }
+
+    setRemovingCustomFolderPath(folderPath)
+    try {
+      await removeCustomScanFolder(folderPath)
+      setCustomFolders((prev) => prev.filter((folder) => folder !== folderPath))
+      onShowToast?.('Custom folder removed from scan configuration.', { durationMs: 4000 })
+    } catch (error) {
+      Logger.error('Failed to remove custom folder from scan menu:', error)
+      onShowToast?.('Failed to remove custom folder.', { durationMs: 4000 })
+    } finally {
+      setRemovingCustomFolderPath(null)
     }
   }
 
@@ -637,14 +776,14 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
               </div>
             </div>
 
-            <div className="mt-2 flex items-center gap-2 text-xs text-steam-300">
+            <div className="mt-2 flex items-center gap-2 text-xs text-steam-300 w-full min-h-[2.25rem]">
               {hasActiveFilters && (
-                <div className="ml-1 inline-flex items-center gap-2 rounded-md bg-[#facc15] px-2 py-1 text-[#1f2937] font-medium">
+                <div className="ml-1 inline-flex h-8 items-center gap-2 rounded-md bg-[#facc15] px-2 py-1 text-[#1f2937] font-medium whitespace-nowrap">
                   <span>Filters are applied</span>
                   <button
                     type="button"
                     onClick={handleClearFilters}
-                    className="inline-flex items-center rounded-md bg-[#0f172a] px-2 py-1 text-[#f8fafc] hover:bg-[#1e293b] transition-colors"
+                    className="inline-flex h-6 items-center rounded-md bg-[#0f172a] px-2 py-1 text-[#f8fafc] hover:bg-[#1e293b] transition-colors"
                   >
                     Clear filters
                   </button>
@@ -652,18 +791,32 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
               )}
 
               {credentialWarningMessage && (
-                <div className="inline-flex items-center gap-2 rounded-md border border-[#8f1d1d] bg-[#7f1d1d] px-2 py-1 text-white font-medium">
+                <div className="inline-flex h-8 items-center gap-2 rounded-md border border-[#8f1d1d] bg-[#7f1d1d] px-2 py-1 text-white font-medium whitespace-nowrap">
                   <span>{credentialWarningMessage}</span>
                   <span>Go to</span>
                   <button
                     type="button"
                     onClick={onOpenSettings}
-                    className="inline-flex items-center rounded-md border border-[#6c1b1b] bg-red-950/30 px-2 py-1 text-white hover:bg-red-900/40 transition-colors"
+                    className="inline-flex h-6 items-center rounded-md border border-[#6c1b1b] bg-red-950/30 px-2 py-1 text-white hover:bg-red-900/40 transition-colors"
                   >
                     Settings
                   </button>
                   <span>to update it.</span>
                 </div>
+              )}
+
+              {selectedGameIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteSelectedGames()}
+                  disabled={isDeletingSelected}
+                  className="inline-flex h-8 items-center gap-2 rounded-md border border-red-700/70 bg-red-900/65 px-2 py-1 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-800/75 transition-colors ml-auto"
+                  title="Delete selected games"
+                  aria-label="Delete selected games"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingSelected ? 'Deleting...' : `Delete games (${selectedGameIds.size})`}</span>
+                </button>
               )}
             </div>
           </div>
@@ -682,7 +835,7 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
         ) : games.length === 0 ? (
           igdbConnectionStatus !== 'connected' ? (
             <div className="min-h-[60vh] flex items-center">
-              <div className="max-w-2xl mx-auto w-full rounded-xl border border-steam-700/85 bg-gradient-to-b from-steam-800/75 to-steam-900/75 px-5 py-6 ring-1 ring-steam-700/55">
+              <div className="max-w-2xl mx-auto w-full rounded-xl bg-gradient-to-b from-steam-800/75 to-steam-900/75 px-5 py-6 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
                 <div className="text-center mb-4">
                   <p className="text-steam-200 text-xl font-semibold inline-flex items-center gap-2">
                     <FaTwitch className="w-5 h-5 text-[#9146FF]" />
@@ -691,7 +844,7 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
                   <p className="text-steam-400 text-sm mt-2">IGDB requires a Twitch app Client ID and Client Secret before your first scan.</p>
                 </div>
 
-                <div className="rounded-lg border border-steam-700/70 bg-steam-900/55 px-4 py-4 space-y-2">
+                <div className="rounded-lg bg-steam-900/55 px-4 py-4 space-y-2">
                   <p className="text-sm text-steam-200 font-medium">Quick setup tutorial</p>
                   <ol className="text-xs text-steam-400 space-y-1 list-decimal pl-4">
                     <li>
@@ -707,16 +860,21 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
                       </a>
                     </li>
                     <li>Create a new application in the Twitch Developer Portal.</li>
+                    <li><span className="text-steam-300">PS:</span> make sure 2FA is enabled on your Twitch account first.</li>
+                    <li>Add <span className="text-sky-300">https://localhost</span> as the Redirect URL.</li>
+                    <li>Set Category to <span className="text-steam-300">Application integration</span>.</li>
+                    <li>Set Client Type to <span className="text-steam-300">Confidential</span>.</li>
+                    <li>Click <span className="text-steam-300">Manage</span>, copy Client ID, then generate and copy Client Secret.</li>
                     <li>
                       <span className="flex items-start gap-1.5">
                         <KeyRound className="w-3 h-3 mt-0.5 shrink-0" />
-                        <span>Copy the Client ID and generate a new Client Secret.</span>
+                        <span>Paste both values below.</span>
                       </span>
                     </li>
                     <li>
                       <span className="flex items-start gap-1.5">
                         <ShieldCheck className="w-3 h-3 mt-0.5 shrink-0" />
-                        <span>Paste both values below and click Connect.</span>
+                        <span>Click Connect.</span>
                       </span>
                     </li>
                   </ol>
@@ -762,7 +920,7 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
             </div>
           ) : (
           <div className="min-h-[60vh] flex items-center">
-            <div className="max-w-2xl mx-auto w-full rounded-xl border border-steam-700/85 bg-gradient-to-b from-steam-800/75 to-steam-900/75 px-4 py-6 ring-1 ring-steam-700/55">
+            <div className="max-w-2xl mx-auto w-full rounded-xl bg-gradient-to-b from-steam-800/75 to-steam-900/75 px-4 py-6 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
               <div className="text-center mb-4">
                 <p className="text-steam-200 text-xl font-semibold">Start adding games</p>
                 <p className="text-steam-400 text-sm mt-2">Select one or more sources and run a scan.</p>
@@ -801,6 +959,47 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
                 <p className="text-sm text-steam-100 mt-1">{Array.from(selectedPlatforms).join(', ') || 'None'}</p>
               </div>
 
+              <div className="mt-3 rounded-lg bg-steam-900/50 px-3 py-3">
+                <p className="text-xs text-steam-400 mb-2">Custom folder source</p>
+                <button
+                  type="button"
+                  onClick={() => void handleAddCustomFolderInEmptyState()}
+                  disabled={isAddingCustomFolder || isLoading}
+                  className="w-full px-3 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+                >
+                  {isAddingCustomFolder ? <Loader className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
+                  {isAddingCustomFolder ? 'Adding folder...' : 'Add Custom Folder'}
+                </button>
+
+                {customFolders.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-steam-400">Configured custom folders</p>
+                    <ul className="space-y-1.5 max-h-36 overflow-auto pr-1">
+                      {customFolders.map((folder) => (
+                        <li
+                          key={folder}
+                          className="group rounded-md bg-steam-900/55 px-2.5 py-2 flex items-center gap-2"
+                          title={folder}
+                        >
+                          <FolderOpen className="w-3.5 h-3.5 text-steam-300 shrink-0" />
+                          <span className="text-xs text-steam-200 truncate flex-1">{folder}</span>
+                          <button
+                            type="button"
+                            onClick={() => void handleRemoveCustomFolderInEmptyState(folder)}
+                            disabled={isLoading || removingCustomFolderPath === folder}
+                            className="w-6 h-6 rounded-md bg-red-700/70 hover:bg-red-600 text-white inline-flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label={`Remove custom folder ${folder}`}
+                            title="Remove custom folder"
+                          >
+                            {removingCustomFolderPath === folder ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
               <div className="mt-4 flex justify-center">
                 <button
                   type="button"
@@ -821,22 +1020,34 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onLaunchSuccess, igdb
             <p className="text-steam-500 text-sm mt-2">Try clearing search text or selecting different platform/tag options.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 ${isDeletingSelected ? 'pointer-events-none opacity-70' : ''}`}>
             {displayedGames.map((game, index) => (
               <div
                 key={game.id}
-                className="game-card-enter"
+                className="game-card-enter relative group"
                 style={{ animationDelay: `${Math.min(index * 35, 420)}ms` }}
               >
-                <GameCard
-                  game={game}
-                  onClick={() => onGameSelect(game)}
-                  onPlay={handlePlayGame}
-                  isPlayLoading={launchingGameId === game.id}
-                  onOpenFolder={handleOpenGameFolder}
-                  onGameSettings={() => onGameSelect(game)}
-                  onDelete={handleDeleteGame}
-                />
+                <label className={`absolute top-2 left-2 z-20 inline-flex items-center cursor-pointer transition-all duration-200 hover:scale-105 ${selectedGameIds.has(game.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedGameIds.has(game.id)}
+                    onChange={(event) => handleToggleGameSelection(game.id, event.target.checked)}
+                    onClick={(event) => event.stopPropagation()}
+                    disabled={isDeletingSelected}
+                    className="h-4 w-4 rounded border border-sky-300/70 bg-steam-900/80 accent-[#6ec1ff] shadow-[0_0_0_1px_rgba(14,116,144,0.35)]"
+                  />
+                </label>
+                <div className={`rounded-lg transition-all duration-200 ${selectedGameIds.has(game.id) ? 'ring-2 ring-sky-400 shadow-[0_0_0_1px_rgba(125,211,252,0.35),0_10px_22px_rgba(30,120,200,0.25)]' : ''}`}>
+                  <GameCard
+                    game={game}
+                    onClick={() => onGameSelect(game)}
+                    onPlay={handlePlayGame}
+                    isPlayLoading={launchingGameId === game.id}
+                    onOpenFolder={handleOpenGameFolder}
+                    onGameSettings={() => onGameSelect(game)}
+                    onDelete={handleDeleteGame}
+                  />
+                </div>
               </div>
             ))}
           </div>

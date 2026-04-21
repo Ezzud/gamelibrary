@@ -79,6 +79,7 @@ interface GameDetailViewProps {
     onBack: () => void
     onGameUpdated?: () => void
     onLaunchError: (message: string) => void
+    onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
     onLaunchSuccess: () => Promise<void> | void
 }
 
@@ -87,7 +88,7 @@ interface GameDetailViewProps {
  * Params: game, onBack, onGameUpdated - game data and handlers
  * Returns: JSX.Element - detail view layout
  */
-const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onLaunchSuccess }: GameDetailViewProps) => {
+const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToast, onLaunchSuccess }: GameDetailViewProps) => {
     const [isLaunching, setIsLaunching] = useState(false)
     const [showConfig, setShowConfig] = useState(false)
     const [showLaunchFilePicker, setShowLaunchFilePicker] = useState(false)
@@ -336,6 +337,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onLaunchSu
                 game={game}
                 onBack={() => setShowConfig(false)}
                 onConfigSaved={onGameUpdated}
+                onShowToast={onShowToast}
             />
         )
     }

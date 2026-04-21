@@ -759,6 +759,7 @@ function App() {
                         onBack={() => setSelectedGame(null)}
                         onGameUpdated={loadGames}
                         onLaunchError={showLaunchToast}
+                        onShowToast={showLaunchToast}
                         onLaunchSuccess={handleLaunchSuccess}
                     />
                 ) : (
@@ -766,6 +767,7 @@ function App() {
                         games={games}
                         onGameSelect={setSelectedGame}
                         onLaunchError={showLaunchToast}
+                        onShowToast={showLaunchToast}
                         onLaunchSuccess={handleLaunchSuccess}
                         igdbConnectionStatus={igdbConnectionStatus}
                         onConnectIGDB={handleConnectIGDB}

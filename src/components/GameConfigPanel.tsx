@@ -3,6 +3,7 @@ import { ArrowLeft, Save, Loader, FolderOpen, TerminalSquare, FolderCog, FileCog
 import { dirname } from '@tauri-apps/api/path'
 import { loadGameConfig, saveGameConfig, getGameCachePath } from '../services/ConfigManager'
 import { openGameFolder } from '../services/GameLauncher'
+import { resetAndRefetchGameIGDBData } from '../services/GameDataManager'
 
 interface Game {
   id: string
@@ -18,6 +19,7 @@ interface GameConfigPanelProps {
   game: Game
   onBack: () => void
   onConfigSaved?: () => void
+  onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
 }
 
 /**
@@ -25,7 +27,7 @@ interface GameConfigPanelProps {
  * Params: game, onBack, onConfigSaved - game data and handlers
  * Returns: JSX.Element - configuration panel UI
  */
-const GameConfigPanel = ({ game, onBack, onConfigSaved }: GameConfigPanelProps) => {
+const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfigPanelProps) => {
   const [launchArgs, setLaunchArgs] = useState('')
   const [workingDirectory, setWorkingDirectory] = useState(game.path)
   const [defaultLaunchFile, setDefaultLaunchFile] = useState('')
@@ -33,6 +35,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved }: GameConfigPanelProps) 
   const [cachePath, setCachePath] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [isResettingIGDBData, setIsResettingIGDBData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -123,6 +126,27 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved }: GameConfigPanelProps) 
       console.error('Failed to open cache path:', error)
       setSaveMessage('Failed to open cache path')
       setTimeout(() => setSaveMessage(''), 3000)
+    }
+  }
+
+  const handleResetIGDBData = async () => {
+    if (isResettingIGDBData) {
+      return
+    }
+
+    setIsResettingIGDBData(true)
+    try {
+      await resetAndRefetchGameIGDBData(game.id, game.name)
+
+      await onConfigSaved?.()
+      await loadCurrentGameConfig()
+
+      onShowToast?.('IGDB data reset and refetched successfully.', { durationMs: 3000 })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      onShowToast?.(`Failed to reset IGDB data: ${message}`, { durationMs: 5000 })
+    } finally {
+      setIsResettingIGDBData(false)
     }
   }
 
@@ -307,6 +331,25 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved }: GameConfigPanelProps) 
                     </div>
                   )}
                 </div>
+              </div>
+
+              <div className="bg-[#27181c]/86 rounded-xl p-6 shadow-[0_14px_28px_rgba(0,0,0,0.22)]">
+                <h3 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Actions
+                </h3>
+                <p className="text-red-200/90 text-sm mb-4">
+                  Reset cached IGDB fields for this game and refetch fresh metadata.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void handleResetIGDBData()}
+                  disabled={isResettingIGDBData || isSaving}
+                  className="w-full bg-red-700 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  {isResettingIGDBData ? <Loader className="w-5 h-5 animate-spin" /> : <Info className="w-5 h-5" />}
+                  {isResettingIGDBData ? 'Resetting...' : 'Reset IGDB Data'}
+                </button>
               </div>
             </div>
           </div>

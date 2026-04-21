@@ -5,6 +5,7 @@ import { Logger } from '../utils/Logger'
 
 interface Config {
     customScanFolders: string[]
+    ignoredFolders: string[]
     twitchClientId: string
     twitchClientSecret: string
 }
@@ -51,6 +52,7 @@ interface PlayHistory {
 
 const defaultConfig: Config = {
     customScanFolders: [],
+    ignoredFolders: [],
     twitchClientId: '',
     twitchClientSecret: '',
 };
@@ -79,6 +81,10 @@ async function ensureParentDir(filePath: string) {
     await mkdir(parentDir, { recursive: true });
 }
 
+function normalizePathForCompare(value: string) {
+    return value.replace(/\\/g, '/').replace(/\/+$/, '').trim().toLowerCase();
+}
+
 
 export async function addCustomScanFolder(path: string) {
     Logger.info(`Adding custom scan folder: ${path}`);
@@ -90,6 +96,25 @@ export async function addCustomScanFolder(path: string) {
     } else {
         Logger.warn(`Custom scan folder already exists: ${path}`);
     }
+}
+
+export async function addIgnoredFolder(path: string) {
+    Logger.info(`Adding ignored folder: ${path}`);
+    const config = await loadConfig();
+    const normalizedTarget = normalizePathForCompare(path);
+    if (!normalizedTarget) {
+        return;
+    }
+
+    const alreadyExists = config.ignoredFolders.some((entry) => normalizePathForCompare(entry) === normalizedTarget);
+    if (alreadyExists) {
+        Logger.warn(`Ignored folder already exists: ${path}`);
+        return;
+    }
+
+    config.ignoredFolders.push(path);
+    await saveConfig(config);
+    Logger.success(`Ignored folder added: ${path}`);
 }
 
 export async function deleteGameCache(gameId: string) {
@@ -196,6 +221,24 @@ export async function removeCustomScanFolder(path: string) {
     }
 }
 
+export async function removeIgnoredFolder(path: string) {
+    Logger.info(`Removing ignored folder: ${path}`);
+    const config = await loadConfig();
+    const normalizedTarget = normalizePathForCompare(path);
+    const nextIgnoredFolders = config.ignoredFolders.filter(
+        (entry) => normalizePathForCompare(entry) !== normalizedTarget
+    );
+
+    if (nextIgnoredFolders.length === config.ignoredFolders.length) {
+        Logger.warn(`Ignored folder not found: ${path}`);
+        return;
+    }
+
+    config.ignoredFolders = nextIgnoredFolders;
+    await saveConfig(config);
+    Logger.success(`Ignored folder removed: ${path}`);
+}
+
 export async function getGameConfigLaunchFiles(gameId: string) {
     const config = await loadGameConfig(gameId);
     return config ? config.allLaunchFiles || [] : [];
@@ -209,6 +252,11 @@ export async function getGameConfigDefaultLaunchFile(gameId: string) {
 export async function getCustomScanFolders() {
     const config = await loadConfig();
     return config.customScanFolders;
+}
+
+export async function getIgnoredFolders() {
+    const config = await loadConfig();
+    return config.ignoredFolders;
 }
 
 async function loadConfig() {
@@ -227,6 +275,7 @@ async function loadConfig() {
             ...defaultConfig,
             ...parsed,
             customScanFolders: Array.isArray(parsed?.customScanFolders) ? parsed.customScanFolders : [],
+            ignoredFolders: Array.isArray(parsed?.ignoredFolders) ? parsed.ignoredFolders : [],
             twitchClientId: typeof parsed?.twitchClientId === 'string' ? parsed.twitchClientId : '',
             twitchClientSecret: typeof parsed?.twitchClientSecret === 'string' ? parsed.twitchClientSecret : '',
         } as Config;

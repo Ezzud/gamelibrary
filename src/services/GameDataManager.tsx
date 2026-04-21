@@ -1,5 +1,6 @@
 import { Logger } from "../utils/Logger";
 import { invoke } from "@tauri-apps/api/core";
+import { loadGameCache, saveGameInfoCache } from "./ConfigManager";
 
 const envClientId = import.meta.env.VITE_IGDB_CLIENT_ID;
 const envClientSecret = import.meta.env.VITE_IGDB_CLIENT_SECRET;
@@ -111,11 +112,18 @@ const normalizeName = (value: string): string => {
 
 const buildSearchVariants = (gameName: string): string[] => {
     const trimmed = gameName.trim();
+    const withoutDemo = trimmed.replace(/\bdemo\b/gi, ' ').replace(/\s+/g, ' ').trim();
+    const splitAlphaNumeric = trimmed
+        .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+        .replace(/([0-9])([A-Za-z])/g, '$1 $2')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const camelAndNumericSpaced = splitCamelCaseName(splitAlphaNumeric);
     const normalized = normalizeName(trimmed);
     const noBrackets = trimmed.replace(/[\(\[\{].*?[\)\]\}]/g, ' ').replace(/\s+/g, ' ').trim();
     const beforeDelimiter = trimmed.split(/[:\-|]/)[0].trim();
 
-    const variants = [trimmed, noBrackets, beforeDelimiter, normalized]
+    const variants = [trimmed, withoutDemo, splitAlphaNumeric, camelAndNumericSpaced, noBrackets, beforeDelimiter, normalized]
         .map(v => v.trim())
         .filter(v => v.length >= 2);
 
@@ -126,6 +134,8 @@ const splitCamelCaseName = (value: string): string => {
     return value
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
         .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+    .replace(/([0-9])([A-Za-z])/g, '$1 $2')
         .replace(/\s+/g, ' ')
         .trim();
 };
@@ -193,6 +203,13 @@ export const searchGame = async (gameName: string) => {
         };
 
         await runVariantSearches(gameName);
+
+        if (resultsById.size === 0 && /\bdemo\b/i.test(gameName)) {
+            const withoutDemo = gameName.replace(/\bdemo\b/gi, ' ').replace(/\s+/g, ' ').trim();
+            if (withoutDemo.length >= 2) {
+                await runVariantSearches(withoutDemo);
+            }
+        }
 
         if (resultsById.size === 0) {
             const camelSpacedName = splitCamelCaseName(gameName);
@@ -267,5 +284,42 @@ export const getGameSize = (gamePath: string): Promise<number> => {
             Logger.error(`Error occurred while getting game size for path ${gamePath}:`, err);
             throw err;
         });
+}
+
+export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: string) => {
+    const cacheData = await loadGameCache(gameId);
+    if (!cacheData) {
+        throw new Error('Failed to load game cache.');
+    }
+
+    await saveGameInfoCache(gameId, {
+        ...cacheData,
+        title: null,
+        cover_url: null,
+        thumbnail_url: null,
+        igdb_id: null,
+        fetched: false,
+    });
+
+    const igdbData = await searchGame(gameName);
+    if (!igdbData.success || !igdbData.data) {
+        throw new Error('Failed to refetch IGDB data.');
+    }
+
+    await saveGameInfoCache(gameId, {
+        ...cacheData,
+        title: igdbData.data.title || cacheData.title,
+        cover_url: igdbData.data.cover_url || null,
+        thumbnail_url: igdbData.data.thumbnail_url || null,
+        igdb_id: igdbData.data.id || null,
+        fetched: true,
+    });
+
+    return {
+        title: igdbData.data.title || null,
+        cover_url: igdbData.data.cover_url || null,
+        thumbnail_url: igdbData.data.thumbnail_url || null,
+        igdb_id: igdbData.data.id || null,
+    };
 }
 

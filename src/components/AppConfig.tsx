@@ -28,11 +28,16 @@ import { FaSteam, FaXbox } from 'react-icons/fa'
 import { SiEpicgames, SiGogdotcom } from 'react-icons/si'
 import {
   addCustomScanFolder,
+  addIgnoredFolder,
   clearPlayHistory,
   deleteAllGameCaches,
   deleteAllGamesData,
   getAppConfig,
   getCustomScanFolders,
+  getIgnoredFolders,
+  loadGameCache,
+  loadGameList,
+  removeIgnoredFolder,
   removeCustomScanFolder
 } from '../services/ConfigManager'
 import { chooseFolder } from '../services/GameScanner'
@@ -132,6 +137,7 @@ const AppConfig = ({
 }: AppConfigProps) => {
   const [activeCategory, setActiveCategory] = useState<ConfigCategory>(initialCategory)
   const [customFolders, setCustomFolders] = useState<string[]>([])
+  const [ignoredFolders, setIgnoredFolders] = useState<string[]>([])
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set(['Steam']))
   const [isClearingCache, setIsClearingCache] = useState(false)
   const [isClearingPlayHistory, setIsClearingPlayHistory] = useState(false)
@@ -207,8 +213,14 @@ const AppConfig = ({
     setCustomFolders(folders || [])
   }
 
+  const refreshIgnoredFolders = async () => {
+    const folders = await getIgnoredFolders()
+    setIgnoredFolders(folders || [])
+  }
+
   useEffect(() => {
     void refreshCustomFolders()
+    void refreshIgnoredFolders()
   }, [])
 
   useEffect(() => {
@@ -265,6 +277,61 @@ const AppConfig = ({
   }, [activeCategory, updateStatus])
 
   useEffect(() => {
+    if (activeCategory !== 'Scanning') {
+      return
+    }
+
+    const loadScanningDefaults = async () => {
+      try {
+        const config = await getAppConfig()
+        const gameList = await loadGameList()
+        const games = Array.isArray(gameList?.games) ? gameList.games : []
+
+        const platforms = await Promise.all(
+          games.map(async (game: { id?: string }) => {
+            if (!game?.id) {
+              return ''
+            }
+            const cache = await loadGameCache(game.id)
+            return (cache?.platform || '').toString().toLowerCase()
+          })
+        )
+
+        const defaults = new Set<string>()
+        if (platforms.some((platform) => platform === 'steam')) {
+          defaults.add('Steam')
+        }
+        if (platforms.some((platform) => platform === 'gog')) {
+          defaults.add('GOG')
+        }
+        if (Array.isArray(config?.customScanFolders) && config.customScanFolders.length > 0) {
+          defaults.add('Custom Folders')
+        }
+
+        setSelectedPlatforms(defaults)
+      } catch (error) {
+        Logger.warn('Failed to load scanning defaults:', error)
+      }
+    }
+
+    void loadScanningDefaults()
+  }, [activeCategory])
+
+  useEffect(() => {
+    if (activeCategory !== 'Scanning') {
+      return
+    }
+
+    setSelectedPlatforms((prev) => {
+      const next = new Set(prev)
+      if (customFolders.length > 0) {
+        next.add('Custom Folders')
+      }
+      return next
+    })
+  }, [activeCategory, customFolders])
+
+  useEffect(() => {
     if (!maintenanceStatus) {
       return
     }
@@ -290,6 +357,21 @@ const AppConfig = ({
   const handleRemoveCustomFolder = async (path: string) => {
     await removeCustomScanFolder(path)
     await refreshCustomFolders()
+  }
+
+  const handleAddIgnoredFolder = async () => {
+    const selectedFolder = await chooseFolder()
+    if (!selectedFolder) {
+      return
+    }
+
+    await addIgnoredFolder(selectedFolder)
+    await refreshIgnoredFolders()
+  }
+
+  const handleRemoveIgnoredFolder = async (path: string) => {
+    await removeIgnoredFolder(path)
+    await refreshIgnoredFolders()
   }
 
   const togglePlatform = (platform: string) => {
@@ -774,6 +856,52 @@ const AppConfig = ({
                 ))}
               </ul>
             )}
+
+            <div className="pt-3 border-t border-steam-700/60">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4 text-steam-300" />
+                    Ignored Folders
+                  </h3>
+                  <p className="text-xs text-steam-400 mt-1">Folders listed here are excluded from all scans and game detection.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddIgnoredFolder}
+                  disabled={isScanning}
+                  className="px-3 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+                >
+                  <FolderPlus className="w-4 h-4" />
+                  Add Folder
+                </button>
+              </div>
+
+              {ignoredFolders.length === 0 ? (
+                <div className="mt-3 rounded-lg bg-steam-900/35 px-4 py-4 text-center shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+                  <p className="text-sm text-steam-300">No ignored folders configured.</p>
+                </div>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {ignoredFolders.map((folder) => (
+                    <li key={folder} className="rounded-lg bg-steam-900/45 px-3 py-2 flex items-center justify-between gap-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
+                      <div className="min-w-0">
+                        <span className="text-sm text-steam-100 truncate block" title={folder}>{folder}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveIgnoredFolder(folder)}
+                        className="w-8 h-8 rounded-md bg-red-600/80 hover:bg-red-500 text-white inline-flex items-center justify-center transition-colors"
+                        aria-label={`Remove ignored folder ${folder}`}
+                        title="Remove ignored folder"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 
@@ -910,19 +1038,49 @@ const AppConfig = ({
                 <Info className="w-4 h-4 text-steam-300" />
                 About
               </h3>
-              <p className="text-xs text-steam-400 mt-1">App and repository information.</p>
+              <p className="text-xs text-steam-400 mt-1">App identity, versioning and storage locations.</p>
             </div>
 
-            <div className="rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] space-y-3">
-              <div className="text-sm text-steam-200">App name: <span className="text-steam-100 font-medium">{APP_NAME}</span></div>
-              <div className="text-sm text-steam-200">Author: <span className="text-steam-100 font-medium">{APP_AUTHOR}</span></div>
-              <div className="text-sm text-steam-200">App version: <span className="text-steam-100 font-medium">{currentVersion}</span></div>
-              <div className="text-sm text-steam-200">Repository URL: <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline">{GITHUB_REPO_URL}</a></div>
-              <div className="text-sm text-steam-200">Branch followed: <span className="text-steam-100 font-medium">{REPO_BRANCH}</span></div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded-lg bg-gradient-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+                <p className="text-xs uppercase tracking-wide text-steam-400 mb-3">Identity</p>
+                <div className="space-y-2 text-sm">
+                  <div className="rounded-md bg-steam-900/45 px-3 py-2">
+                    <p className="text-steam-400 text-xs">App name</p>
+                    <p className="text-white font-semibold tracking-wide">{APP_NAME}</p>
+                  </div>
+                  <div className="rounded-md bg-steam-900/45 px-3 py-2">
+                    <p className="text-steam-400 text-xs">Author</p>
+                    <p className="text-white font-semibold tracking-wide">{APP_AUTHOR}</p>
+                  </div>
+                  <div className="rounded-md bg-steam-900/45 px-3 py-2">
+                    <p className="text-steam-400 text-xs">App version</p>
+                    <p className="text-white font-semibold tracking-wide">{currentVersion}</p>
+                  </div>
+                </div>
+              </div>
 
-              <div className="pt-2 border-t border-steam-700/60 space-y-2">
+              <div className="rounded-lg bg-gradient-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+                <p className="text-xs uppercase tracking-wide text-steam-400 mb-3">Repository</p>
+                <div className="space-y-2 text-sm">
+                  <div className="rounded-md bg-steam-900/45 px-3 py-2">
+                    <p className="text-steam-400 text-xs">Branch followed</p>
+                    <p className="text-white font-semibold tracking-wide">{REPO_BRANCH}</p>
+                  </div>
+                  <div className="rounded-md bg-steam-900/45 px-3 py-2">
+                    <p className="text-steam-400 text-xs">Repository URL</p>
+                    <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex text-sky-300 hover:text-sky-200 underline break-all">{GITHUB_REPO_URL}</a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-gradient-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] lg:col-span-2 space-y-3">
+                <p className="text-xs uppercase tracking-wide text-steam-400">Locations</p>
                 <div className="text-sm text-steam-200 flex items-center justify-between gap-3">
-                  <span className="truncate">App location: <span className="text-steam-100 font-medium">{aboutAppLocation}</span></span>
+                  <div className="min-w-0">
+                    <p className="text-steam-400">App location</p>
+                    <p className="truncate text-white font-medium" title={aboutAppLocation}>{aboutAppLocation}</p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => void handleOpenDirectory(aboutAppLocation)}
@@ -935,7 +1093,10 @@ const AppConfig = ({
                 </div>
 
                 <div className="text-sm text-steam-200 flex items-center justify-between gap-3">
-                  <span className="truncate">Data location: <span className="text-steam-100 font-medium">{aboutDataLocation}</span></span>
+                  <div className="min-w-0">
+                    <p className="text-steam-400">Data location</p>
+                    <p className="truncate text-white font-medium" title={aboutDataLocation}>{aboutDataLocation}</p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => void handleOpenDirectory(aboutDataLocation)}
