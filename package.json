@@ -1,13 +1,17 @@
 {
   "name": "gamelibrary",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
+    "sync:version": "node scripts/sync-version.mjs",
     "dev": "vite",
+    "prebuild": "pnpm run sync:version",
     "build": "tsc && vite build",
+    "pretauri": "pnpm run sync:version",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "version": "pnpm run sync:version"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.2",

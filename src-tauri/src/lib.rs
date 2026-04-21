@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 use tauri::Manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -288,12 +289,32 @@ async fn download_and_launch_installer(app: tauri::AppHandle, version: String) -
         .await
         .map_err(|err| format!("Failed to read installer bytes: {}", err))?;
 
+    if bytes.is_empty() {
+        return Err(format!(
+            "Downloaded installer is empty for URL {}",
+            download_url
+        ));
+    }
+
     fs::write(&installer_path, &bytes)
         .map_err(|err| format!("Failed to write installer to {}: {}", installer_path.display(), err))?;
 
-    Command::new(&installer_path)
+    let mut child = Command::new(&installer_path)
         .spawn()
         .map_err(|err| format!("Failed to launch installer {}: {}", installer_path.display(), err))?;
+
+    std::thread::sleep(Duration::from_millis(800));
+    if let Some(status) = child
+        .try_wait()
+        .map_err(|err| format!("Failed to inspect installer process state: {}", err))?
+    {
+        if !status.success() {
+            return Err(format!(
+                "Installer process exited early with status {}",
+                status
+            ));
+        }
+    }
 
     Ok(installer_path.to_string_lossy().into_owned())
 }

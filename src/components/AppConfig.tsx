@@ -519,11 +519,22 @@ const AppConfig = ({
     try {
       const installerPath = await invoke<string>('download_and_launch_installer', { version: latestVersion })
       Logger.success(`Update installer downloaded and launched: ${installerPath}`)
+      onShowToast?.(`Installer launched for v${latestVersion}. Close GameLibrary to continue update if prompted.`, { durationMs: 5000 })
     } catch (error) {
       Logger.error('Failed to download or launch update installer:', error)
       const rawErrorMessage = error instanceof Error ? error.message : String(error)
-      const errorCode = rawErrorMessage.match(/\b([45]\d{2})\b/)?.[1] || 'UNKNOWN'
-      onShowToast?.(`Update download failed (code: ${errorCode})`, { durationMs: 5000 })
+      const errorCode = rawErrorMessage.match(/\b([45]\d{2})\b/)?.[1]
+      const normalizedMessage = rawErrorMessage
+        .replace(/^Error invoking command ['"]download_and_launch_installer['"]:\s*/i, '')
+        .replace(/^error:\s*/i, '')
+        .trim()
+
+      onShowToast?.(
+        errorCode
+          ? `Update install failed (HTTP ${errorCode}): ${normalizedMessage || 'Unknown error'}`
+          : `Update install failed: ${normalizedMessage || 'Unknown error'}`,
+        { durationMs: 7000 }
+      )
     } finally {
       setIsInstallingUpdate(false)
     }
