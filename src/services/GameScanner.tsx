@@ -55,6 +55,7 @@ const GOGGalaxyOtherPaths = [
 const GOGGamesPaths = [
     "GOG Games"
 ];
+const XboxGamesPath = "XboxGames";
 
 export interface ScanProgressUpdate {
     percent: number;
@@ -62,6 +63,8 @@ export interface ScanProgressUpdate {
 }
 
 type ScanProgressCallback = (update: ScanProgressUpdate) => void;
+
+const inFlightRegistrationPaths = new Set<string>();
 
 function normalizePathForCompare(value: string) {
     return value.replace(/\\/g, '/').replace(/\/+$/, '').trim().toLowerCase();
@@ -758,87 +761,127 @@ async function generateGameId() {
 
 export async function registerGames(games: any[], platform: string, onProgress?: ScanProgressCallback) {
     const gameList = await loadGameList();
+    const existingPaths = new Set(
+        (gameList.games || []).map((game: GameListEntry) => normalizePathForCompare(game.path))
+    );
+    const reservedPaths: string[] = [];
 
     Logger.info(`Registering ${games.length} games for platform: ${platform}`);
-    games = games.filter((g: GameListEntry) => !gameList.games.find((existing: GameListEntry) => existing.path === g.path));
+    const seenInputPaths = new Set<string>();
+    games = games.filter((g: GameListEntry) => {
+        const normalizedPath = normalizePathForCompare(g.path);
+
+        if (!normalizedPath) {
+            Logger.warn(`Skipping game with invalid path: ${g.name}`);
+            return false;
+        }
+
+        if (seenInputPaths.has(normalizedPath)) {
+            Logger.warn(`Skipping duplicate game in scan results: ${g.name} at ${g.path}`);
+            return false;
+        }
+
+        if (existingPaths.has(normalizedPath)) {
+            return false;
+        }
+
+        if (inFlightRegistrationPaths.has(normalizedPath)) {
+            Logger.warn(`Skipping game already being registered: ${g.name} at ${g.path}`);
+            return false;
+        }
+
+        seenInputPaths.add(normalizedPath);
+        inFlightRegistrationPaths.add(normalizedPath);
+        reservedPaths.push(normalizedPath);
+        return true;
+    });
     Logger.info(`${games.length} games remain after filtering out already registered games based on path.`);
 
     if (games.length < 1) {
+        for (const path of reservedPaths) {
+            inFlightRegistrationPaths.delete(path);
+        }
         reportProgress(onProgress, 100, `No new ${platform} games to register.`);
         return;
     }
 
-    for (let index = 0; index < games.length; index++) {
-        const game = games[index];
-        reportProgress(onProgress, mapProgress(index, 0, games.length, 0, 100), `Registering ${index + 1}/${games.length}: ${game.name}`);
-        const gameData = await searchGame(game.name);
-        const id = await generateGameId();
-        game.id = id; // Assign generated ID to game object for later use
-        if(gameData.success && gameData.data) {
-            const gameEntry: GameCacheConfig = {
-                id,
-                title: gameData ? gameData.data.title : game.name,
-                cover_url: gameData ? gameData.data.cover_url : null,
-                igdb_id: gameData ? gameData.data.id : null,
-                platform: platform || null,
-                folder: game.path,
-                fetched: !!gameData,
-            }
-
-            try {
-                await saveGameInfoCache(id, gameEntry);
-                Logger.success(`Saved game info cache for ${gameEntry.title} with ID: ${id}`);
-            } catch (err) {
-                Logger.error(`Error occurred while saving game info cache for ${gameEntry.title}:`, err);
-            }
-        } else {
-            if(!gameData.success && gameData.code === 'GAME_NOT_FOUND') {
-                Logger.warn(`Game "${game.name}" not found in IGDB, saving with basic info only.`);
+    try {
+        for (let index = 0; index < games.length; index++) {
+            const game = games[index];
+            reportProgress(onProgress, mapProgress(index, 0, games.length, 0, 100), `Registering ${index + 1}/${games.length}: ${game.name}`);
+            const gameData = await searchGame(game.name);
+            const id = await generateGameId();
+            game.id = id; // Assign generated ID to game object for later use
+            if(gameData.success && gameData.data) {
                 const gameEntry: GameCacheConfig = {
                     id,
-                    title: game.name,
-                    cover_url: null,
-                    igdb_id: null,
+                    title: gameData ? gameData.data.title : game.name,
+                    cover_url: gameData ? gameData.data.cover_url : null,
+                    igdb_id: gameData ? gameData.data.id : null,
                     platform: platform || null,
                     folder: game.path,
-                    fetched: true,
+                    fetched: !!gameData,
                 }
+
                 try {
-                await saveGameInfoCache(id, gameEntry);
+                    await saveGameInfoCache(id, gameEntry);
                     Logger.success(`Saved game info cache for ${gameEntry.title} with ID: ${id}`);
                 } catch (err) {
                     Logger.error(`Error occurred while saving game info cache for ${gameEntry.title}:`, err);
                 }
+            } else {
+                if(!gameData.success && gameData.code === 'GAME_NOT_FOUND') {
+                    Logger.warn(`Game "${game.name}" not found in IGDB, saving with basic info only.`);
+                    const gameEntry: GameCacheConfig = {
+                        id,
+                        title: game.name,
+                        cover_url: null,
+                        igdb_id: null,
+                        platform: platform || null,
+                        folder: game.path,
+                        fetched: true,
+                    }
+                    try {
+                    await saveGameInfoCache(id, gameEntry);
+                        Logger.success(`Saved game info cache for ${gameEntry.title} with ID: ${id}`);
+                    } catch (err) {
+                        Logger.error(`Error occurred while saving game info cache for ${gameEntry.title}:`, err);
+                    }
+                }
             }
+
+            // tags rules: 
+            // If game folder contains file "VBS.cmd", add tag "hypervisor" to game config
+            // If game folder contains a file ending with "VR.exe", add tag "vr" to game config
+            // If game folder name ends with "VR", add tag "vr" to game config
+            // If game folder contains a file named "OnlineFix64.dll", add tag "onlinefixed" to game config
+            const specialTags = await findSpecialTagsForGamePath(game.path, game.id);
+
+
+            const gameConfig: GameConfig = {
+                customArguments: '',
+                defaultLaunchFile: game.defaultLaunchFile,
+                allLaunchFiles: game.allLaunchFiles,
+                specialTags: specialTags
+            } 
+
+            try {
+                await saveGameConfig(id, gameConfig);
+                Logger.success(`Registered game ${id} (${game.name}) `);
+            } catch (err) {
+                Logger.error(`Error occurred while saving game config for ${game.name}:`, err);
+            }
+
+            await sleep(200);
         }
 
-        // tags rules: 
-        // If game folder contains file "VBS.cmd", add tag "hypervisor" to game config
-        // If game folder contains a file ending with "VR.exe", add tag "vr" to game config
-        // If game folder name ends with "VR", add tag "vr" to game config
-        // If game folder contains a file named "OnlineFix64.dll", add tag "onlinefixed" to game config
-        const specialTags = await findSpecialTagsForGamePath(game.path, game.id);
-
-
-        const gameConfig: GameConfig = {
-            customArguments: '',
-            defaultLaunchFile: game.defaultLaunchFile,
-            allLaunchFiles: game.allLaunchFiles,
-            specialTags: specialTags
-        } 
-
-        try {
-            await saveGameConfig(id, gameConfig);
-            Logger.success(`Registered game ${id} (${game.name}) `);
-        } catch (err) {
-            Logger.error(`Error occurred while saving game config for ${game.name}:`, err);
+        await addGamesToList(games);
+        reportProgress(onProgress, 100, `${platform} registration complete.`);
+    } finally {
+        for (const path of reservedPaths) {
+            inFlightRegistrationPaths.delete(path);
         }
-
-        await sleep(200);
     }
-
-    await addGamesToList(games);
-    reportProgress(onProgress, 100, `${platform} registration complete.`);
 }
 
 export async function chooseFolder() {
@@ -877,4 +920,106 @@ export async function chooseFile() {
         Logger.error('Error occurred while opening file dialog:', err);
         return null;
     }
+}
+
+export async function scanAndAddXboxGames(onProgress?: ScanProgressCallback) {
+    try {
+        reportProgress(onProgress, 0, 'Preparing Xbox scan...');
+        reportProgress(onProgress, 15, 'Discovering Xbox games...');
+        const games = await fetchAllXboxGames();
+        Logger.info(`Found ${games.length} games in Xbox libraries.`);
+        reportProgress(onProgress, 55, `Found ${games.length} Xbox games. Registering...`);
+
+        await registerGames(games, "Xbox", (update) => {
+            const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
+            reportProgress(onProgress, mappedPercent, update.message);
+        });
+
+        reportProgress(onProgress, 100, 'Xbox scan complete.');
+    } catch (err) {
+        Logger.error('Error occurred while scanning and adding Xbox games:', err);
+        reportProgress(onProgress, 100, 'Xbox scan failed.');
+    }
+}
+
+export async function fetchAllXboxGames() {
+    const games: any[] = [];
+    const seenGameNames = new Set<string>();
+    const seenGamePaths = new Set<string>();
+    const ignoredFolders = await getIgnoredFolders();
+    const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
+
+    const addDiscoveredGame = (game: {
+        name: string;
+        path: string;
+        defaultLaunchFile: string | null;
+        allLaunchFiles: string[] | null;
+    }) => {
+        if (isIgnoredPath(game.path)) {
+            Logger.info(`Skipping ignored game path: ${game.path}`);
+            return;
+        }
+
+        const normalizedName = game.name.toLowerCase().trim();
+        const normalizedPath = game.path.replace(/\\/g, '/').toLowerCase();
+
+        if (seenGameNames.has(normalizedName) || seenGamePaths.has(normalizedPath)) {
+            Logger.warn(`Skipping duplicate game discovery: ${game.name} at ${game.path}`);
+            return;
+        }
+
+        seenGameNames.add(normalizedName);
+        seenGamePaths.add(normalizedPath);
+        games.push({ id: null, ...game });
+    };
+
+    for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+        const libraryPath = `${drive}:/${XboxGamesPath}`;
+        try {
+            const libraryExists = await exists(libraryPath);
+            if (!libraryExists) {
+                continue;
+            }
+
+            Logger.success(`Found Xbox library at: ${libraryPath}`);
+            const libraryEntries = await readDir(libraryPath);
+
+            for (const entry of libraryEntries) {
+                if (!entry.isDirectory) {
+                    continue;
+                }
+
+                const gamePath = `${libraryPath}/${entry.name}`;
+                const contentPath = await resolveChildDirectoryCaseInsensitive(gamePath, "Content");
+                if (!contentPath) {
+                    Logger.warn(`No Content folder found for potential Xbox game at ${gamePath}, skipping.`);
+                    continue;
+                }
+
+                const launchFiles = await getAllLaunchFiles(contentPath);
+                if (launchFiles.length < 1) {
+                    Logger.warn(`No launch files found in Content folder for game at ${gamePath}, skipping.`);
+                    continue;
+                }
+
+                if (blacklistedGames.find(g => g.toLowerCase() === entry.name.toLowerCase())) {
+                    Logger.warn(`Game ${entry.name} is blacklisted, skipping.`);
+                    continue;
+                }
+
+                const relativeLaunchFiles = launchFiles.map((fileName) => `Content/${fileName}`);
+
+                addDiscoveredGame({
+                    name: entry.name,
+                    path: gamePath,
+                    defaultLaunchFile: relativeLaunchFiles.length > 0 ? relativeLaunchFiles[0] : null,
+                    allLaunchFiles: relativeLaunchFiles.length > 0 ? relativeLaunchFiles : null
+                });
+            }
+        } catch (err) {
+            Logger.error(`Error occurred while fetching Xbox games at ${libraryPath}:`, err);
+        }
+    }
+
+    return games;
 }

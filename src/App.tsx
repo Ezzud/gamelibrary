@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import AppConfig from './components/AppConfig'
 import GameLibrary from './components/GameLibrary'
 import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
-import { fetchAllCustomFolderGames, refetchAllSpecialTags, registerGames, removeDuplicateGames, scanAndAddCustomFolderGames, scanAndAddGOGGames, scanAndAddSteamGames } from './services/GameScanner'
+import { fetchAllCustomFolderGames, refetchAllSpecialTags, registerGames, removeDuplicateGames, scanAndAddCustomFolderGames, scanAndAddGOGGames, scanAndAddSteamGames, scanAndAddXboxGames } from './services/GameScanner'
 import { Logger } from './utils/Logger'
 import { addPlayHistoryEntry, getAppConfig, getPlayHistory, loadGameCache, loadGameConfig, loadGameList, saveGameConfig, saveGameInfoCache, setTwitchCredentials } from './services/ConfigManager'
 import { initIGDB, searchGame } from './services/GameDataManager'
@@ -58,6 +58,7 @@ const waitForMinimumLaunchLoading = async (startedAt: number) => {
  * Returns: JSX.Element - main app layout
  */
 function App() {
+    const didRunStartupScanRef = useRef(false)
     const [games, setGames] = useState<Game[]>([])
     const [selectedGame, setSelectedGame] = useState<Game | null>(null)
     const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -345,6 +346,11 @@ function App() {
     }, [])
 
     useEffect(() => {
+        if (didRunStartupScanRef.current) {
+            return
+        }
+        didRunStartupScanRef.current = true
+
         const bootstrap = async () => {
             Logger.info('App mounted, loading games...')
             setIsLoadingGames(true)
@@ -555,6 +561,13 @@ function App() {
                         break
                     case 'GOG':
                         await scanAndAddGOGGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
+                        })
+                        break
+                    case 'Xbox':
+                        await scanAndAddXboxGames((update) => {
                             const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)

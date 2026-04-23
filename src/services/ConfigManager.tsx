@@ -511,17 +511,35 @@ export async function addGameToList(game: GameListEntry) {
 
 export async function addGamesToList(games: GameListEntry[]) {
     const gameList = await loadGameList();
+    const existingPaths = new Set(gameList.games.map((g: GameListEntry) => normalizePathForCompare(g.path)));
+    const seenIncomingPaths = new Set<string>();
     let addedCount = 0;
+
     for (const game of games) {
-        let existingGame = gameList.games.find((g: GameListEntry) => g.id === game.id);
-        if (!existingGame) {
-            gameList.games.push(game);
-            Logger.info(`Game added to list: ${game.name} (ID: ${game.id})`);
-            addedCount++;
-        } else {
-            Logger.warn(`Game already exists in list, skipping: ${game.name} (ID: ${game.id})`);
+        const normalizedPath = normalizePathForCompare(game.path);
+        if (!normalizedPath) {
+            Logger.warn(`Skipping game with invalid path while adding to list: ${game.name} (ID: ${game.id})`);
+            continue;
         }
+
+        if (seenIncomingPaths.has(normalizedPath)) {
+            Logger.warn(`Skipping duplicate incoming game path: ${game.name} at ${game.path}`);
+            continue;
+        }
+
+        seenIncomingPaths.add(normalizedPath);
+
+        if (existingPaths.has(normalizedPath)) {
+            Logger.warn(`Game path already exists in list, skipping: ${game.name} at ${game.path}`);
+            continue;
+        }
+
+        gameList.games.push(game);
+        existingPaths.add(normalizedPath);
+        Logger.info(`Game added to list: ${game.name} (ID: ${game.id})`);
+        addedCount++;
     }
+
     if (addedCount > 0) {
         await saveGameList(gameList);
         Logger.success(`Added ${addedCount} new games to the list.`);

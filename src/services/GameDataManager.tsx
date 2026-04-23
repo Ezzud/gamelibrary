@@ -24,6 +24,11 @@ const accessTokenCache: { token: string | null, expiresAt: number } = {
     expiresAt: 0
 };
 
+const specificGameRenames = {
+    "Minecraft for Windows": "Minecraft",
+    "Minecraft Launcher": "Minecraft: Java Edition"
+};
+
 const resetAccessTokenCache = () => {
     accessTokenCache.token = null;
     accessTokenCache.expiresAt = 0;
@@ -177,6 +182,7 @@ const scoreNameMatch = (query: string, candidate: string): number => {
 
 export const searchGame = async (gameName: string) => {
     try {
+        const mappedGameName = specificGameRenames[gameName as keyof typeof specificGameRenames] || gameName;
         const accessToken = await getValidAccessToken();
         const resultsById = new Map<number, any>();
 
@@ -202,18 +208,18 @@ export const searchGame = async (gameName: string) => {
             }
         };
 
-        await runVariantSearches(gameName);
+        await runVariantSearches(mappedGameName);
 
-        if (resultsById.size === 0 && /\bdemo\b/i.test(gameName)) {
-            const withoutDemo = gameName.replace(/\bdemo\b/gi, ' ').replace(/\s+/g, ' ').trim();
+        if (resultsById.size === 0 && /\bdemo\b/i.test(mappedGameName)) {
+            const withoutDemo = mappedGameName.replace(/\bdemo\b/gi, ' ').replace(/\s+/g, ' ').trim();
             if (withoutDemo.length >= 2) {
                 await runVariantSearches(withoutDemo);
             }
         }
 
         if (resultsById.size === 0) {
-            const camelSpacedName = splitCamelCaseName(gameName);
-            if (camelSpacedName && camelSpacedName !== gameName.trim()) {
+            const camelSpacedName = splitCamelCaseName(mappedGameName);
+            if (camelSpacedName && camelSpacedName !== mappedGameName.trim()) {
                 await runVariantSearches(camelSpacedName);
             }
         }
@@ -221,8 +227,8 @@ export const searchGame = async (gameName: string) => {
         const candidates = Array.from(resultsById.values());
         if (candidates.length > 0) {
             const best = candidates.sort((a, b) => {
-                const aScore = scoreNameMatch(gameName, a?.name || '');
-                const bScore = scoreNameMatch(gameName, b?.name || '');
+                const aScore = scoreNameMatch(mappedGameName, a?.name || '');
+                const bScore = scoreNameMatch(mappedGameName, b?.name || '');
                 if (aScore !== bScore) {
                     return bScore - aScore;
                 }
