@@ -517,24 +517,43 @@ export async function getLaunchFileName(gamePath: string) {
 
 export async function getAllLaunchFiles(gamePath: string) {
     try {
-        const entries = await readDir(gamePath);
-        const launchFiles = [];
+        const launchFiles: string[] = [];
         const folderName = gamePath.split('/').pop()?.toLowerCase() || '';
-        for (const entry of entries) {
-            if (!entry.isDirectory && (entry.name.endsWith('.exe') || entry.name.endsWith('.bat'))) {
-                const normalizedEntryName = entry.name.toLowerCase();
-                const baseFileName = normalizedEntryName.replace(/\.(exe|bat)$/i, '');
-                const isBlacklisted = blacklistedLaunchFiles.find(f => f.toLowerCase() === normalizedEntryName);
-                const matchesNonGamePattern = nonGameLaunchFilePatterns.some((pattern) => pattern.test(baseFileName));
-                const nameLooksRelatedToFolder = folderName.length > 3 && (baseFileName.includes(folderName) || folderName.includes(baseFileName));
 
-                if(!isBlacklisted && (!matchesNonGamePattern || nameLooksRelatedToFolder)) {
-                    launchFiles.push(entry.name);
-                } else {
-                    Logger.warn(`Launch file ${entry.name} is blacklisted, skipping.`);
+        // Helper to process entries and push valid launch files
+        const processEntries = (entries: any[], prefix: string = '') => {
+            for (const entry of entries) {
+                if (!entry.isDirectory && (entry.name.endsWith('.exe') || entry.name.endsWith('.bat'))) {
+                    const normalizedEntryName = entry.name.toLowerCase();
+                    const baseFileName = normalizedEntryName.replace(/\.(exe|bat)$/i, '');
+                    const isBlacklisted = blacklistedLaunchFiles.find(f => f.toLowerCase() === normalizedEntryName);
+                    const matchesNonGamePattern = nonGameLaunchFilePatterns.some((pattern) => pattern.test(baseFileName));
+                    const nameLooksRelatedToFolder = folderName.length > 3 && (baseFileName.includes(folderName) || folderName.includes(baseFileName));
+
+                    if(!isBlacklisted && (!matchesNonGamePattern || nameLooksRelatedToFolder)) {
+                        launchFiles.push(prefix + entry.name);
+                    } else {
+                        Logger.warn(`Launch file ${prefix}${entry.name} is blacklisted, skipping.`);
+                    }
                 }
             }
+        };
+
+        // Main folder
+        const entries = await readDir(gamePath);
+        processEntries(entries);
+
+        // "Game" sub-folder
+        const gameSubFolder = entries.find(e => e.isDirectory && e.name.toLowerCase() === 'game');
+        if (gameSubFolder) {
+            try {
+                const subEntries = await readDir(`${gamePath}/Game`);
+                processEntries(subEntries, 'Game/');
+            } catch (subErr) {
+                Logger.warn(`Could not read 'Game' sub-folder in ${gamePath}:`, subErr);
+            }
         }
+
         // Sort launch file by exe then bat, and then alphabetically
         launchFiles.sort((a, b) => {
             const aIsExe = a.endsWith('.exe');
