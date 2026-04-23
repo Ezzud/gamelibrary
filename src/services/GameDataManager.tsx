@@ -26,7 +26,9 @@ const accessTokenCache: { token: string | null, expiresAt: number } = {
 
 const specificGameRenames = {
     "Minecraft for Windows": "Minecraft",
-    "Minecraft Launcher": "Minecraft: Java Edition"
+    "Minecraft Launcher": "Minecraft: Java Edition",
+    "assettocorsa": "Assetto Corsa",
+    "Hatsune Miku Project DIVA Mega Mix Plus": "Hatsune Miku: Project DIVA Mega Mix+",
 };
 
 const resetAccessTokenCache = () => {

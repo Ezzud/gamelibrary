@@ -25,7 +25,8 @@ const blacklistedGames = [
     "Steam360VideoPlayer",
     "Steamworks Shared",
     "Unreal Development Kit",
-    "DesktopPlus"
+    "DesktopPlus",
+    "Soundpad"
 ]
 const blacklistedLaunchFiles = [
     "steam.exe",
