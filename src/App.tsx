@@ -4,7 +4,7 @@ import GameLibrary from './components/GameLibrary'
 import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
-import { fetchAllCustomFolderGames, refetchAllSpecialTags, registerGames, removeDuplicateGames, scanAndAddCustomFolderGames, scanAndAddGOGGames, scanAndAddSteamGames, scanAndAddXboxGames } from './services/GameScanner'
+import { fetchAllCustomFolderGames, refetchAllSpecialTags, registerGames, removeDuplicateGames, scanAndAddCustomFolderGames, scanAndAddEAGames, scanAndAddGOGGames, scanAndAddSteamGames, scanAndAddXboxGames } from './services/GameScanner'
 import { Logger } from './utils/Logger'
 import { addPlayHistoryEntry, getAppConfig, getPlayHistory, loadGameCache, loadGameConfig, loadGameList, saveGameConfig, saveGameInfoCache, setTwitchCredentials } from './services/ConfigManager'
 import { initIGDB, searchGame } from './services/GameDataManager'
@@ -119,6 +119,8 @@ function App() {
         return {
             hasSteamGames: cacheEntries.some((platform) => platform === 'steam'),
             hasGOGGames: cacheEntries.some((platform) => platform === 'gog'),
+            hasXboxGames: cacheEntries.some((platform) => platform === 'xbox'),
+            hasEAGames: cacheEntries.some((platform) => platform === 'ea'),
         }
     }
 
@@ -364,24 +366,27 @@ function App() {
                 await scanAndAddCustomFolderGames((update) => {
                     const mappedPercent = Math.round(update.percent * 0.6)
                     setScanProgress(mappedPercent)
-                    setScanStatusMessage(`Custom folders: ${update.message}`)
+                    setScanStatusMessage(`${update.message}`)
                 })
 
                 const cachedGames = await loadGameList()
                 const scanCandidates = (cachedGames?.games || []) as Array<{ id: string; platform?: string }>
-                const { hasSteamGames, hasGOGGames } = await detectPlatformsFromCache(scanCandidates)
+                const { hasSteamGames, hasGOGGames, hasXboxGames } = await detectPlatformsFromCache(scanCandidates)
 
-                const optionalScans: Array<'Steam' | 'GOG'> = []
+                const optionalScans: Array<'Steam' | 'GOG' | 'Xbox'> = []
                 if (hasSteamGames) {
                     optionalScans.push('Steam')
                 }
                 if (hasGOGGames) {
                     optionalScans.push('GOG')
                 }
+                if (hasXboxGames) {
+                    optionalScans.push('Xbox')
+                }
 
                 if (optionalScans.length < 1) {
                     setScanProgress(100)
-                    setScanStatusMessage('Initial scan complete (Steam/GOG skipped: no Steam or GOG games found).')
+                    setScanStatusMessage('Load scan complete')
                 }
 
                 for (let index = 0; index < optionalScans.length; index++) {
@@ -394,14 +399,26 @@ function App() {
                         await scanAndAddSteamGames((update) => {
                             const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
-                            setScanStatusMessage(`Steam: ${update.message}`)
+                            setScanStatusMessage(`${update.message}`)
                         })
-                    } else {
+                    } else if (platform === 'GOG') {
                         await scanAndAddGOGGames((update) => {
                             const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
-                            setScanStatusMessage(`GOG: ${update.message}`)
+                            setScanStatusMessage(`${update.message}`)
                         })
+                    } else if(platform === 'Xbox') {
+                        await scanAndAddXboxGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`${update.message}`)
+                        });
+                    } else if(platform === 'EA') {
+                        await scanAndAddEAGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`${update.message}`)
+                        });
                     }
                 }
 
@@ -573,6 +590,13 @@ function App() {
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
+                    case 'EA':
+                        await scanAndAddEAGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
+                        })
+                        break
                     default:
                         Logger.warn(`Scanning for platform ${platform} is not implemented yet.`)
                         setScanStatusMessage(`Skipping ${platform}: not implemented.`)
@@ -584,7 +608,7 @@ function App() {
             await loadGames()
             Logger.info('Multi-platform scan complete.')
             setScanProgress(100)
-            setScanStatusMessage('Multi-platform scan complete.')
+            setScanStatusMessage('Scan complete.')
         } finally {
             setIsScanning(false)
         }
@@ -630,22 +654,25 @@ function App() {
             await scanAndAddCustomFolderGames((update) => {
                 const mappedPercent = Math.round(update.percent * 0.6)
                 setScanProgress(mappedPercent)
-                setScanStatusMessage(`Custom folders: ${update.message}`)
+                setScanStatusMessage(`${update.message}`)
             })
 
-            const { hasSteamGames, hasGOGGames } = await detectPlatformsFromCache(games)
+            const { hasSteamGames, hasGOGGames, hasXboxGames } = await detectPlatformsFromCache(games)
 
-            const optionalScans: Array<'Steam' | 'GOG'> = []
+            const optionalScans: Array<'Steam' | 'GOG' | 'Xbox'> = []
             if (hasSteamGames) {
                 optionalScans.push('Steam')
             }
             if (hasGOGGames) {
                 optionalScans.push('GOG')
             }
+            if (hasXboxGames) {
+                optionalScans.push('Xbox')
+            }
 
             if (optionalScans.length < 1) {
                 setScanProgress(100)
-                setScanStatusMessage('Refresh scan complete (Steam/GOG skipped: no Steam or GOG games found).')
+                setScanStatusMessage('Refresh scan complete')
             }
 
             for (let index = 0; index < optionalScans.length; index++) {
@@ -658,13 +685,25 @@ function App() {
                     await scanAndAddSteamGames((update) => {
                         const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
-                        setScanStatusMessage(`Steam: ${update.message}`)
+                        setScanStatusMessage(`${update.message}`)
                     })
-                } else {
+                } else if(platform === 'GOG') {
                     await scanAndAddGOGGames((update) => {
                         const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
-                        setScanStatusMessage(`GOG: ${update.message}`)
+                        setScanStatusMessage(`${update.message}`)
+                    })
+                } else if(platform === 'Xbox') {
+                    await scanAndAddXboxGames((update) => {
+                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        setScanProgress(mappedPercent)
+                        setScanStatusMessage(`${update.message}`)
+                    })
+                } else if(platform === 'EA') {
+                    await scanAndAddEAGames((update) => {
+                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        setScanProgress(mappedPercent)
+                        setScanStatusMessage(`${update.message}`)
                     })
                 }
             }

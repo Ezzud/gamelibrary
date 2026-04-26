@@ -9,7 +9,7 @@ import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 
-const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA App']
+const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA']
 const MIN_LAUNCH_LOADING_MS = 5000
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
@@ -64,7 +64,7 @@ const getPlatformIcon = (platform: string) => {
       return <FaXbox className={`${iconClass} text-[#107c10]`} />
     case 'Custom Folders':
       return <FolderOpen className={`${iconClass} text-steam-200`} />
-    case 'EA App':
+    case 'EA':
       return <SiEa className={`${iconClass} text-[#ff4747]`} />
     default:
       return <FolderOpen className={`${iconClass} text-steam-300`} />

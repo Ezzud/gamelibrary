@@ -61,7 +61,7 @@ interface AppConfigProps {
   onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
 }
 
-const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA App']
+const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA']
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
 const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
 const REPO_BRANCH = 'master'
@@ -116,7 +116,7 @@ const getPlatformIcon = (platform: string) => {
       return <FaXbox className={`${iconClass} text-[#107c10]`} />
     case 'Custom Folders':
       return <FolderOpen className={`${iconClass} text-steam-200`} />
-    case 'EA App':
+    case 'EA':
       return <SiEa className={`${iconClass} text-[#ff4747]`} />
     default:
       return <FolderOpen className={`${iconClass} text-steam-300`} />
@@ -308,6 +308,9 @@ const AppConfig = ({
         }
         if(platforms.some((platform) => platform === 'xbox')) {
           defaults.add('Xbox')
+        }
+        if(platforms.some((platform) => platform === 'ea')) {
+          defaults.add('EA')
         }
         if (Array.isArray(config?.customScanFolders) && config.customScanFolders.length > 0) {
           defaults.add('Custom Folders')
