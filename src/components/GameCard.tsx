@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
-import { FolderOpen, Gamepad2, Loader2, Play, Settings, Trash2 } from 'lucide-react'
+import { FolderOpen, Gamepad2, Loader2, Play, Settings, Trash2, LocateOff } from 'lucide-react'
 import { exists } from '@tauri-apps/plugin-fs'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
@@ -256,18 +256,28 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
         )}
 
         {/* Cover Art */}
-        {game.coverUrl ? (
-          <img
-            src={game.coverUrl}
-            alt={game.name}
-            onError={handleImageError}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-steam-700 to-steam-800 flex items-center justify-center">
-            <Gamepad2 className="w-12 h-12 text-steam-500" />
-          </div>
-        )}
+
+        <div className="relative w-full h-full">
+          {game.coverUrl ? (
+            <img
+              src={game.coverUrl}
+              alt={game.name}
+              onError={handleImageError}
+              className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 ${isMissing ? 'grayscale opacity-60' : ''}`}
+            />
+          ) : (
+            <div className={`w-full h-full bg-gradient-to-br from-steam-700 to-steam-800 flex items-center justify-center ${isMissing ? 'grayscale opacity-60' : ''}`}>
+              <Gamepad2 className="w-12 h-12 text-steam-500" />
+            </div>
+          )}
+          {isMissing && (
+            <>
+              <div className="absolute inset-0 flex items-center justify-center z-20">
+                <LocateOff className="w-10 h-10 text-steam-400 drop-shadow-lg" />
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
