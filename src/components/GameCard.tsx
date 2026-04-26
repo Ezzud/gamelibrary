@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { FolderOpen, Gamepad2, Loader2, Play, Settings, Trash2 } from 'lucide-react'
+import { exists } from '@tauri-apps/plugin-fs'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
 import { loadGameConfig } from '../services/ConfigManager'
@@ -35,6 +36,22 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
   const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 })
   const [specialTags, setSpecialTags] = useState<string[]>([])
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const [isMissing, setIsMissing] = useState<boolean>(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function checkPath() {
+      try {
+        const gameExists = await exists(game.path)
+        if (!cancelled) setIsMissing(!gameExists)
+      } catch {
+        if (!cancelled) setIsMissing(true)
+      }
+    }
+    checkPath()
+    return () => { cancelled = true }
+  }, [game.path])
+
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.target as HTMLImageElement

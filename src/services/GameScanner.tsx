@@ -57,6 +57,12 @@ const GOGGamesPaths = [
     "GOG Games"
 ];
 const XboxGamesPath = "XboxGames";
+const EAGamesPaths = [
+    "Program Files (x86)/EA Games",
+    "Program Files/EA Games",
+    "EA Games"
+];
+
 
 export interface ScanProgressUpdate {
     percent: number;
@@ -555,6 +561,20 @@ export async function getAllLaunchFiles(gamePath: string) {
             }
         }
 
+        // Check all subfolder if there is a .exe in X/Binaries/Win64
+        const subfolders = entries.filter(e => e.isDirectory);
+        for (const subfolder of subfolders) {
+            const pathExists = await exists(`${gamePath}/${subfolder.name}/Binaries/Win64`);
+            if (pathExists) {
+                try {
+                    const win64Entries = await readDir(`${gamePath}/${subfolder.name}/Binaries/Win64`);
+                    processEntries(win64Entries, `${subfolder.name}/Binaries/Win64/`);
+                } catch (win64Err) {
+                    Logger.warn(`Could not read Binaries/Win64 in ${gamePath}/${subfolder.name}:`, win64Err);
+                }
+            }
+        }
+
         // Sort launch file by exe then bat, and then alphabetically
         launchFiles.sort((a, b) => {
             const aIsExe = a.endsWith('.exe');
@@ -962,6 +982,26 @@ export async function scanAndAddXboxGames(onProgress?: ScanProgressCallback) {
     }
 }
 
+export async function scanAndAddEAGames(onProgress?: ScanProgressCallback) {
+    try {
+        reportProgress(onProgress, 0, 'Preparing EA Games scan...');
+        reportProgress(onProgress, 15, 'Discovering EA Games...');
+        const games = await fetchAllEAGames();
+        Logger.info(`Found ${games.length} games in EA Games libraries.`);
+        reportProgress(onProgress, 55, `Found ${games.length} EA Games. Registering...`);
+
+        await registerGames(games, "EA", (update) => {
+            const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
+            reportProgress(onProgress, mappedPercent, update.message);
+        });
+
+        reportProgress(onProgress, 100, 'EA scan complete.');
+    } catch (err) {
+        Logger.error('Error occurred while scanning and adding EA games:', err);
+        reportProgress(onProgress, 100, 'EA scan failed.');
+    }
+}
+
 export async function fetchAllXboxGames() {
     const games: any[] = [];
     const seenGameNames = new Set<string>();
@@ -1041,5 +1081,88 @@ export async function fetchAllXboxGames() {
         }
     }
 
+    return games;
+}
+
+export async function fetchAllEAGames() {
+    const games: any[] = [];
+    const seenGameNames = new Set<string>();
+    const seenGamePaths = new Set<string>();
+    const ignoredFolders = await getIgnoredFolders();
+    const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
+
+    const addDiscoveredGame = (game: {
+        name: string;
+        path: string;
+        defaultLaunchFile: string | null;
+        allLaunchFiles: string[] | null;
+    }) => {
+        if (isIgnoredPath(game.path)) {
+            Logger.info(`Skipping ignored game path: ${game.path}`);
+            return;
+        }
+
+        const normalizedName = game.name.toLowerCase().trim();
+        const normalizedPath = game.path.replace(/\\/g, '/').toLowerCase();
+
+        if (seenGameNames.has(normalizedName) || seenGamePaths.has(normalizedPath)) {
+            Logger.warn(`Skipping duplicate game discovery: ${game.name} at ${game.path}`);
+            return;
+        }
+
+        seenGameNames.add(normalizedName);
+        seenGamePaths.add(normalizedPath);
+        games.push({ id: null, ...game });
+    };
+
+    for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+        for(const basePath of EAGamesPaths) {
+            const libraryPath = `${drive}:/${basePath}`;
+            try {
+                const libraryExists = await exists(libraryPath);
+                if (!libraryExists) {
+                    continue;
+                }
+
+                Logger.success(`Found EA Games library at: ${libraryPath}`);
+                const libraryEntries = await readDir(libraryPath);
+
+                for (const entry of libraryEntries) {
+                    if (!entry.isDirectory) {
+                        continue;
+                    }
+
+                    const gamePath = `${libraryPath}/${entry.name}`;
+                    const contentPath = await resolveChildDirectoryCaseInsensitive(gamePath, "Content");
+                    if (!contentPath) {
+                        Logger.warn(`No Content folder found for potential EA game at ${gamePath}, skipping.`);
+                        continue;
+                    }
+
+                    const launchFiles = await getAllLaunchFiles(contentPath);
+                    if (launchFiles.length < 1) {
+                        Logger.warn(`No launch files found in Content folder for game at ${gamePath}, skipping.`);
+                        continue;
+                    }
+
+                    if (blacklistedGames.find(g => g.toLowerCase() === entry.name.toLowerCase())) {
+                        Logger.warn(`Game ${entry.name} is blacklisted, skipping.`);
+                        continue;
+                    }
+
+                    const relativeLaunchFiles = launchFiles.map((fileName) => `Content/${fileName}`);
+
+                    addDiscoveredGame({
+                        name: entry.name,
+                        path: gamePath,
+                        defaultLaunchFile: relativeLaunchFiles.length > 0 ? relativeLaunchFiles[0] : null,
+                        allLaunchFiles: relativeLaunchFiles.length > 0 ? relativeLaunchFiles : null
+                    });
+                }
+            } catch (err) {
+                Logger.error(`Error occurred while fetching EA Games at ${libraryPath}:`, err);
+            }
+        }
+    }
     return games;
 }

@@ -29,6 +29,7 @@ const specificGameRenames = {
     "Minecraft Launcher": "Minecraft: Java Edition",
     "assettocorsa": "Assetto Corsa",
     "Hatsune Miku Project DIVA Mega Mix Plus": "Hatsune Miku: Project DIVA Mega Mix+",
+    "DB Xenoverse 2": "Dragon Ball Xenoverse 2"
 };
 
 const resetAccessTokenCache = () => {

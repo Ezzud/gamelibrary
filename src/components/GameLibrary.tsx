@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import GameCard from './GameCard'
 import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, KeyRound, Link2, Loader, Play, RefreshCw, ShieldCheck, Tags, Trash2 } from 'lucide-react'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
-import { SiEpicgames, SiGogdotcom } from 'react-icons/si'
+import { SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
 import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, removeCustomScanFolder, removeGameFromList, saveGameConfig } from '../services/ConfigManager'
 import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 
-const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox']
+const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA App']
 const MIN_LAUNCH_LOADING_MS = 5000
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
@@ -64,6 +64,8 @@ const getPlatformIcon = (platform: string) => {
       return <FaXbox className={`${iconClass} text-[#107c10]`} />
     case 'Custom Folders':
       return <FolderOpen className={`${iconClass} text-steam-200`} />
+    case 'EA App':
+      return <SiEa className={`${iconClass} text-[#ff4747]`} />
     default:
       return <FolderOpen className={`${iconClass} text-steam-300`} />
   }

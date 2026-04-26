@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "gamelibrary",
-  "version": "0.1.8",
-  "identifier": "fr.ezzud.gamelibrary",
+  "version": "0.1.9",
+  "identifier": "Ezzud",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "gamelibrary",
+        "title": "Game Library",
         "width": 1380,
         "height": 750
       }

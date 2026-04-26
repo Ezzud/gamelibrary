@@ -1,4 +1,59 @@
+use std::io::{self, Write};
+use std::fs::File;
+use zip::ZipArchive;
+use reqwest;
+#[tauri::command]
+async fn download_file_with_progress(app: tauri::AppHandle, url: String, dest_folder: String, file_name: String) -> Result<String, String> {
+    let dest_path = Path::new(&dest_folder).join(&file_name);
+    let client = reqwest::Client::new();
+    let mut resp = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to start download: {}", e))?;
+
+    let total_size = resp.content_length().unwrap_or(0);
+    let mut file = File::create(&dest_path).map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut downloaded: u64 = 0;
+
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("Download error: {}", e))? {
+        file.write_all(&chunk).map_err(|e| format!("Write error: {}", e))?;
+        downloaded += chunk.len() as u64;
+        let progress = if total_size > 0 {
+            (downloaded as f64 / total_size as f64 * 100.0) as u8
+        } else {
+            0
+        };
+        app.emit("download_progress", progress).ok();
+    }
+
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn unzip_file(zip_path: String, dest_folder: String) -> Result<(), String> {
+    let zip_file = File::open(&zip_path).map_err(|e| format!("Failed to open zip file: {}", e))?;
+    let mut archive = ZipArchive::new(zip_file).map_err(|e| format!("Failed to read zip archive: {}", e))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| format!("Failed to access file in zip: {}", e))?;
+        let outpath = Path::new(&dest_folder).join(file.name());
+
+        if file.is_dir() {
+            fs::create_dir_all(&outpath).map_err(|e| format!("Failed to create directory: {}", e))?;
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    fs::create_dir_all(p).map_err(|e| format!("Failed to create parent directory: {}", e))?;
+                }
+            }
+            let mut outfile = File::create(&outpath).map_err(|e| format!("Failed to create file: {}", e))?;
+            io::copy(&mut file, &mut outfile).map_err(|e| format!("Failed to extract file: {}", e))?;
+        }
+    }
+    Ok(())
+}
 use serde::Deserialize;
+use tauri::Emitter;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -405,22 +460,34 @@ fn cleanup_updates_dir_on_startup(app: &tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-    .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-    .setup(|app| {
-        cleanup_updates_dir_on_startup(app.handle());
-        Ok(())
-    })
-    .invoke_handler(tauri::generate_handler![
-        greet,
-        igdb_get_access_token,
-        igdb_post,
-        get_directory_size,
-        open_game_folder,
-        launch_game,
-        download_and_launch_installer
-    ])
+        .setup(|app| {
+            cleanup_updates_dir_on_startup(app.handle());
+
+            // --- Custom URI scheme handler ---
+            // On Windows, when the app is launched via a custom protocol, the URL is passed as a command-line argument
+            let args: Vec<String> = std::env::args().collect();
+            for arg in &args {
+                if arg.starts_with("gamelibrary://") {
+                    // Send the URL to the frontend
+                    app.emit("custom-uri", arg.clone()).ok();
+                }
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            igdb_get_access_token,
+            igdb_post,
+            get_directory_size,
+            open_game_folder,
+            launch_game,
+            download_and_launch_installer,
+            download_file_with_progress,
+            unzip_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
