@@ -463,7 +463,7 @@ function App() {
                                         await saveGameInfoCache(game.id, {
                                             title: game.name,
                                             cover_url: game.coverUrl || null,
-                                            thumbnail_url: igdbData.data.thumbnail_url || null,
+                                            thumbnail_url: game.thumbnailUrl || null,
                                             igdb_id: igdbData.data.id || null,
                                             id: game.id,
                                             platform: game.platform || null,
@@ -490,7 +490,7 @@ function App() {
                                 await saveGameInfoCache(game.id, {
                                     title: game.name,
                                     cover_url: game.coverUrl || null,
-                                    thumbnail_url: igdbData.data.thumbnail_url || null,
+                                    thumbnail_url: game.thumbnailUrl || null,
                                     igdb_id: igdbData.data.id || null,
                                     id: game.id,
                                     platform: game.platform || null,

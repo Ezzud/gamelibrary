@@ -202,15 +202,15 @@ jobs:
           PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v "^$VERSION$" | head -n 1 || true)
           echo "Previous tag: $PREV_TAG"
           if [ -n "$PREV_TAG" ]; then
-            LOG=$(git log --pretty=format:'- %s (%an)' "$PREV_TAG..HEAD")
+            LOG=$(git log --pretty=format:'%s (%an)' "$PREV_TAG..HEAD" | sed 's/^[-*]\s*//; s/^/- /')
           else
-            LOG=$(git log --pretty=format:'- %s (%an)')
+            LOG=$(git log --pretty=format:'%s (%an)' | sed 's/^[-*]\s*//; s/^/- /')
           fi
           if [ -z "$LOG" ]; then
             LOG="No commits found."
           fi
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$LOG" >> $GITHUB_OUTPUT
+          echo "$LOG" | while IFS= read -r line; do echo "$line" >> $GITHUB_OUTPUT; done
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub release

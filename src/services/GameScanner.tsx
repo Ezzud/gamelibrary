@@ -215,6 +215,27 @@ async function hasSteamworksVersionedWin64File(gamePath: string, targetFileName:
     return false;
 }
 
+async function hasOnlineFixInBinariesWin64(gamePath: string): Promise<boolean> {
+    try {
+        let foldersInGamePath = await readDir(gamePath);
+        foldersInGamePath = foldersInGamePath.filter(e => e.isDirectory);
+
+        for (const folder of foldersInGamePath) {
+            const win64Path = `${gamePath}/${folder.name}/Binaries/Win64`;
+            const filesExist = await exists(win64Path);
+            if (filesExist) {
+                const files = await readDir(win64Path);
+                if (files.some(f => !f.isDirectory && f.name.toLowerCase() === "onlinefix64.dll")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    } catch {
+        return false;
+    }
+}
+
 export async function findSpecialTagsForGamePath(gamePath: string, gameId: string): Promise<string[]> {
     const specialTags: string[] = [];
     const addSpecialTag = (tag: string) => {
@@ -268,11 +289,14 @@ export async function findSpecialTagsForGamePath(gamePath: string, gameId: strin
         if (await hasSteamworksVersionedWin64File(normalizedGamePath, "cream_api.ini")) {
             addSpecialTag("onlinefixed");
         }
+
+        if(await hasOnlineFixInBinariesWin64(normalizedGamePath)) {
+            addSpecialTag("onlinefixed");
+        }
         // If game folder contains "OnlineFix64.dll" in Binaries\, add tag "cracked"
-        const hasOnlineFixInBinariesWin64 = await fileExistsCaseInsensitive(`${normalizedGamePath}/Binaries/Win64`, "OnlineFix64.dll");
         const hasOnlineFixAnywhereInBinaries = await hasFileInSubtree(`${normalizedGamePath}/Binaries`, "OnlineFix64.dll", 4);
         const hasOnlineFixInNestedBinaries = await hasFileInDirectChildBinariesWin64(normalizedGamePath, "OnlineFix64.dll");
-        if (hasOnlineFixInBinariesWin64 || hasOnlineFixAnywhereInBinaries || hasOnlineFixInNestedBinaries) {
+        if (hasOnlineFixAnywhereInBinaries || hasOnlineFixInNestedBinaries) {
             addSpecialTag("cracked");
         }
         // If game folder contains "unsteam.dll " BW\Binaries\Win64, add tag "cracked"

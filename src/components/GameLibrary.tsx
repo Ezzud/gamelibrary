@@ -77,6 +77,7 @@ interface Game {
   path: string
   platform: string
   coverUrl?: string
+  thumbnailUrl?: string
   size?: number
 }
 

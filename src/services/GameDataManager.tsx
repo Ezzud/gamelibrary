@@ -1,18 +1,18 @@
 import { Logger } from "../utils/Logger";
 import { invoke } from "@tauri-apps/api/core";
-import { loadGameCache, saveGameInfoCache } from "./ConfigManager";
+import { getAppConfig, loadGameCache, saveGameInfoCache } from "./ConfigManager";
 
-const envClientId = import.meta.env.VITE_IGDB_CLIENT_ID;
-const envClientSecret = import.meta.env.VITE_IGDB_CLIENT_SECRET;
 
 interface IGDBCredentials {
     clientId: string;
     clientSecret: string;
 }
 
+const config = await getAppConfig();
+
 const activeCredentials: IGDBCredentials = {
-    clientId: envClientId || '',
-    clientSecret: envClientSecret || '',
+    clientId: config.twitchClientId || '',
+    clientSecret: config.twitchClientSecret || '',
 };
 
 if (!activeCredentials.clientId || !activeCredentials.clientSecret) {
@@ -142,8 +142,8 @@ const splitCamelCaseName = (value: string): string => {
     return value
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
         .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
-    .replace(/([A-Za-z])([0-9])/g, '$1 $2')
-    .replace(/([0-9])([A-Za-z])/g, '$1 $2')
+        .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+        .replace(/([0-9])([A-Za-z])/g, '$1 $2')
         .replace(/\s+/g, ' ')
         .trim();
 };
@@ -183,6 +183,27 @@ const scoreNameMatch = (query: string, candidate: string): number => {
     return score;
 };
 
+export const fetchArtworkUrl = async (artworkId: number): Promise<string | null> => {
+    try {
+        const accessToken = await getValidAccessToken();
+        const responseText = await invoke<string>('igdb_post', {
+            endpoint: 'artworks',
+            body: `fields url; where id = ${artworkId};`,
+            clientId: activeCredentials.clientId,
+            accessToken,
+        });
+        const data = JSON.parse(responseText);
+        if (data.length > 0 && data[0].url) {
+            return data[0].url;
+        } else {
+            return null;
+        }
+    } catch (err) {
+        Logger.error(`Error occurred while fetching artwork URL from IGDB for artwork ID ${artworkId}:`, err);
+        return null;
+    }
+};
+
 export const searchGame = async (gameName: string) => {
     try {
         const mappedGameName = specificGameRenames[gameName as keyof typeof specificGameRenames] || gameName;
@@ -195,7 +216,7 @@ export const searchGame = async (gameName: string) => {
                 const escapedVariant = escapeApicalypseSearch(variant);
                 const responseText = await invoke<string>('igdb_post', {
                     endpoint: 'games',
-                    body: `search "${escapedVariant}"; fields id,name,cover.url,platforms.name,total_rating_count,game_type; limit 20;`,
+                    body: `search "${escapedVariant}"; fields id,name,cover.url,platforms.name,total_rating_count,game_type,artworks; limit 20;`,
                     clientId: activeCredentials.clientId,
                     accessToken,
                 });
@@ -243,7 +264,14 @@ export const searchGame = async (gameName: string) => {
 
             const rawCoverUrl = best.cover && best.cover.url ? best.cover.url : null;
             const fixedCoverUrl = rawCoverUrl ? rawCoverUrl.replace('t_thumb', 't_cover_big') : null;
-            const thumbnailUrl = rawCoverUrl ? rawCoverUrl.replace('t_cover_big', 't_1080p') : null;
+            
+            let thumbnailUrl = null;
+            if (best.artworks && best.artworks.length > 0) {
+                const artworkId = best.artworks[0];
+                thumbnailUrl = await fetchArtworkUrl(artworkId);
+            }
+            if(thumbnailUrl) thumbnailUrl = thumbnailUrl.replace('t_thumb', 't_1080p');
+
             return {
                 success: true,
                 data: {
@@ -267,16 +295,26 @@ export const getGameDetails = async (gameId: number) => {
         const accessToken = await getValidAccessToken();
         const responseText = await invoke<string>('igdb_post', {
             endpoint: 'games',
-            body: `fields name,cover.url,platforms.name; where id = ${gameId};`,
+            body: `fields name,cover.url,platforms.name,artworks; where id = ${gameId};`,
             clientId: activeCredentials.clientId,
             accessToken,
         });
         const data = JSON.parse(responseText);
         if (data.length > 0) {
             const game = data[0];
+            Logger.info(`Fetched details for game ID ${gameId} from IGDB:`, game);
+
+            let thumbnailUrl = null;
+            if (game.artworks && game.artworks.length > 0) {
+                const artworkId = game.artworks[0];
+                thumbnailUrl = await fetchArtworkUrl(artworkId);
+            }
+            if(thumbnailUrl) thumbnailUrl = thumbnailUrl.replace('t_thumb', 't_1080p');
+
             return {
                 title: game.name,
-                cover_url: game.cover ? game.cover.url : null
+                cover_url: game.cover ? game.cover.url : null,
+                thumbnail_url: thumbnailUrl
             };
         } else {
             return null;
@@ -307,6 +345,7 @@ export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: stri
         cover_url: null,
         thumbnail_url: null,
         igdb_id: null,
+        platform: cacheData.platform || null,
         fetched: false,
     });
 
@@ -321,6 +360,7 @@ export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: stri
         cover_url: igdbData.data.cover_url || null,
         thumbnail_url: igdbData.data.thumbnail_url || null,
         igdb_id: igdbData.data.id || null,
+        platform: cacheData.platform || null,
         fetched: true,
     });
 
@@ -329,6 +369,6 @@ export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: stri
         cover_url: igdbData.data.cover_url || null,
         thumbnail_url: igdbData.data.thumbnail_url || null,
         igdb_id: igdbData.data.id || null,
+        platform: cacheData.platform || null
     };
 }
-
