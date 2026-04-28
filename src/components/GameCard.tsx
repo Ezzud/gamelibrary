@@ -272,7 +272,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
           )}
           {isMissing && (
             <>
-              <div className="absolute inset-0 flex items-center justify-center z-20">
+              <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
                 <LocateOff className="w-10 h-10 text-steam-400 drop-shadow-lg" />
               </div>
             </>

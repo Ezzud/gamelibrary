@@ -1,3 +1,4 @@
+import { exists } from '@tauri-apps/plugin-fs'
 import { useState, useEffect } from 'react'
 import {
     ArrowLeft,
@@ -101,6 +102,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
     const [specialTags, setSpecialTags] = useState<string[]>([])
     const [lastPlayedAt, setLastPlayedAt] = useState<string | null>(null)
     const [copiedPath, setCopiedPath] = useState(false)
+    const [isMissing, setIsMissing] = useState(false)
     const backgroundThumbnailUrl = game.thumbnailUrl || (game.coverUrl ? game.coverUrl.replace('t_cover_big', 't_thumb') : '')
 
     const tagVisuals: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
@@ -130,6 +132,20 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
             icon: <FaVrCardboard className="w-3.5 h-3.5" />,
         },
     }
+
+    useEffect(() => {
+        let cancelled = false
+        async function checkPath() {
+            try {
+                const gameExists = await exists(game.path)
+                if (!cancelled) setIsMissing(!gameExists)
+            } catch {
+                if (!cancelled) setIsMissing(true)
+            }
+        }
+        checkPath()
+        return () => { cancelled = true }
+    }, [game.path])
 
     useEffect(() => {
         getGameSize()
@@ -490,7 +506,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                             <div className="flex items-center gap-4">
                                 <button
                                     onClick={handleLaunch}
-                                    disabled={isLaunching}
+                                    disabled={isLaunching || isMissing}
                                     className="w-[260px] bg-[#1f8f4e] hover:bg-[#27a45a] disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
                                 >
                                     {isLaunching ? (
@@ -511,7 +527,15 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                                 </button>
                             </div>
                         </div>
+                        {isMissing && (
+                            <div className="w-full mt-4">
+                                <div className="bg-[#8b1f1f]/90 border border-[#c94343] text-[#ffdada] rounded-lg px-4 py-3 text-center text-base font-semibold shadow-md">
+                                    Game not found: The game folder has been moved or deleted
+                                </div>
+                            </div>
+                        )}
                     </div>
+                    
                 </div>
             </div>
         </>
