@@ -599,6 +599,20 @@ export async function getAllLaunchFiles(gamePath: string) {
             }
         }
 
+        const folders = entries.filter(e => e.isDirectory);
+        for(const folder of folders) {
+            const pathExists = await exists(`${gamePath}/${folder.name}/Binaries/Win64`);
+            if(pathExists) {
+                try {
+                    const win64Entries = await readDir(`${gamePath}/${folder.name}/Binaries/Win64`);
+                    processEntries(win64Entries, `${folder.name}/Binaries/Win64/`);
+                } catch (win64Err) {
+                    Logger.warn(`Could not read Binaries/Win64 in ${gamePath}/${folder.name}:`, win64Err);
+                }
+            }
+        }
+
+
         // Sort launch file by exe then bat, and then alphabetically
         launchFiles.sort((a, b) => {
             const aIsExe = a.endsWith('.exe');
