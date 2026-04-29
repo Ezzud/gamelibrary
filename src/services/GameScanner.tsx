@@ -599,16 +599,14 @@ export async function getAllLaunchFiles(gamePath: string) {
             }
         }
 
-        const folders = entries.filter(e => e.isDirectory);
-        for(const folder of folders) {
-            const pathExists = await exists(`${gamePath}/${folder.name}/Binaries/Win64`);
-            if(pathExists) {
-                try {
-                    const win64Entries = await readDir(`${gamePath}/${folder.name}/Binaries/Win64`);
-                    processEntries(win64Entries, `${folder.name}/Binaries/Win64/`);
-                } catch (win64Err) {
-                    Logger.warn(`Could not read Binaries/Win64 in ${gamePath}/${folder.name}:`, win64Err);
-                }
+        const binariesWin64Path = `${gamePath}/Binaries/Win64`;
+        const binariesWin64Exists = await exists(binariesWin64Path);
+        if (binariesWin64Exists) {
+            try {
+                const binariesWin64Entries = await readDir(binariesWin64Path);
+                processEntries(binariesWin64Entries, 'Binaries/Win64/');
+            } catch (win64Err) {
+                Logger.warn(`Could not read Binaries/Win64 in ${gamePath}:`, win64Err);
             }
         }
 
