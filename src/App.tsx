@@ -4,9 +4,31 @@ import GameLibrary from './components/GameLibrary'
 import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
-import { fetchAllCustomFolderGames, refetchAllSpecialTags, registerGames, removeDuplicateGames, scanAndAddCustomFolderGames, scanAndAddEAGames, scanAndAddGOGGames, scanAndAddSteamGames, scanAndAddXboxGames } from './services/GameScanner'
+import {
+    fetchAllCustomFolderGames,
+    refetchAllSpecialTags,
+    registerGames,
+    removeDuplicateGames,
+    scanAndAddCustomFolderGames,
+    scanAndAddEAGames,
+    scanAndAddEpicGames,
+    scanAndAddBattleNetGames,
+    scanAndAddGOGGames,
+    scanAndAddSteamGames,
+    scanAndAddXboxGames,
+} from './services/GameScanner'
 import { Logger } from './utils/Logger'
-import { addPlayHistoryEntry, getAppConfig, getPlayHistory, loadGameCache, loadGameConfig, loadGameList, saveGameConfig, saveGameInfoCache, setTwitchCredentials } from './services/ConfigManager'
+import {
+    addPlayHistoryEntry,
+    getAppConfig,
+    getPlayHistory,
+    loadGameCache,
+    loadGameConfig,
+    loadGameList,
+    saveGameConfig,
+    saveGameInfoCache,
+    setTwitchCredentials,
+} from './services/ConfigManager'
 import { initIGDB, searchGame } from './services/GameDataManager'
 import { launchGame } from './services/GameLauncher'
 import { getVersion } from '@tauri-apps/api/app'
@@ -121,6 +143,8 @@ function App() {
             hasGOGGames: cacheEntries.some((platform) => platform === 'gog'),
             hasXboxGames: cacheEntries.some((platform) => platform === 'xbox'),
             hasEAGames: cacheEntries.some((platform) => platform === 'ea'),
+            hasEpicGames: cacheEntries.some((platform) => platform === 'epic games'),
+            hasBattleNetGames: cacheEntries.some((platform) => platform === 'battle.net'),
         }
     }
 
@@ -130,26 +154,27 @@ function App() {
     ) => {
         const durationMs = options?.durationMs ?? 3000
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        setLaunchToasts((prev) => [{
-            id,
-            message,
-            visible: false,
-            started: false,
-            durationMs,
-            actionLabel: options?.actionLabel,
-            onClick: options?.onClick,
-        }, ...prev])
+        setLaunchToasts((prev) => [
+            {
+                id,
+                message,
+                visible: false,
+                started: false,
+                durationMs,
+                actionLabel: options?.actionLabel,
+                onClick: options?.onClick,
+            },
+            ...prev,
+        ])
 
         window.requestAnimationFrame(() => {
-            setLaunchToasts((prev) => prev.map((toast) =>
-                toast.id === id ? { ...toast, visible: true, started: true } : toast
-            ))
+            setLaunchToasts((prev) =>
+                prev.map((toast) => (toast.id === id ? { ...toast, visible: true, started: true } : toast))
+            )
         })
 
         window.setTimeout(() => {
-            setLaunchToasts((prev) => prev.map((toast) =>
-                toast.id === id ? { ...toast, visible: false } : toast
-            ))
+            setLaunchToasts((prev) => prev.map((toast) => (toast.id === id ? { ...toast, visible: false } : toast)))
         }, durationMs)
 
         window.setTimeout(() => {
@@ -165,7 +190,7 @@ function App() {
                 throw new Error(`GitHub latest release fetch failed with status ${response.status}`)
             }
 
-            const data = await response.json() as { tag_name?: string }
+            const data = (await response.json()) as { tag_name?: string }
             const latestVersion = (data.tag_name || '').trim().replace(/^v/i, '')
             if (!latestVersion) {
                 return
@@ -218,7 +243,7 @@ function App() {
             })
             .filter((entry): entry is LastPlayedCard => entry !== null)
 
-        setLastPlayedCards(cards);
+        setLastPlayedCards(cards)
     }
 
     const handleLaunchSuccess = async () => {
@@ -241,9 +266,10 @@ function App() {
             const allLaunchFiles = (config?.allLaunchFiles || []).filter((file: string | undefined) => !!file)
 
             if (!config?.lockedLaunchFile && allLaunchFiles.length > 1) {
-                const initialSelection = config?.defaultLaunchFile && allLaunchFiles.includes(config.defaultLaunchFile)
-                    ? config.defaultLaunchFile
-                    : allLaunchFiles[0]
+                const initialSelection =
+                    config?.defaultLaunchFile && allLaunchFiles.includes(config.defaultLaunchFile)
+                        ? config.defaultLaunchFile
+                        : allLaunchFiles[0]
 
                 setPickerGame(game)
                 setPickerPendingConfig(config)
@@ -358,75 +384,111 @@ function App() {
             setIsLoadingGames(true)
             try {
                 await validateIGDBCredentialsFromConfig()
+                await loadGames()
+                Logger.info('Initial game loading complete.')
+            } finally {
+                setIsLoadingGames(false)
+            }
 
+            void (async () => {
                 setIsScanning(true)
                 setScanProgress(0)
                 setScanStatusMessage('Scanning all custom folders...')
 
-                await scanAndAddCustomFolderGames((update) => {
-                    const mappedPercent = Math.round(update.percent * 0.6)
-                    setScanProgress(mappedPercent)
-                    setScanStatusMessage(`${update.message}`)
-                })
+                const beforeList = await loadGameList()
+                const beforeIds = new Set((beforeList?.games || []).map((game: { id: string }) => game.id))
 
-                const cachedGames = await loadGameList()
-                const scanCandidates = (cachedGames?.games || []) as Array<{ id: string; platform?: string }>
-                const { hasSteamGames, hasGOGGames, hasXboxGames } = await detectPlatformsFromCache(scanCandidates)
+                try {
+                    await scanAndAddCustomFolderGames((update) => {
+                        const mappedPercent = Math.round(update.percent * 0.6)
+                        setScanProgress(mappedPercent)
+                        setScanStatusMessage(`${update.message}`)
+                    })
 
-                const optionalScans: Array<'Steam' | 'GOG' | 'Xbox'> = []
-                if (hasSteamGames) {
-                    optionalScans.push('Steam')
-                }
-                if (hasGOGGames) {
-                    optionalScans.push('GOG')
-                }
-                if (hasXboxGames) {
-                    optionalScans.push('Xbox')
-                }
+                    const cachedGames = await loadGameList()
+                    const scanCandidates = (cachedGames?.games || []) as Array<{ id: string; platform?: string }>
+                    const { hasSteamGames, hasGOGGames, hasXboxGames, hasEAGames, hasEpicGames, hasBattleNetGames } =
+                        await detectPlatformsFromCache(scanCandidates)
 
-                if (optionalScans.length < 1) {
-                    setScanProgress(100)
-                    setScanStatusMessage('Load scan complete')
-                }
-
-                for (let index = 0; index < optionalScans.length; index++) {
-                    const platform = optionalScans[index]
-                    const rangeStart = Math.round(60 + (index / optionalScans.length) * 40)
-                    const rangeEnd = Math.round(60 + ((index + 1) / optionalScans.length) * 40)
-
-                    setScanStatusMessage(`Scanning ${platform} games...`)
-                    if (platform === 'Steam') {
-                        await scanAndAddSteamGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
-                            setScanProgress(mappedPercent)
-                            setScanStatusMessage(`${update.message}`)
-                        })
-                    } else if (platform === 'GOG') {
-                        await scanAndAddGOGGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
-                            setScanProgress(mappedPercent)
-                            setScanStatusMessage(`${update.message}`)
-                        })
-                    } else if(platform === 'Xbox') {
-                        await scanAndAddXboxGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
-                            setScanProgress(mappedPercent)
-                            setScanStatusMessage(`${update.message}`)
-                        });
-                    } else if(platform === 'EA') {
-                        await scanAndAddEAGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
-                            setScanProgress(mappedPercent)
-                            setScanStatusMessage(`${update.message}`)
-                        });
+                    const optionalScans: Array<'Steam' | 'GOG' | 'Xbox' | 'EA' | 'Epic Games' | 'Battle.net'> = []
+                    if (hasSteamGames) {
+                        optionalScans.push('Steam')
                     }
-                }
+                    if (hasGOGGames) {
+                        optionalScans.push('GOG')
+                    }
+                    if (hasXboxGames) {
+                        optionalScans.push('Xbox')
+                    }
+                    if (hasEAGames) {
+                        optionalScans.push('EA')
+                    }
+                    if (hasEpicGames) {
+                        optionalScans.push('Epic Games')
+                    }
+                    if (hasBattleNetGames) {
+                        optionalScans.push('Battle.net')
+                    }
 
-                await loadGames()
-                Logger.info('Initial game loading complete.');
-            } finally {
-                setIsScanning(false)
-            }
+                    if (optionalScans.length < 1) {
+                        setScanProgress(100)
+                        setScanStatusMessage('Load scan complete')
+                    }
+
+                    for (let index = 0; index < optionalScans.length; index++) {
+                        const platform = optionalScans[index]
+                        const rangeStart = Math.round(60 + (index / optionalScans.length) * 40)
+                        const rangeEnd = Math.round(60 + ((index + 1) / optionalScans.length) * 40)
+
+                        setScanStatusMessage(`Scanning ${platform} games...`)
+                        if (platform === 'Steam') {
+                            await scanAndAddSteamGames((update) => {
+                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                setScanProgress(mappedPercent)
+                                setScanStatusMessage(`${update.message}`)
+                            })
+                        } else if (platform === 'GOG') {
+                            await scanAndAddGOGGames((update) => {
+                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                setScanProgress(mappedPercent)
+                                setScanStatusMessage(`${update.message}`)
+                            })
+                        } else if (platform === 'Xbox') {
+                            await scanAndAddXboxGames((update) => {
+                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                setScanProgress(mappedPercent)
+                                setScanStatusMessage(`${update.message}`)
+                            })
+                        } else if (platform === 'EA') {
+                            await scanAndAddEAGames((update) => {
+                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                setScanProgress(mappedPercent)
+                                setScanStatusMessage(`${update.message}`)
+                            })
+                        } else if (platform === 'Epic Games') {
+                            await scanAndAddEpicGames((update) => {
+                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                setScanProgress(mappedPercent)
+                                setScanStatusMessage(`${update.message}`)
+                            })
+                        } else if (platform === 'Battle.net') {
+                            await scanAndAddBattleNetGames((update) => {
+                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                setScanProgress(mappedPercent)
+                                setScanStatusMessage(`${update.message}`)
+                            })
+                        }
+                    }
+                } finally {
+                    const afterList = await loadGameList()
+                    const afterIds = new Set((afterList?.games || []).map((game: { id: string }) => game.id))
+                    const hasNewGames = [...afterIds].some((id) => !beforeIds.has(id))
+                    if (hasNewGames) {
+                        await loadGames()
+                    }
+                    setIsScanning(false)
+                }
+            })()
         }
 
         void bootstrap()
@@ -443,19 +505,40 @@ function App() {
         setIsLoadingGames(true)
         try {
             const cachedGames = await loadGameList()
-            if(cachedGames) {
+            if (cachedGames) {
                 const allGames = cachedGames.games || []
-                for(const game of allGames) {
+                const getFolderName = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || ''
+                const resolveSearchName = async (gameId: string, fallbackName: string, gamePath: string) => {
+                    const config = await loadGameConfig(gameId)
+                    const configured = typeof config?.searchName === 'string' ? config.searchName.trim() : ''
+                    if (configured) {
+                        return configured
+                    }
+
+                    const folderName = getFolderName(gamePath)
+                    const nextSearchName = folderName || fallbackName
+                    await saveGameConfig(gameId, {
+                        ...config,
+                        searchName: nextSearchName,
+                    })
+                    return nextSearchName
+                }
+                for (const game of allGames) {
                     const cacheData = await loadGameCache(game.id)
                     if (cacheData) {
                         game.name = cacheData.title || game.name
-                        if(!game.coverUrl && !cacheData.cover_url) {
-                            if(cacheData.fetched) {
-                                Logger.warn(`Game ${game.name} (ID: ${game.id}) was previously fetched but has no cover URL, skipping IGDB fetch.`)
+                        if (!game.coverUrl && !cacheData.cover_url) {
+                            if (cacheData.fetched) {
+                                Logger.warn(
+                                    `Game ${game.name} (ID: ${game.id}) was previously fetched but has no cover URL, skipping IGDB fetch.`
+                                )
                             } else {
-                                Logger.warn(`No cover URL in cache for game ${game.name} (ID: ${game.id}), fetching from IGDB...`)
+                                Logger.warn(
+                                    `No cover URL in cache for game ${game.name} (ID: ${game.id}), fetching from IGDB...`
+                                )
                                 try {
-                                    const igdbData = await searchGame(game.name)
+                                    const searchName = await resolveSearchName(game.id, game.name, game.path)
+                                    const igdbData = await searchGame(searchName)
                                     if (igdbData.success && igdbData.data) {
                                         game.coverUrl = igdbData.data.cover_url || undefined
                                         game.thumbnailUrl = igdbData.data.thumbnail_url || undefined
@@ -469,12 +552,12 @@ function App() {
                                             platform: game.platform || null,
                                             folder: game.path || '',
                                             fetched: true,
-                                        });
+                                        })
                                     }
                                 } catch (error) {
                                     Logger.error(`Error fetching IGDB data for game ${game.name}:`, error)
                                 }
-                            }  
+                            }
                         } else {
                             game.coverUrl = cacheData.cover_url || game.coverUrl
                             game.thumbnailUrl = cacheData.thumbnail_url || game.thumbnailUrl
@@ -482,7 +565,8 @@ function App() {
                         }
                     } else {
                         try {
-                            const igdbData = await searchGame(game.name)
+                            const searchName = await resolveSearchName(game.id, game.name, game.path)
+                            const igdbData = await searchGame(searchName)
                             if (igdbData.success && igdbData.data) {
                                 game.coverUrl = igdbData.data.cover_url || undefined
                                 game.name = igdbData.data.title || game.name
@@ -510,7 +594,7 @@ function App() {
                 setGames([])
                 setLastPlayedCards([])
             }
-            
+
             Logger.info(`Loaded ${cachedGames.games?.length || 0} games from cache.`)
         } finally {
             setIsLoadingGames(false)
@@ -597,6 +681,20 @@ function App() {
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
+                    case 'Epic Games':
+                        await scanAndAddEpicGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
+                        })
+                        break
+                    case 'Battle.net':
+                        await scanAndAddBattleNetGames((update) => {
+                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            setScanProgress(mappedPercent)
+                            setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
+                        })
+                        break
                     default:
                         Logger.warn(`Scanning for platform ${platform} is not implemented yet.`)
                         setScanStatusMessage(`Skipping ${platform}: not implemented.`)
@@ -641,6 +739,23 @@ function App() {
         }
     }
 
+    const handleGamesRemoved = (gameIds: string[]) => {
+        if (gameIds.length < 1) {
+            return
+        }
+
+        const removedIds = new Set(gameIds)
+        if (selectedGame && removedIds.has(selectedGame.id)) {
+            setSelectedGame(null)
+        }
+
+        setGames((prev) => {
+            const next = prev.filter((game) => !removedIds.has(game.id))
+            void refreshLastPlayedCards(next)
+            return next
+        })
+    }
+
     const handleRefreshLibrary = async () => {
         if (isScanning || isLoadingGames) {
             return
@@ -657,9 +772,10 @@ function App() {
                 setScanStatusMessage(`${update.message}`)
             })
 
-            const { hasSteamGames, hasGOGGames, hasXboxGames } = await detectPlatformsFromCache(games)
+            const { hasSteamGames, hasGOGGames, hasXboxGames, hasEAGames, hasEpicGames, hasBattleNetGames } =
+                await detectPlatformsFromCache(games)
 
-            const optionalScans: Array<'Steam' | 'GOG' | 'Xbox'> = []
+            const optionalScans: Array<'Steam' | 'GOG' | 'Xbox' | 'EA' | 'Epic Games' | 'Battle.net'> = []
             if (hasSteamGames) {
                 optionalScans.push('Steam')
             }
@@ -668,6 +784,15 @@ function App() {
             }
             if (hasXboxGames) {
                 optionalScans.push('Xbox')
+            }
+            if (hasEAGames) {
+                optionalScans.push('EA')
+            }
+            if (hasEpicGames) {
+                optionalScans.push('Epic Games')
+            }
+            if (hasBattleNetGames) {
+                optionalScans.push('Battle.net')
             }
 
             if (optionalScans.length < 1) {
@@ -687,20 +812,32 @@ function App() {
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
-                } else if(platform === 'GOG') {
+                } else if (platform === 'GOG') {
                     await scanAndAddGOGGames((update) => {
                         const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
-                } else if(platform === 'Xbox') {
+                } else if (platform === 'Xbox') {
                     await scanAndAddXboxGames((update) => {
                         const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
-                } else if(platform === 'EA') {
+                } else if (platform === 'EA') {
                     await scanAndAddEAGames((update) => {
+                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        setScanProgress(mappedPercent)
+                        setScanStatusMessage(`${update.message}`)
+                    })
+                } else if (platform === 'Epic Games') {
+                    await scanAndAddEpicGames((update) => {
+                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        setScanProgress(mappedPercent)
+                        setScanStatusMessage(`${update.message}`)
+                    })
+                } else if (platform === 'Battle.net') {
+                    await scanAndAddBattleNetGames((update) => {
                         const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
@@ -821,6 +958,7 @@ function App() {
                         onLaunchError={showLaunchToast}
                         onShowToast={showLaunchToast}
                         onLaunchSuccess={handleLaunchSuccess}
+                        onGamesRemoved={handleGamesRemoved}
                         igdbConnectionStatus={igdbConnectionStatus}
                         onConnectIGDB={handleConnectIGDB}
                         onOpenSettings={handleOpenSettings}
@@ -838,4 +976,3 @@ function App() {
 }
 
 export default App
-

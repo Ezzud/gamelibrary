@@ -202,9 +202,9 @@ jobs:
           PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v "^$VERSION$" | head -n 1 || true)
           echo "Previous tag: $PREV_TAG"
           if [ -n "$PREV_TAG" ]; then
-            LOG=$(git log --pretty=format:'%s (%an)' "$PREV_TAG..HEAD" | sed 's/^[-*]\s*//; s/^/- /')
+            LOG=$(git log --pretty=format:'%h%n%s (%an)%n%b%n---END---' "$PREV_TAG..HEAD" | awk 'BEGIN { RS="---END---\n"; ORS="" } NF { n=split($0, lines, "\n"); hash=lines[1]; if (n >= 2 && lines[2] != "") { printf("- %s (#%s)\n", lines[2], hash) } else { printf("- (#%s)\n", hash) } for (i=3; i<=n; i++) { if (lines[i] == "") { printf("  (#%s)\n", hash) } else { printf("  %s (#%s)\n", lines[i], hash) } } printf("\n") }')
           else
-            LOG=$(git log --pretty=format:'%s (%an)' | sed 's/^[-*]\s*//; s/^/- /')
+            LOG=$(git log --pretty=format:'%h%n%s (%an)%n%b%n---END---' | awk 'BEGIN { RS="---END---\n"; ORS="" } NF { n=split($0, lines, "\n"); hash=lines[1]; if (n >= 2 && lines[2] != "") { printf("- %s (#%s)\n", lines[2], hash) } else { printf("- (#%s)\n", hash) } for (i=3; i<=n; i++) { if (lines[i] == "") { printf("  (#%s)\n", hash) } else { printf("  %s (#%s)\n", lines[i], hash) } } printf("\n") }')
           fi
           if [ -z "$LOG" ]; then
             LOG="No commits found."

@@ -17,6 +17,7 @@ interface GameConfig {
     allLaunchFiles?: string[],
     lockedLaunchFile?: boolean,
     specialTags?: string[]
+    searchName?: string
 }
 interface GameCacheConfig {
     title: string | null
@@ -61,7 +62,8 @@ const defaultGameConfig: GameConfig = {
     defaultLaunchFile: undefined,
     allLaunchFiles: undefined,
     lockedLaunchFile: false,
-    specialTags: []
+    specialTags: [],
+    searchName: ''
 };
 const defaultGameCacheConfig: GameCacheConfig = {
     title: null,

@@ -30,6 +30,7 @@ interface GameConfigPanelProps {
 const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfigPanelProps) => {
   const [launchArgs, setLaunchArgs] = useState('')
   const [workingDirectory, setWorkingDirectory] = useState(game.path)
+  const [searchName, setSearchName] = useState('')
   const [defaultLaunchFile, setDefaultLaunchFile] = useState('')
   const [allLaunchFiles, setAllLaunchFiles] = useState<string[]>([])
   const [cachePath, setCachePath] = useState('')
@@ -37,6 +38,9 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
   const [isSaving, setIsSaving] = useState(false)
   const [isResettingIGDBData, setIsResettingIGDBData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+
+  const getFolderName = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || ''
+  const folderName = getFolderName(game.path)
 
   useEffect(() => {
     loadCurrentGameConfig()
@@ -59,6 +63,10 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
         setWorkingDirectory(game.path)
         setDefaultLaunchFile(config.defaultLaunchFile || '')
         setAllLaunchFiles(config.allLaunchFiles || [])
+        const hasSearchName = typeof config.searchName === 'string'
+        setSearchName(hasSearchName ? config.searchName : folderName)
+      } else {
+        setSearchName(folderName)
       }
     } catch (error) {
       console.error('Failed to load config:', error)
@@ -76,9 +84,11 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
     setIsSaving(true)
     try {
       const currentConfig = await loadGameConfig(game.id)
+      const trimmedSearchName = searchName.trim()
       await saveGameConfig(game.id, {
         ...currentConfig,
         customArguments: launchArgs,
+        searchName: trimmedSearchName || folderName || game.name,
       })
 
       setSaveMessage('Configuration saved successfully!')
@@ -114,6 +124,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
       setIsSaving(false)
     }
   }
+
 
   const handleOpenCachePath = async () => {
     if (!cachePath) {
@@ -203,6 +214,23 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
                   type="text"
                   value={workingDirectory}
                   onChange={(e) => setWorkingDirectory(e.target.value)}
+                  className="w-full bg-[#0f1a2a]/95 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-steam-500/70 font-mono text-sm shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+                />
+              </div>
+
+              <div className="mb-6">
+                <label className="flex items-center gap-2 text-steam-300 font-semibold mb-2">
+                  <Info className="w-4 h-4 text-steam-300" />
+                  Search Name
+                </label>
+                <p className="text-steam-400 text-sm mb-3">
+                  Used for IGDB search. Leave blank to use the game name. Default: {folderName || 'game folder'}.
+                </p>
+                <input
+                  type="text"
+                  value={searchName}
+                  onChange={(e) => setSearchName(e.target.value)}
+                  placeholder={folderName || 'Enter search name'}
                   className="w-full bg-[#0f1a2a]/95 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-steam-500/70 font-mono text-sm shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
                 />
               </div>

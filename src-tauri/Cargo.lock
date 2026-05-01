@@ -1244,7 +1244,7 @@ dependencies = [
 
 [[package]]
 name = "gamelibrary"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "futures-util",
  "reqwest 0.12.28",

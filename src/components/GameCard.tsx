@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { FolderOpen, Gamepad2, Loader2, Play, Settings, Trash2, LocateOff } from 'lucide-react'
 import { exists } from '@tauri-apps/plugin-fs'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
-import { SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
+import { SiBattledotnet, SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
 import { loadGameConfig } from '../services/ConfigManager'
 
 interface Game {
@@ -165,6 +165,11 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
       label: 'EPIC GAMES',
       className: 'bg-black text-white',
       icon: <SiEpicgames className="w-3.5 h-3.5" />,
+    },
+    'battle.net': {
+      label: 'BATTLE.NET',
+      className: 'bg-[#0b2b4a] text-white',
+      icon: <SiBattledotnet className="w-3.5 h-3.5" />,
     },
     ea: {
       label: 'EA',

@@ -25,7 +25,7 @@ import {
   Wrench
 } from 'lucide-react'
 import { FaSteam, FaXbox } from 'react-icons/fa'
-import { SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
+import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import {
   addCustomScanFolder,
   addIgnoredFolder,
@@ -61,7 +61,7 @@ interface AppConfigProps {
   onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
 }
 
-const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA']
+const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
 const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
 const REPO_BRANCH = 'master'
@@ -110,6 +110,8 @@ const getPlatformIcon = (platform: string) => {
       return <FaSteam className={`${iconClass} text-white`} />
     case 'Epic Games':
       return <SiEpicgames className={`${iconClass} text-white`} />
+    case 'Battle.net':
+      return <SiBattledotnet className={`${iconClass} text-[#1ea7ff]`} />
     case 'GOG':
       return <SiGogdotcom className={`${iconClass} text-[#8d4bbb]`} />
     case 'Xbox':
@@ -156,6 +158,8 @@ const AppConfig = ({
   const [currentVersion, setCurrentVersion] = useState('Unknown')
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
+  const [currentReleaseNotes, setCurrentReleaseNotes] = useState<string | null>(null)
+  const [isLoadingReleaseNotes, setIsLoadingReleaseNotes] = useState(false)
   const [aboutAppLocation, setAboutAppLocation] = useState<string>('Loading...')
   const [aboutDataLocation, setAboutDataLocation] = useState<string>('Loading...')
   const isAnyMaintenanceActionRunning = isClearingCache || isClearingPlayHistory || isRemovingLibrary || isRemovingDuplicates
@@ -210,6 +214,31 @@ const AppConfig = ({
     }
   }
 
+  const fetchReleaseNotesForVersion = async (version: string) => {
+    const normalizedVersion = version.trim().replace(/^v/i, '')
+    if (!normalizedVersion) {
+      setCurrentReleaseNotes(null)
+      return
+    }
+
+    setIsLoadingReleaseNotes(true)
+    try {
+      const response = await fetch(`https://api.github.com/repos/Ezzud/gamelibrary/releases/tags/v${normalizedVersion}?t=${Date.now()}`)
+      if (!response.ok) {
+        throw new Error(`GitHub release fetch failed with status ${response.status}`)
+      }
+
+      const data = await response.json() as { body?: string }
+      const notes = (data.body || '').trim()
+      setCurrentReleaseNotes(notes || null)
+    } catch (error) {
+      Logger.warn('Failed to load current release notes:', error)
+      setCurrentReleaseNotes(null)
+    } finally {
+      setIsLoadingReleaseNotes(false)
+    }
+  }
+
   const refreshCustomFolders = async () => {
     const folders = await getCustomScanFolders()
     setCustomFolders(folders || [])
@@ -242,7 +271,7 @@ const AppConfig = ({
         const normalizedLocalPath = localPath.replace(/[\\/]+$/, '')
         const normalizedAppDataPath = appDataPath.replace(/[\\/]+$/, '')
 
-        setAboutAppLocation(`${normalizedLocalPath}\\gamelibrary`)
+        setAboutAppLocation(`${normalizedLocalPath}`)
         setAboutDataLocation(`${normalizedAppDataPath}\\GameLibrary`)
       } catch (error) {
         Logger.warn('Failed to load About paths:', error)
@@ -279,6 +308,16 @@ const AppConfig = ({
   }, [activeCategory, updateStatus])
 
   useEffect(() => {
+    if (activeCategory !== 'Update') {
+      return
+    }
+
+    if (currentVersion && currentVersion !== 'Unknown') {
+      void fetchReleaseNotesForVersion(currentVersion)
+    }
+  }, [activeCategory, currentVersion])
+
+  useEffect(() => {
     if (activeCategory !== 'Scanning') {
       return
     }
@@ -311,6 +350,12 @@ const AppConfig = ({
         }
         if(platforms.some((platform) => platform === 'ea')) {
           defaults.add('EA')
+        }
+        if (platforms.some((platform) => platform === 'epic games')) {
+          defaults.add('Epic Games')
+        }
+        if (platforms.some((platform) => platform === 'battle.net')) {
+          defaults.add('Battle.net')
         }
         if (Array.isArray(config?.customScanFolders) && config.customScanFolders.length > 0) {
           defaults.add('Custom Folders')
@@ -1021,6 +1066,7 @@ const AppConfig = ({
                     </div>
                   )}
                 </div>
+                
                 <div className="ml-auto flex items-center gap-2">
                   {updateStatus === 'update-available' && (
                     <button
@@ -1045,7 +1091,20 @@ const AppConfig = ({
                 </div>
               </div>
 
-              
+              <div className="rounded-md bg-steam-900/60 px-3 py-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
+                {isLoadingReleaseNotes ? (
+                  <div className="mt-2 inline-flex items-center gap-2 text-steam-200 text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Loading release notes...</span>
+                  </div>
+                ) : currentReleaseNotes ? (
+                  <pre className="mt-2 whitespace-pre-wrap text-sm text-steam-100 bg-steam-900/40 rounded-md px-3 py-2">
+                    {currentReleaseNotes}
+                  </pre>
+                ) : (
+                  <div className="mt-2 text-sm text-steam-400">No release notes found for this version.</div>
+                )}
+              </div>
             </div>
           </div>
         )}

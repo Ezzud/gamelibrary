@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import GameCard from './GameCard'
 import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, KeyRound, Link2, Loader, Play, RefreshCw, ShieldCheck, Tags, Trash2 } from 'lucide-react'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
-import { SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
+import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
 import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, removeCustomScanFolder, removeGameFromList, saveGameConfig } from '../services/ConfigManager'
 import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 
-const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA']
+const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const MIN_LAUNCH_LOADING_MS = 5000
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
@@ -58,6 +58,8 @@ const getPlatformIcon = (platform: string) => {
       return <FaSteam className={`${iconClass} text-white`} />
     case 'Epic Games':
       return <SiEpicgames className={`${iconClass} text-white`} />
+    case 'Battle.net':
+      return <SiBattledotnet className={`${iconClass} text-[#1ea7ff]`} />
     case 'GOG':
       return <SiGogdotcom className={`${iconClass} text-[#8d4bbb]`} />
     case 'Xbox':
@@ -87,6 +89,7 @@ interface GameLibraryProps {
   onLaunchError: (message: string) => void
   onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
   onLaunchSuccess: () => Promise<void> | void
+  onGamesRemoved?: (gameIds: string[]) => void
   igdbConnectionStatus: 'checking' | 'missing' | 'invalid' | 'connected'
   onConnectIGDB: (clientId: string, clientSecret: string) => Promise<{ success: boolean; message?: string }>
   onOpenSettings: () => void
@@ -103,7 +106,7 @@ interface GameLibraryProps {
  * Params: games, onGameSelect, isLoading, scanProgress - data and handlers
  * Returns: JSX.Element - game library grid layout
  */
-const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunchSuccess, igdbConnectionStatus, onConnectIGDB, onOpenSettings, onRefresh, onScanPlatforms, isLoading, isLoadingGames, scanProgress, scanStatusMessage }: GameLibraryProps) => {
+const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunchSuccess, onGamesRemoved, igdbConnectionStatus, onConnectIGDB, onOpenSettings, onRefresh, onScanPlatforms, isLoading, isLoadingGames, scanProgress, scanStatusMessage }: GameLibraryProps) => {
   const [pickerGame, setPickerGame] = useState<Game | null>(null)
   const [pickerLaunchFiles, setPickerLaunchFiles] = useState<string[]>([])
   const [pickerSelectedLaunchFile, setPickerSelectedLaunchFile] = useState('')
@@ -214,6 +217,19 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
         .map((tag) => tag.toLowerCase())
     )
   ).sort((a, b) => a.localeCompare(b))
+
+  useEffect(() => {
+    if (platformFilter !== 'All' && !availablePlatforms.includes(platformFilter)) {
+      setPlatformFilter('All')
+    }
+
+    if (tagFilter !== 'All') {
+      const normalizedTag = tagFilter.toLowerCase()
+      if (!availableTags.includes(normalizedTag)) {
+        setTagFilter('All')
+      }
+    }
+  }, [availablePlatforms, availableTags, platformFilter, tagFilter])
 
   const hasActiveFilters = searchQuery.trim().length > 0 || platformFilter !== 'All' || tagFilter !== 'All'
 
@@ -429,7 +445,7 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
         next.delete(game.id)
         return next
       })
-      await onRefresh()
+      onGamesRemoved?.([game.id])
     } catch (error) {
       Logger.error(`Failed to delete game ${game.name}:`, error)
     }
@@ -471,7 +487,7 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
         onShowToast?.(`Folder "${folderName}" is now ignored by GameLibrary`, { durationMs: 4000 })
       }
       setSelectedGameIds(new Set())
-      await onRefresh()
+      onGamesRemoved?.(selectedGames.map((game) => game.id))
     } catch (error) {
       Logger.error('Failed to delete selected games:', error)
     } finally {

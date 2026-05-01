@@ -62,6 +62,16 @@ const EAGamesPaths = [
     "Program Files/EA Games",
     "EA Games"
 ];
+const EpicGamesPaths = [
+    "Program Files (x86)/Epic Games",
+    "Program Files/Epic Games",
+    "Epic Games"
+];
+const BattleNetGamesPaths = [
+    "Program Files (x86)/Battle.net/Games",
+    "Program Files/Battle.net/Games",
+    "Battle.net/Games"
+];
 
 
 export interface ScanProgressUpdate {
@@ -258,6 +268,7 @@ export async function findSpecialTagsForGamePath(gamePath: string, gameId: strin
                 addSpecialTag("gog");
                 break;
             case "EpicGames":
+            case "Epic Games":
                 addSpecialTag("epic");
                 break;
             case "EA":
@@ -265,6 +276,9 @@ export async function findSpecialTagsForGamePath(gamePath: string, gameId: strin
                 break;
             case "Xbox":
                 addSpecialTag("xbox");
+                break;
+            case "Battle.net":
+                addSpecialTag("battle.net");
                 break;
         }
 
@@ -346,6 +360,7 @@ export async function refetchAllSpecialTags(onProgress?: ScanProgressCallback) {
                 allLaunchFiles: existingConfig?.allLaunchFiles,
                 lockedLaunchFile: existingConfig?.lockedLaunchFile,
                 specialTags,
+                searchName: existingConfig?.searchName,
             };
 
             await saveGameConfig(game.id, mergedConfig);
@@ -885,7 +900,10 @@ export async function registerGames(games: any[], platform: string, onProgress?:
         for (let index = 0; index < games.length; index++) {
             const game = games[index];
             reportProgress(onProgress, mapProgress(index, 0, games.length, 0, 100), `Registering ${index + 1}/${games.length}: ${game.name}`);
-            const gameData = await searchGame(game.name);
+            const normalizedPath = game.path?.replace(/[\\/]+$/, '') || '';
+            const folderName = normalizedPath.split(/[\\/]/).pop() || '';
+            const searchName = folderName || game.name;
+            const gameData = await searchGame(searchName || game.name);
             const id = await generateGameId();
             game.id = id; // Assign generated ID to game object for later use
             if(gameData.success && gameData.data) {
@@ -938,7 +956,8 @@ export async function registerGames(games: any[], platform: string, onProgress?:
                 customArguments: '',
                 defaultLaunchFile: game.defaultLaunchFile,
                 allLaunchFiles: game.allLaunchFiles,
-                specialTags: specialTags
+                specialTags: specialTags,
+                searchName: searchName
             } 
 
             try {
@@ -1035,6 +1054,46 @@ export async function scanAndAddEAGames(onProgress?: ScanProgressCallback) {
     } catch (err) {
         Logger.error('Error occurred while scanning and adding EA games:', err);
         reportProgress(onProgress, 100, 'EA scan failed.');
+    }
+}
+
+export async function scanAndAddEpicGames(onProgress?: ScanProgressCallback) {
+    try {
+        reportProgress(onProgress, 0, 'Preparing Epic Games scan...');
+        reportProgress(onProgress, 15, 'Discovering Epic Games...');
+        const games = await fetchEpicGames();
+        Logger.info(`Found ${games.length} games in Epic Games libraries.`);
+        reportProgress(onProgress, 55, `Found ${games.length} Epic Games. Registering...`);
+
+        await registerGames(games, "Epic Games", (update) => {
+            const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
+            reportProgress(onProgress, mappedPercent, update.message);
+        });
+
+        reportProgress(onProgress, 100, 'Epic Games scan complete.');
+    } catch (err) {
+        Logger.error('Error occurred while scanning and adding Epic Games:', err);
+        reportProgress(onProgress, 100, 'Epic Games scan failed.');
+    }
+}
+
+export async function scanAndAddBattleNetGames(onProgress?: ScanProgressCallback) {
+    try {
+        reportProgress(onProgress, 0, 'Preparing Battle.net scan...');
+        reportProgress(onProgress, 15, 'Discovering Battle.net games...');
+        const games = await fetchBattleNetGames();
+        Logger.info(`Found ${games.length} games in Battle.net libraries.`);
+        reportProgress(onProgress, 55, `Found ${games.length} Battle.net games. Registering...`);
+
+        await registerGames(games, "Battle.net", (update) => {
+            const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
+            reportProgress(onProgress, mappedPercent, update.message);
+        });
+
+        reportProgress(onProgress, 100, 'Battle.net scan complete.');
+    } catch (err) {
+        Logger.error('Error occurred while scanning and adding Battle.net games:', err);
+        reportProgress(onProgress, 100, 'Battle.net scan failed.');
     }
 }
 
@@ -1200,5 +1259,157 @@ export async function fetchAllEAGames() {
             }
         }
     }
+    return games;
+}
+
+export async function fetchEpicGames() {
+    const games: any[] = [];
+    const seenGameNames = new Set<string>();
+    const seenGamePaths = new Set<string>();
+    const ignoredFolders = await getIgnoredFolders();
+    const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
+
+    const addDiscoveredGame = (game: {
+        name: string;
+        path: string;
+        defaultLaunchFile: string | null;
+        allLaunchFiles: string[] | null;
+    }) => {
+        if (isIgnoredPath(game.path)) {
+            Logger.info(`Skipping ignored game path: ${game.path}`);
+            return;
+        }
+
+        const normalizedName = game.name.toLowerCase().trim();
+        const normalizedPath = game.path.replace(/\\/g, '/').toLowerCase();
+
+        if (seenGameNames.has(normalizedName) || seenGamePaths.has(normalizedPath)) {
+            Logger.warn(`Skipping duplicate game discovery: ${game.name} at ${game.path}`);
+            return;
+        }
+
+        seenGameNames.add(normalizedName);
+        seenGamePaths.add(normalizedPath);
+        games.push({ id: null, ...game });
+    };
+
+    for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+        for (const basePath of EpicGamesPaths) {
+            const libraryPath = `${drive}:/${basePath}`;
+            try {
+                const libraryExists = await exists(libraryPath);
+                if (!libraryExists) {
+                    continue;
+                }
+
+                Logger.success(`Found Epic Games library at: ${libraryPath}`);
+                const libraryEntries = await readDir(libraryPath);
+
+                for (const entry of libraryEntries) {
+                    if (!entry.isDirectory) {
+                        continue;
+                    }
+
+                    const gamePath = `${libraryPath}/${entry.name}`;
+                    const launchFiles = await getAllLaunchFiles(gamePath);
+                    if (launchFiles.length < 1) {
+                        Logger.warn(`No launch files found for game at ${gamePath}, skipping.`);
+                        continue;
+                    }
+
+                    if (blacklistedGames.find(g => g.toLowerCase() === entry.name.toLowerCase())) {
+                        Logger.warn(`Game ${entry.name} is blacklisted, skipping.`);
+                        continue;
+                    }
+
+                    addDiscoveredGame({
+                        name: entry.name,
+                        path: gamePath,
+                        defaultLaunchFile: launchFiles.length > 0 ? launchFiles[0] : null,
+                        allLaunchFiles: launchFiles.length > 0 ? launchFiles : null
+                    });
+                }
+            } catch (err) {
+                Logger.error(`Error occurred while fetching Epic Games at ${libraryPath}:`, err);
+            }
+        }
+    }
+
+    return games;
+}
+
+export async function fetchBattleNetGames() {
+    const games: any[] = [];
+    const seenGameNames = new Set<string>();
+    const seenGamePaths = new Set<string>();
+    const ignoredFolders = await getIgnoredFolders();
+    const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
+
+    const addDiscoveredGame = (game: {
+        name: string;
+        path: string;
+        defaultLaunchFile: string | null;
+        allLaunchFiles: string[] | null;
+    }) => {
+        if (isIgnoredPath(game.path)) {
+            Logger.info(`Skipping ignored game path: ${game.path}`);
+            return;
+        }
+
+        const normalizedName = game.name.toLowerCase().trim();
+        const normalizedPath = game.path.replace(/\\/g, '/').toLowerCase();
+
+        if (seenGameNames.has(normalizedName) || seenGamePaths.has(normalizedPath)) {
+            Logger.warn(`Skipping duplicate game discovery: ${game.name} at ${game.path}`);
+            return;
+        }
+
+        seenGameNames.add(normalizedName);
+        seenGamePaths.add(normalizedPath);
+        games.push({ id: null, ...game });
+    };
+
+    for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+        for (const basePath of BattleNetGamesPaths) {
+            const libraryPath = `${drive}:/${basePath}`;
+            try {
+                const libraryExists = await exists(libraryPath);
+                if (!libraryExists) {
+                    continue;
+                }
+
+                Logger.success(`Found Battle.net library at: ${libraryPath}`);
+                const libraryEntries = await readDir(libraryPath);
+
+                for (const entry of libraryEntries) {
+                    if (!entry.isDirectory) {
+                        continue;
+                    }
+
+                    const gamePath = `${libraryPath}/${entry.name}`;
+                    const launchFiles = await getAllLaunchFiles(gamePath);
+                    if (launchFiles.length < 1) {
+                        Logger.warn(`No launch files found for game at ${gamePath}, skipping.`);
+                        continue;
+                    }
+
+                    if (blacklistedGames.find(g => g.toLowerCase() === entry.name.toLowerCase())) {
+                        Logger.warn(`Game ${entry.name} is blacklisted, skipping.`);
+                        continue;
+                    }
+
+                    addDiscoveredGame({
+                        name: entry.name,
+                        path: gamePath,
+                        defaultLaunchFile: launchFiles.length > 0 ? launchFiles[0] : null,
+                        allLaunchFiles: launchFiles.length > 0 ? launchFiles : null
+                    });
+                }
+            } catch (err) {
+                Logger.error(`Error occurred while fetching Battle.net games at ${libraryPath}:`, err);
+            }
+        }
+    }
+
     return games;
 }

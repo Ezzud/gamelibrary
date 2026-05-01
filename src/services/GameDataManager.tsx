@@ -1,6 +1,6 @@
 import { Logger } from "../utils/Logger";
 import { invoke } from "@tauri-apps/api/core";
-import { getAppConfig, loadGameCache, saveGameInfoCache } from "./ConfigManager";
+import { getAppConfig, loadGameCache, loadGameConfig, saveGameInfoCache } from "./ConfigManager";
 
 
 interface IGDBCredentials {
@@ -339,6 +339,10 @@ export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: stri
         throw new Error('Failed to load game cache.');
     }
 
+    const config = await loadGameConfig(gameId);
+    const configuredSearchName = typeof config?.searchName === 'string' ? config.searchName.trim() : '';
+    const searchName = configuredSearchName || gameName;
+
     await saveGameInfoCache(gameId, {
         ...cacheData,
         title: null,
@@ -349,7 +353,7 @@ export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: stri
         fetched: false,
     });
 
-    const igdbData = await searchGame(gameName);
+    const igdbData = await searchGame(searchName);
     if (!igdbData.success || !igdbData.data) {
         throw new Error('Failed to refetch IGDB data.');
     }
