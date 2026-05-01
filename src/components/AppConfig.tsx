@@ -609,7 +609,7 @@ const AppConfig = ({
   return (
     <div className="h-full flex bg-steam-900 text-white">
       <aside className="w-72 bg-steam-800 p-4 shadow-[6px_0_20px_rgba(0,0,0,0.25)]">
-        <div className="mb-4 rounded-xl bg-gradient-to-br from-steam-700 to-steam-800 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.2)]">
+        <div className="mb-4 rounded-xl bg-linear-to-br from-steam-700 to-steam-800 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.2)]">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Settings2 className="w-4 h-4 text-steam-300" />
             App Config
@@ -1120,7 +1120,7 @@ const AppConfig = ({
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="rounded-lg bg-gradient-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+              <div className="rounded-lg bg-linear-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 <p className="text-xs uppercase tracking-wide text-steam-400 mb-3">Identity</p>
                 <div className="space-y-2 text-sm">
                   <div className="rounded-md bg-steam-900/45 px-3 py-2">
@@ -1138,7 +1138,7 @@ const AppConfig = ({
                 </div>
               </div>
 
-              <div className="rounded-lg bg-gradient-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+              <div className="rounded-lg bg-linear-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
                 <p className="text-xs uppercase tracking-wide text-steam-400 mb-3">Repository</p>
                 <div className="space-y-2 text-sm">
                   <div className="rounded-md bg-steam-900/45 px-3 py-2">
@@ -1152,7 +1152,7 @@ const AppConfig = ({
                 </div>
               </div>
 
-              <div className="rounded-lg bg-gradient-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] lg:col-span-2 space-y-3">
+              <div className="rounded-lg bg-linear-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] lg:col-span-2 space-y-3">
                 <p className="text-xs uppercase tracking-wide text-steam-400">Locations</p>
                 <div className="text-sm text-steam-200 flex items-center justify-between gap-3">
                   <div className="min-w-0">

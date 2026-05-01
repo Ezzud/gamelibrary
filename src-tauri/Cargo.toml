@@ -1,6 +1,6 @@
 [package]
 name = "gamelibrary"
-version = "0.1.15"
+version = "0.2.0"
 description = "A Game Library Manager built with Tauri and React"
 authors = ["Ezzud"]
 edition = "2021"
@@ -27,4 +27,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zip = "8.6.0"
 futures-util = "0.3.32"
+sysinfo = "0.30"
 

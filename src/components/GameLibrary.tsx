@@ -4,6 +4,7 @@ import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, F
 import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
+import { trackPlaytimeForProcess } from '../services/PlaytimeManager'
 import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, removeCustomScanFolder, removeGameFromList, saveGameConfig } from '../services/ConfigManager'
 import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
@@ -90,6 +91,8 @@ interface GameLibraryProps {
   onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
   onLaunchSuccess: () => Promise<void> | void
   onGamesRemoved?: (gameIds: string[]) => void
+  runningGameIds?: Set<string>
+  onGameRunningChange?: (gameId: string, isRunning: boolean) => void
   igdbConnectionStatus: 'checking' | 'missing' | 'invalid' | 'connected'
   onConnectIGDB: (clientId: string, clientSecret: string) => Promise<{ success: boolean; message?: string }>
   onOpenSettings: () => void
@@ -106,7 +109,7 @@ interface GameLibraryProps {
  * Params: games, onGameSelect, isLoading, scanProgress - data and handlers
  * Returns: JSX.Element - game library grid layout
  */
-const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunchSuccess, onGamesRemoved, igdbConnectionStatus, onConnectIGDB, onOpenSettings, onRefresh, onScanPlatforms, isLoading, isLoadingGames, scanProgress, scanStatusMessage }: GameLibraryProps) => {
+const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunchSuccess, onGamesRemoved, runningGameIds, onGameRunningChange, igdbConnectionStatus, onConnectIGDB, onOpenSettings, onRefresh, onScanPlatforms, isLoading, isLoadingGames, scanProgress, scanStatusMessage }: GameLibraryProps) => {
   const [pickerGame, setPickerGame] = useState<Game | null>(null)
   const [pickerLaunchFiles, setPickerLaunchFiles] = useState<string[]>([])
   const [pickerSelectedLaunchFile, setPickerSelectedLaunchFile] = useState('')
@@ -346,7 +349,7 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
   }
 
   const handlePlayGame = async (game: Game) => {
-    if (launchingGameId) {
+    if (launchingGameId || runningGameIds?.has(game.id)) {
       return
     }
 
@@ -368,13 +371,14 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
 
       setLaunchingGameId(game.id)
       const launchStartedAt = Date.now()
-      await launchGame(game.path, game.id)
+      const pid = await launchGame(game.path, game.id)
       try {
         await addPlayHistoryEntry(game.id)
         await onLaunchSuccess()
       } catch (historyError) {
         Logger.warn(`Game launched but failed to update play history for ${game.name}:`, historyError)
       }
+      void trackPlaytimeForProcess(game.id, pid, (isRunning) => onGameRunningChange?.(game.id, isRunning))
       await waitForMinimumLaunchLoading(launchStartedAt)
     } catch (error) {
       Logger.error(`Failed to launch game ${game.name}:`, error)
@@ -390,6 +394,10 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
       return
     }
 
+    if (runningGameIds?.has(pickerGame.id)) {
+      return
+    }
+
     try {
       setLaunchingGameId(pickerGame.id)
       const launchStartedAt = Date.now()
@@ -400,13 +408,14 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
         allLaunchFiles: pickerPendingConfig?.allLaunchFiles || pickerLaunchFiles,
       })
 
-      await launchGame(pickerGame.path, pickerGame.id)
+      const pid = await launchGame(pickerGame.path, pickerGame.id)
       try {
         await addPlayHistoryEntry(pickerGame.id)
         await onLaunchSuccess()
       } catch (historyError) {
         Logger.warn(`Game launched but failed to update play history for ${pickerGame.name}:`, historyError)
       }
+      void trackPlaytimeForProcess(pickerGame.id, pid, (isRunning) => onGameRunningChange?.(pickerGame.id, isRunning))
       await waitForMinimumLaunchLoading(launchStartedAt)
     } catch (error) {
       Logger.error(`Failed to persist launch file selection for ${pickerGame.name}:`, error)
@@ -1040,7 +1049,10 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
           </div>
         ) : (
           <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 ${isDeletingSelected ? 'pointer-events-none opacity-70' : ''}`}>
-            {displayedGames.map((game, index) => (
+            {displayedGames.map((game, index) => {
+              const isRunning = runningGameIds?.has(game.id) ?? false
+              const isLaunching = launchingGameId === game.id
+              return (
               <div
                 key={game.id}
                 className="game-card-enter relative group"
@@ -1061,14 +1073,15 @@ const GameLibrary = ({ games, onGameSelect, onLaunchError, onShowToast, onLaunch
                     game={game}
                     onClick={() => onGameSelect(game)}
                     onPlay={handlePlayGame}
-                    isPlayLoading={launchingGameId === game.id}
+                    isPlayLoading={isLaunching}
+                    isRunning={isRunning}
                     onOpenFolder={handleOpenGameFolder}
                     onGameSettings={() => onGameSelect(game)}
                     onDelete={handleDeleteGame}
                   />
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>

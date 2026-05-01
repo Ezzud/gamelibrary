@@ -3,9 +3,19 @@ import { Logger } from '../utils/Logger'
 
 export const launchGame = async (gamePath: string, gameId: string) => {
 	try {
-		await invoke('launch_game', { gamePath, gameId })
+		const pid = await invoke<number>('launch_game', { gamePath, gameId })
+		return pid
 	} catch (err) {
 		Logger.error(`Error occurred while launching game at ${gamePath}:`, err)
+		throw err
+	}
+}
+
+export const waitForProcessExit = async (pid: number, pollIntervalMs?: number) => {
+	try {
+		await invoke('wait_for_process_exit', { pid, poll_interval_ms: pollIntervalMs })
+	} catch (err) {
+		Logger.error(`Error occurred while waiting for process ${pid} to exit:`, err)
 		throw err
 	}
 }

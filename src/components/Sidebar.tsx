@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Clock3, Gamepad2, Loader2, Play, Home, Settings } from 'lucide-react'
+import { Clock3, Gamepad2, Loader2, Play, Home, Settings} from 'lucide-react'
 
 interface LastPlayedCard {
   gameId: string
   name: string
   coverUrl?: string
   playedAt: string
+  playtime?: string
 }
 
 interface SidebarProps {
@@ -16,6 +17,7 @@ interface SidebarProps {
   lastPlayedCards: LastPlayedCard[]
   onPlayLastPlayed: (gameId: string) => void
   launchingGameId: string | null
+  runningGameIds?: Set<string>
 }
 
 const formatLastPlayed = (playedAt: string) => {
@@ -25,7 +27,7 @@ const formatLastPlayed = (playedAt: string) => {
   }
 
   const diffMs = Date.now() - playedAtMs
-  if (diffMs < 15 * 60 * 1000) {
+  if (diffMs < 5 * 60 * 1000) {
     return 'Recently played'
   }
 
@@ -53,7 +55,7 @@ const formatLastPlayed = (playedAt: string) => {
  * Params: onGoHome, onToggleSettings - navigation handlers
  * Returns: JSX.Element - sidebar UI
  */
-const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, lastPlayedCards, onPlayLastPlayed, launchingGameId }: SidebarProps) => {
+const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, lastPlayedCards, onPlayLastPlayed, launchingGameId, runningGameIds }: SidebarProps) => {
   const [, setRefreshTick] = useState(0)
 
   useEffect(() => {
@@ -71,7 +73,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
       <div className="p-6 space-y-3 bg-steam-800">
         <div className="flex items-center justify-center gap-3">
           <Gamepad2 className="w-8 h-8 text-steam-400" />
-          <h1 className="text-xl font-bold">GameLibrary</h1>
+          <h1 className="text-xl font-bold">Game Library</h1>
         </div>
       </div>
 
@@ -97,6 +99,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
         ) : (
           lastPlayedCards.map((card) => {
             const isLaunching = launchingGameId === card.gameId
+            const isRunning = runningGameIds?.has(card.gameId) ?? false
             return (
               <div
                 key={`${card.gameId}-${card.playedAt}`}
@@ -106,8 +109,8 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
                   <button
                     type="button"
                     onClick={() => onPlayLastPlayed(card.gameId)}
-                    disabled={launchingGameId !== null}
-                    className="relative w-10 h-10 rounded-md overflow-hidden shrink-0 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#6ec1ff]/60"
+                    disabled={launchingGameId !== null || isRunning}
+                    className="relative w-10 h-14 rounded-md overflow-hidden shrink-0 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#6ec1ff]/60"
                     aria-label={`Play ${card.name}`}
                     title={`Play ${card.name}`}
                   >
@@ -115,17 +118,17 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
                       <img
                         src={card.coverUrl}
                         alt={card.name}
-                        className="w-10 h-10 object-cover transition-all duration-200 saturate-75 brightness-90 group-hover:grayscale group-hover:brightness-75"
+                        className="w-10 h-15 object-cover transition-all duration-200 saturate-75 brightness-90 group-hover:grayscale group-hover:brightness-75"
                       />
                     ) : (
-                      <div className="w-10 h-10 bg-steam-700 inline-flex items-center justify-center">
+                      <div className="w-10 h-14 bg-steam-700 inline-flex items-center justify-center">
                         <Gamepad2 className="w-4 h-4 text-steam-300" />
                       </div>
                     )}
 
                     <div className="absolute inset-0 bg-black/25 group-hover:bg-black/40 transition-colors" />
                     <div className="absolute inset-0 inline-flex items-center justify-center">
-                      {isLaunching ? (
+                      {isLaunching || isRunning ? (
                         <Loader2 className="w-4 h-4 animate-spin text-white" />
                       ) : (
                         <Play className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-150" />
@@ -141,6 +144,12 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
                       <Clock3 className="h-3 w-3" />
                       <span>{formatLastPlayed(card.playedAt)}</span>
                     </div>
+                    {card.playtime && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#b1b1b1]">
+                        <Gamepad2 className="h-3 w-3" />
+                        <span>Total playtime: {card.playtime}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

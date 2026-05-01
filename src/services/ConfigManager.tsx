@@ -439,6 +439,22 @@ export async function addPlayHistoryEntry(gameId: string, playedAt?: string) {
     Logger.info(`Play history entry added for game ID ${gameId} at ${timestamp}`);
 }
 
+export async function updateLatestPlayHistoryEntry(gameId: string) {
+    const playHistory = await loadPlayHistory();
+    const entriesForGame = playHistory.plays.filter((entry) => entry.gameId === gameId);
+    if (entriesForGame.length === 0) {
+        Logger.warn(`No play history entries found for game ID ${gameId} to update.`);
+        return;
+    }
+    const latestEntry = entriesForGame.reduce((latest, entry) => {
+        return new Date(entry.playedAt) > new Date(latest.playedAt) ? entry : latest;
+    }, entriesForGame[0]);
+
+    latestEntry.playedAt = new Date().toISOString();
+    await savePlayHistory(playHistory);
+    Logger.info(`Latest play history entry for game ID ${gameId} updated to current timestamp.`);
+}
+
 export async function getPlayHistory(gameId?: string) {
     const playHistory = await loadPlayHistory();
     const allPlays = playHistory.plays || [];

@@ -59,6 +59,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 use tauri::Manager;
+use sysinfo::{Pid, System};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -237,7 +238,7 @@ fn open_game_folder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Result<(), String> {
+fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Result<u32, String> {
     let game_path = PathBuf::from(&game_path);
     if !game_path.exists() {
         return Err(format!("Game path does not exist: {}", game_path.display()));
@@ -258,43 +259,65 @@ fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Res
         .unwrap_or_default()
         .to_ascii_lowercase();
 
-    if extension == "bat" || extension == "cmd" {
-        let launch_result = Command::new("cmd")
+    let launch_result = if extension == "bat" || extension == "cmd" {
+        Command::new("cmd")
             .arg("/C")
             .arg(&launch_file)
             .args(&args)
             .current_dir(&game_path)
-            .spawn();
-
-        if let Err(err) = launch_result {
-            #[cfg(target_os = "windows")]
-            {
-                if err.raw_os_error() == Some(740) {
-                    return launch_with_elevation(&launch_file, &args, &game_path);
-                }
-            }
-
-            return Err(format!("Failed to launch game script: {}", err));
-        }
+            .spawn()
     } else {
-        let launch_result = Command::new(&launch_file)
+        Command::new(&launch_file)
             .args(&args)
             .current_dir(&game_path)
-            .spawn();
+            .spawn()
+    };
 
-        if let Err(err) = launch_result {
+    match launch_result {
+        Ok(child) => Ok(child.id()),
+        Err(err) => {
             #[cfg(target_os = "windows")]
             {
                 if err.raw_os_error() == Some(740) {
-                    return launch_with_elevation(&launch_file, &args, &game_path);
+                    launch_with_elevation(&launch_file, &args, &game_path)?;
+                    return Ok(0);
                 }
             }
 
-            return Err(format!("Failed to launch game executable: {}", err));
+            let label = if extension == "bat" || extension == "cmd" {
+                "script"
+            } else {
+                "executable"
+            };
+
+            Err(format!("Failed to launch game {}: {}", label, err))
         }
     }
+}
 
-    Ok(())
+#[tauri::command]
+async fn wait_for_process_exit(pid: u32, poll_interval_ms: Option<u64>) -> Result<(), String> {
+    let poll_interval_ms = poll_interval_ms.unwrap_or(10000);
+    if pid == 0 {
+        return Ok(());
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut system = System::new();
+        let target_pid = Pid::from_u32(pid);
+
+        loop {
+            system.refresh_processes();
+            if system.process(target_pid).is_none() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(poll_interval_ms));
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|err| format!("Failed to monitor process {}: {}", pid, err))?
 }
 
 #[tauri::command]
@@ -484,6 +507,7 @@ pub fn run() {
             get_directory_size,
             open_game_folder,
             launch_game,
+            wait_for_process_exit,
             download_and_launch_installer,
             download_file_with_progress,
             unzip_file

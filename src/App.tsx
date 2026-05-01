@@ -28,9 +28,11 @@ import {
     saveGameConfig,
     saveGameInfoCache,
     setTwitchCredentials,
+    updateLatestPlayHistoryEntry,
 } from './services/ConfigManager'
 import { initIGDB, searchGame } from './services/GameDataManager'
 import { launchGame } from './services/GameLauncher'
+import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from './services/PlaytimeManager'
 import { getVersion } from '@tauri-apps/api/app'
 
 interface Game {
@@ -58,6 +60,7 @@ interface LastPlayedCard {
     name: string
     coverUrl?: string
     playedAt: string
+    playtime?: string
 }
 
 type IGDBConnectionStatus = 'checking' | 'missing' | 'invalid' | 'connected'
@@ -92,6 +95,7 @@ function App() {
     const [launchToasts, setLaunchToasts] = useState<LaunchToast[]>([])
     const [lastPlayedCards, setLastPlayedCards] = useState<LastPlayedCard[]>([])
     const [launchingGameId, setLaunchingGameId] = useState<string | null>(null)
+    const [runningGameIds, setRunningGameIds] = useState<Set<string>>(new Set())
     const [pickerGame, setPickerGame] = useState<Game | null>(null)
     const [pickerLaunchFiles, setPickerLaunchFiles] = useState<string[]>([])
     const [pickerSelectedLaunchFile, setPickerSelectedLaunchFile] = useState('')
@@ -227,21 +231,27 @@ function App() {
             }, [])
             .slice(0, 10)
 
-        const cards = uniqueLatestByGame
-            .map((entry: any) => {
+        const cardsPromises = uniqueLatestByGame
+            .map(async (entry: any) => {
                 const game = byId.get(entry.gameId)
                 if (!game) {
                     return null
                 }
+
+                const playtimeMs = await getPlaytime(entry.gameId)
+                const playtime = formatPlaytime(playtimeMs)
 
                 return {
                     gameId: entry.gameId,
                     name: game.name,
                     coverUrl: game.coverUrl,
                     playedAt: entry.playedAt,
-                } as LastPlayedCard
+                    playtime: playtime,
+                } as LastPlayedCard | null
             })
-            .filter((entry): entry is LastPlayedCard => entry !== null)
+
+        const cardsResolved = await Promise.all(cardsPromises)
+        const cards = cardsResolved.filter((entry): entry is LastPlayedCard => entry !== null)
 
         setLastPlayedCards(cards)
     }
@@ -250,8 +260,26 @@ function App() {
         await refreshLastPlayedCards()
     }
 
+    const handleGameRunningChange = (gameId: string, isRunning: boolean) => {
+        setRunningGameIds((prev) => {
+            const next = new Set(prev)
+            if (isRunning) {
+                next.add(gameId)
+            } else {
+                next.delete(gameId)
+                updateLatestPlayHistoryEntry(gameId).catch((error) => {
+                    Logger.error(`Failed to update play history for game ID ${gameId}:`, error)
+                })
+                refreshLastPlayedCards().catch((error) => {
+                    Logger.error(`Failed to refresh last played cards after game ID ${gameId} stopped:`, error)
+                })
+            }
+            return next
+        })
+    }
+
     const handlePlayLastPlayed = async (gameId: string) => {
-        if (launchingGameId) {
+        if (launchingGameId || runningGameIds.has(gameId)) {
             return
         }
 
@@ -280,13 +308,14 @@ function App() {
 
             setLaunchingGameId(game.id)
             const launchStartedAt = Date.now()
-            await launchGame(game.path, game.id)
+            const pid = await launchGame(game.path, game.id)
             try {
                 await addPlayHistoryEntry(game.id)
                 await refreshLastPlayedCards()
             } catch (historyError) {
                 Logger.warn(`Game launched but failed to update play history for ${game.name}:`, historyError)
             }
+            void trackPlaytimeForProcess(game.id, pid, (isRunning) => handleGameRunningChange(game.id, isRunning))
             await waitForMinimumLaunchLoading(launchStartedAt)
         } catch (error) {
             Logger.error(`Failed to launch game ${game.name}:`, error)
@@ -302,6 +331,10 @@ function App() {
             return
         }
 
+        if (runningGameIds.has(pickerGame.id)) {
+            return
+        }
+
         try {
             setLaunchingGameId(pickerGame.id)
             const launchStartedAt = Date.now()
@@ -312,13 +345,14 @@ function App() {
                 allLaunchFiles: pickerPendingConfig?.allLaunchFiles || pickerLaunchFiles,
             })
 
-            await launchGame(pickerGame.path, pickerGame.id)
+            const pid = await launchGame(pickerGame.path, pickerGame.id)
             try {
                 await addPlayHistoryEntry(pickerGame.id)
                 await refreshLastPlayedCards()
             } catch (historyError) {
                 Logger.warn(`Game launched but failed to update play history for ${pickerGame.name}:`, historyError)
             }
+            void trackPlaytimeForProcess(pickerGame.id, pid, (isRunning) => handleGameRunningChange(pickerGame.id, isRunning))
             await waitForMinimumLaunchLoading(launchStartedAt)
         } catch (error) {
             Logger.error(`Failed to persist launch file selection for ${pickerGame.name}:`, error)
@@ -749,6 +783,14 @@ function App() {
             setSelectedGame(null)
         }
 
+        setRunningGameIds((prev) => {
+            const next = new Set(prev)
+            for (const id of removedIds) {
+                next.delete(id)
+            }
+            return next
+        })
+
         setGames((prev) => {
             const next = prev.filter((game) => !removedIds.has(game.id))
             void refreshLastPlayedCards(next)
@@ -869,7 +911,7 @@ function App() {
 
     return (
         <div className="flex h-screen bg-steam-900 text-white overflow-hidden">
-            <div className="fixed top-4 right-4 z-[10000] flex flex-col gap-2 pointer-events-none">
+            <div className="fixed top-4 right-4 z-10000 flex flex-col gap-2 pointer-events-none">
                 {launchToasts.map((toast) => (
                     <div
                         key={toast.id}
@@ -909,6 +951,7 @@ function App() {
                 lastPlayedCards={lastPlayedCards}
                 onPlayLastPlayed={handlePlayLastPlayed}
                 launchingGameId={launchingGameId}
+                runningGameIds={runningGameIds}
             />
 
             <LaunchFilePickerModal
@@ -950,6 +993,8 @@ function App() {
                         onLaunchError={showLaunchToast}
                         onShowToast={showLaunchToast}
                         onLaunchSuccess={handleLaunchSuccess}
+                        isGameRunning={runningGameIds.has(selectedGame.id)}
+                        onGameRunningChange={handleGameRunningChange}
                     />
                 ) : (
                     <GameLibrary
@@ -959,6 +1004,8 @@ function App() {
                         onShowToast={showLaunchToast}
                         onLaunchSuccess={handleLaunchSuccess}
                         onGamesRemoved={handleGamesRemoved}
+                        runningGameIds={runningGameIds}
+                        onGameRunningChange={handleGameRunningChange}
                         igdbConnectionStatus={igdbConnectionStatus}
                         onConnectIGDB={handleConnectIGDB}
                         onOpenSettings={handleOpenSettings}

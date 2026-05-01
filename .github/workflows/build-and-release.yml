@@ -202,9 +202,9 @@ jobs:
           PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v "^$VERSION$" | head -n 1 || true)
           echo "Previous tag: $PREV_TAG"
           if [ -n "$PREV_TAG" ]; then
-            LOG=$(git log --pretty=format:'%h%n%s (%an)%n%b%n---END---' "$PREV_TAG..HEAD" | awk 'BEGIN { RS="---END---\n"; ORS="" } NF { n=split($0, lines, "\n"); hash=lines[1]; if (n >= 2 && lines[2] != "") { printf("- %s (#%s)\n", lines[2], hash) } else { printf("- (#%s)\n", hash) } for (i=3; i<=n; i++) { if (lines[i] == "") { printf("  (#%s)\n", hash) } else { printf("  %s (#%s)\n", lines[i], hash) } } printf("\n") }')
+            LOG=$(git log --pretty=format:'%h%x1f%s (%an)%x1f%b%x1e' "$PREV_TAG..HEAD" | awk 'BEGIN { RS="\x1e"; FS="\x1f"; ORS="" } NF { hash=$1; subject=$2; gsub(/^[ \t]*[-*][ \t]*/, "", subject); if (subject == "") { subject = "(no subject)" } printf("- %s (#%s)\n", subject, hash); body=$3; n=split(body, lines, "\n"); for (i=1; i<=n; i++) { line=lines[i]; sub(/\r$/, "", line); if (line == "") { continue } sub(/^[ \t]*/, "", line); if (line ~ /^[-*][ \t]+/) { sub(/^[-*][ \t]+/, "", line) } printf("- %s (#%s)\n", line, hash) } printf("\n") }')
           else
-            LOG=$(git log --pretty=format:'%h%n%s (%an)%n%b%n---END---' | awk 'BEGIN { RS="---END---\n"; ORS="" } NF { n=split($0, lines, "\n"); hash=lines[1]; if (n >= 2 && lines[2] != "") { printf("- %s (#%s)\n", lines[2], hash) } else { printf("- (#%s)\n", hash) } for (i=3; i<=n; i++) { if (lines[i] == "") { printf("  (#%s)\n", hash) } else { printf("  %s (#%s)\n", lines[i], hash) } } printf("\n") }')
+            LOG=$(git log --pretty=format:'%h%x1f%s (%an)%x1f%b%x1e' | awk 'BEGIN { RS="\x1e"; FS="\x1f"; ORS="" } NF { hash=$1; subject=$2; gsub(/^[ \t]*[-*][ \t]*/, "", subject); if (subject == "") { subject = "(no subject)" } printf("- %s (#%s)\n", subject, hash); body=$3; n=split(body, lines, "\n"); for (i=1; i<=n; i++) { line=lines[i]; sub(/\r$/, "", line); if (line == "") { continue } sub(/^[ \t]*/, "", line); if (line ~ /^[-*][ \t]+/) { sub(/^[-*][ \t]+/, "", line) } printf("- %s (#%s)\n", line, hash) } printf("\n") }')
           fi
           if [ -z "$LOG" ]; then
             LOG="No commits found."

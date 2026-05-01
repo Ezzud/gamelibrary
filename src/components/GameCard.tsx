@@ -21,6 +21,7 @@ interface GameCardProps {
   onClick: () => void
   onPlay?: (game: Game) => Promise<void> | void
   isPlayLoading?: boolean
+  isRunning?: boolean
   onOpenFolder?: (game: Game) => void
   onGameSettings?: (game: Game) => void
   onDelete?: (game: Game) => void
@@ -31,7 +32,7 @@ interface GameCardProps {
  * Params: game, onClick - game data and click handler
  * Returns: JSX.Element - card UI
  */
-const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, onGameSettings, onDelete }: GameCardProps) => {
+const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = false, onOpenFolder, onGameSettings, onDelete }: GameCardProps) => {
   const [isContextOpen, setIsContextOpen] = useState(false)
   const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 })
   const [specialTags, setSpecialTags] = useState<string[]>([])
@@ -227,7 +228,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
   }
 
   const handlePlayAction = async () => {
-    if (!onPlay || isPlayLoading) {
+    if (!onPlay || isPlayLoading || isRunning) {
       return
     }
 
@@ -285,7 +286,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
         </div>
 
         {/* Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
+        <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
           <p className="text-white font-semibold text-sm line-clamp-2">{game.name}</p>
         </div>
       </button>
@@ -293,22 +294,22 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
       {isContextOpen && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[9999] w-52 rounded-lg !bg-[#1b2838] border border-[#2a475e] shadow-xl overflow-hidden divide-y divide-[#2a475e]"
+          className="fixed z-9999 w-52 rounded-lg bg-[#1b2838]! border border-[#2a475e] shadow-xl overflow-hidden divide-y divide-[#2a475e]"
           style={{ left: `${contextPosition.x}px`, top: `${contextPosition.y}px` }}
         >
           <button
             type="button"
             onClick={() => void handlePlayAction()}
-            disabled={isPlayLoading}
-            className="w-full block px-3 py-2 text-left text-sm text-white !bg-[#2a475e] hover:!bg-[#3a6285] active:!bg-[#4d7aa1] disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-150 flex items-center gap-2"
+            disabled={isPlayLoading || isRunning}
+            className="w-full block px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-150 flex items-center gap-2"
           >
-            {isPlayLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            {isPlayLoading ? 'Launching...' : 'Play'}
+            {isPlayLoading || isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {isPlayLoading ? 'Launching...' : isRunning ? 'Running' : 'Play'}
           </button>
           <button
             type="button"
             onClick={() => handleAction(onOpenFolder)}
-            className="w-full block px-3 py-2 text-left text-sm text-white !bg-[#2a475e] hover:!bg-[#3a6285] active:!bg-[#4d7aa1] transition-colors duration-150 flex items-center gap-2"
+            className="w-full block px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! transition-colors duration-150 flex items-center gap-2"
           >
             <FolderOpen className="w-4 h-4" />
             Open Folder
@@ -316,7 +317,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
           <button
             type="button"
             onClick={() => handleAction(onGameSettings || onClick)}
-            className="w-full block px-3 py-2 text-left text-sm text-white !bg-[#2a475e] hover:!bg-[#3a6285] active:!bg-[#4d7aa1] transition-colors duration-150 flex items-center gap-2"
+            className="w-full block px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! transition-colors duration-150 flex items-center gap-2"
           >
             <Settings className="w-4 h-4" />
             Game Settings
@@ -324,7 +325,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, onOpenFolder, 
           <button
             type="button"
             onClick={() => handleAction(onDelete)}
-            className="w-full block px-3 py-2 text-left text-sm text-white !bg-[#8b1f1f] hover:!bg-[#a62d2d] active:!bg-[#c94343] transition-colors duration-150 flex items-center gap-2"
+            className="w-full block px-3 py-2 text-left text-sm text-white bg-[#8b1f1f]! hover:bg-[#a62d2d]! active:bg-[#c94343]! transition-colors duration-150 flex items-center gap-2"
           >
             <Trash2 className="w-4 h-4" />
             Delete

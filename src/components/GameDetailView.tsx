@@ -18,6 +18,7 @@ import { SiEpicgames, SiGogdotcom } from 'react-icons/si'
 import GameConfigPanel from './GameConfigPanel'
 import { getGameSize as fetchGameSize } from '../services/GameDataManager'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
+import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from '../services/PlaytimeManager'
 import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, saveGameConfig } from '../services/ConfigManager'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 
@@ -82,6 +83,8 @@ interface GameDetailViewProps {
     onLaunchError: (message: string) => void
     onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
     onLaunchSuccess: () => Promise<void> | void
+    isGameRunning?: boolean
+    onGameRunningChange?: (gameId: string, isRunning: boolean) => void
 }
 
 /**
@@ -89,7 +92,7 @@ interface GameDetailViewProps {
  * Params: game, onBack, onGameUpdated - game data and handlers
  * Returns: JSX.Element - detail view layout
  */
-const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToast, onLaunchSuccess }: GameDetailViewProps) => {
+const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToast, onLaunchSuccess, isGameRunning = false, onGameRunningChange }: GameDetailViewProps) => {
     const [isLaunching, setIsLaunching] = useState(false)
     const [showConfig, setShowConfig] = useState(false)
     const [showLaunchFilePicker, setShowLaunchFilePicker] = useState(false)
@@ -103,6 +106,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
     const [lastPlayedAt, setLastPlayedAt] = useState<string | null>(null)
     const [copiedPath, setCopiedPath] = useState(false)
     const [isMissing, setIsMissing] = useState(false)
+    const [gamePlaytime, setGamePlaytime] = useState<string>('')
     const backgroundThumbnailUrl = game.thumbnailUrl || (game.coverUrl ? game.coverUrl.replace('t_cover_big', 't_thumb') : '')
 
     const tagVisuals: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
@@ -152,6 +156,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
         getGameCache()
         getGameSpecialTags()
         getGamePlayHistory()
+        getGamePlaytime()
     }, [game.id])
 
     useEffect(() => {
@@ -201,6 +206,17 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
         }
     }
 
+    const getGamePlaytime = async () => {
+        try {
+            const playtimeMs = await getPlaytime(game.id)
+            const playtime = formatPlaytime(playtimeMs)
+            setGamePlaytime(playtime)
+        } catch (error) {
+            console.error('Failed to load game playtime:', error)
+            setGamePlaytime('Unknown')
+        }
+    }
+
 
     /**
      * Gets the size of the game directory
@@ -226,7 +242,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
      * Returns: Promise<void>
      */
     const handleLaunch = async () => {
-        if (isLaunching) {
+        if (isLaunching || isGameRunning) {
             return
         }
 
@@ -248,7 +264,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
         setIsLaunching(true)
         const launchStartedAt = Date.now()
         try {
-            await launchGame(game.path, game.id)
+            const pid = await launchGame(game.path, game.id)
             try {
                 await addPlayHistoryEntry(game.id)
                 await onLaunchSuccess()
@@ -256,6 +272,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
             } catch (historyError) {
                 console.warn('Game launched but failed to update play history:', historyError)
             }
+            void trackPlaytimeForProcess(game.id, pid, (running) => onGameRunningChange?.(game.id, running))
         } catch (error) {
             console.error('Failed to launch game:', error)
             const message = error instanceof Error ? error.message : String(error)
@@ -271,6 +288,10 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
             return
         }
 
+        if (isGameRunning) {
+            return
+        }
+
         setShowLaunchFilePicker(false)
         setIsLaunching(true)
         const launchStartedAt = Date.now()
@@ -283,7 +304,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                 allLaunchFiles: pendingLaunchConfig?.allLaunchFiles || availableLaunchFiles,
             })
 
-            await launchGame(game.path, game.id)
+            const pid = await launchGame(game.path, game.id)
             try {
                 await addPlayHistoryEntry(game.id)
                 await onLaunchSuccess()
@@ -291,6 +312,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
             } catch (historyError) {
                 console.warn('Game launched but failed to update play history:', historyError)
             }
+            void trackPlaytimeForProcess(game.id, pid, (running) => onGameRunningChange?.(game.id, running))
         } catch (error) {
             console.error('Failed to save launch file preference or launch game:', error)
             const message = error instanceof Error ? error.message : String(error)
@@ -476,6 +498,9 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                                 <p className="text-steam-400 text-sm mb-3">PLAY HISTORY</p>
                                 <div className="text-sm">
                                     <div className="flex items-center gap-2 text-[#4fd673]">
+                                        <Gamepad2 className="w-4 h-4" />
+                                        <span>{gamePlaytime}</span>
+                                        <div className="mx-10 text-steam-600">|</div>
                                         <Clock3 className="w-4 h-4" />
                                         <span>{formatLastPlayed(lastPlayedAt)}</span>
                                     </div>
@@ -506,15 +531,15 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                             <div className="flex items-center gap-4">
                                 <button
                                     onClick={handleLaunch}
-                                    disabled={isLaunching || isMissing}
+                                    disabled={isLaunching || isMissing || isGameRunning}
                                     className="w-[260px] bg-[#1f8f4e] hover:bg-[#27a45a] disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
                                 >
-                                    {isLaunching ? (
+                                    {isLaunching || isGameRunning ?  (
                                         <Loader className="w-5 h-5 animate-spin" />
                                     ) : (
                                         <Play className="w-5 h-5" />
                                     )}
-                                    Play
+                                    {isLaunching ? 'Launching...' : isGameRunning ? 'Running' : 'Play'}
                                 </button>
 
                                 <button

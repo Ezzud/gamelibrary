@@ -20,6 +20,7 @@ const blacklistedGames = [
     "SteamVR",
     "SteamVR Home",
     "SteamVR Performance Test",
+    "SteamVRPerformanceTest",
     "SteamVR Workshop Tools",
     "wallpaper_engine",
     "Steam360VideoPlayer",
@@ -612,6 +613,16 @@ export async function getAllLaunchFiles(gamePath: string) {
                     Logger.warn(`Could not read Binaries/Win64 in ${gamePath}/${subfolder.name}:`, win64Err);
                 }
             }
+
+            const sourceEngineBinariesExists = await exists(`${gamePath}/${subfolder.name}/bin/win64`);
+            if (sourceEngineBinariesExists) {
+                try {
+                    const sourceEngineEntries = await readDir(`${gamePath}/${subfolder.name}/bin/win64`);
+                    processEntries(sourceEngineEntries, `${subfolder.name}/bin/win64/`);
+                } catch (sourceEngineErr) {
+                    Logger.warn(`Could not read source engine binaries in ${gamePath}/${subfolder.name}:`, sourceEngineErr);
+                }
+            }
         }
 
         const binariesWin64Path = `${gamePath}/Binaries/Win64`;
@@ -625,13 +636,49 @@ export async function getAllLaunchFiles(gamePath: string) {
             }
         }
 
+        const sourceEngineBinariesPath = `${gamePath}/bin/win64`;
+        const sourceEngineBinariesExists = await exists(sourceEngineBinariesPath);
+        if (sourceEngineBinariesExists) {
+            try {
+                const sourceEngineBinariesEntries = await readDir(sourceEngineBinariesPath);
+                processEntries(sourceEngineBinariesEntries, 'bin/win64/');
+            } catch (sourceEngineErr) {
+                Logger.warn(`Could not read source engine binaries in ${gamePath}:`, sourceEngineErr);
+            }
+        }
 
-        // Sort launch file by exe then bat, and then alphabetically
+        const WindowsSubfolderPath = `${gamePath}/Windows`;
+        const windowsSubfolderExists = await exists(WindowsSubfolderPath);
+        if (windowsSubfolderExists) {
+            try {
+                const windowsEntries = await readDir(WindowsSubfolderPath);
+                processEntries(windowsEntries, 'Windows/');
+            } catch (windowsErr) {
+                Logger.warn(`Could not read Windows sub-folder in ${gamePath}:`, windowsErr);
+            }
+        }
+
+
+        // Sort launch files with these rules:
+        // 1) prefer .exe over .bat
+        // 2) when both are .exe, prefer the one with the smallest parent-path length
+        //    (split on '/' and remove the final element, count remaining segments)
+        // 3) fallback to alphabetical compare
         launchFiles.sort((a, b) => {
-            const aIsExe = a.endsWith('.exe');
-            const bIsExe = b.endsWith('.exe');
+            const aLower = a.toLowerCase();
+            const bLower = b.toLowerCase();
+            const aIsExe = aLower.endsWith('.exe');
+            const bIsExe = bLower.endsWith('.exe');
             if (aIsExe && !bIsExe) return -1;
             if (!aIsExe && bIsExe) return 1;
+
+            if (aIsExe && bIsExe) {
+                const aDirs = a.split('/').slice(0, -1).filter(Boolean).length;
+                const bDirs = b.split('/').slice(0, -1).filter(Boolean).length;
+                if (aDirs !== bDirs) return aDirs - bDirs; // smaller first
+                return a.localeCompare(b);
+            }
+
             return a.localeCompare(b);
         });
         return launchFiles;
@@ -847,7 +894,7 @@ export async function removeDuplicateGames() {
 
 async function generateGameId() {
     // game-number
-    return `game-${Math.floor(Math.random() * 10000)}`;
+    return `game-${Math.floor(Math.random() * 100000)}`;
 }
 
 export async function registerGames(games: any[], platform: string, onProgress?: ScanProgressCallback) {
