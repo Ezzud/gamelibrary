@@ -466,7 +466,6 @@ function App() {
             Logger.info('App mounted, loading games...')
             setIsLoadingGames(true)
             try {
-                await ensureRunOnStartupAppliedOnLaunch()
                 await validateIGDBCredentialsFromConfig()
                 await loadFavoriteGameIds()
                 await loadGames()
@@ -474,8 +473,8 @@ function App() {
             } finally {
                 setIsLoadingGames(false)
             }
-
             void (async () => {
+                await ensureRunOnStartupAppliedOnLaunch()
                 setIsScanning(true)
                 setScanProgress(0)
                 setScanStatusMessage('Scanning all custom folders...')
