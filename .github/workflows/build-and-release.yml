@@ -171,16 +171,16 @@ jobs:
           VERSION="${{ needs.detect_version_change.outputs.current_version }}"
           mkdir -p dist-release
 
-          APP_EXE_SOURCE=$(find dist-artifacts -type f -name 'gamelibrary.exe' | head -n 1)
-          SETUP_EXE_SOURCE=$(find dist-artifacts -type f -name "gamelibrary_${VERSION}_x64-setup.exe" | head -n 1)
+          APP_EXE_SOURCE=$(find dist-artifacts -type f -name 'GameLibrary.exe' | head -n 1)
+          SETUP_EXE_SOURCE=$(find dist-artifacts -type f -name "GameLibrary_${VERSION}_x64-setup.exe" | head -n 1)
 
           if [[ -z "${APP_EXE_SOURCE:-}" ]]; then
-            echo "[Release] gamelibrary.exe not found in downloaded artifacts"
+            echo "[Release] GameLibrary.exe not found in downloaded artifacts"
             exit 1
           fi
 
           if [[ -z "${SETUP_EXE_SOURCE:-}" ]]; then
-            echo "[Release] gamelibrary_${VERSION}_x64-setup.exe not found in downloaded artifacts"
+            echo "[Release] GameLibrary_${VERSION}_x64-setup.exe not found in downloaded artifacts"
             exit 1
           fi
 
