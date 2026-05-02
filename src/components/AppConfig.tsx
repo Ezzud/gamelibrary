@@ -42,7 +42,8 @@ import {
   loadGameList,
   removeIgnoredFolder,
   removeCustomScanFolder,
-  setCardHoverEffect
+  setCardHoverEffect,
+  setRunOnStartup
 } from '../services/ConfigManager'
 import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
@@ -62,7 +63,7 @@ interface AppConfigProps {
   onRefetchSpecialTags: () => Promise<void> | void
   onRemoveDuplicates: () => Promise<void> | void
   onConnectIGDB: (clientId: string, clientSecret: string) => Promise<{ success: boolean; message?: string }>
-  onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
+  onShowToast?: (message: string, options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }) => void
 }
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
@@ -159,6 +160,7 @@ const AppConfig = ({
   const [isConnectingCredentials, setIsConnectingCredentials] = useState(false)
   const [credentialsStatus, setCredentialsStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [cardHoverEffect, setCardHoverEffectState] = useState('zoom')
+  const [runOnStartup, setRunOnStartupState] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckStatus>('idle')
   const [currentVersion, setCurrentVersion] = useState('Unknown')
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
@@ -265,6 +267,7 @@ const AppConfig = ({
       setCredentialsClientId(config.twitchClientId || '')
       setCredentialsClientSecret(config.twitchClientSecret || '')
       setCardHoverEffectState(config.cardHoverEffect || 'zoom')
+      setRunOnStartupState(!!config.runOnStartup)
     }
 
     void loadCredentials()
@@ -610,7 +613,7 @@ const AppConfig = ({
     try {
       const installerPath = await invoke<string>('download_and_launch_installer', { version: latestVersion })
       Logger.success(`Update installer downloaded and launched: ${installerPath}`)
-      onShowToast?.(`Installer launched for v${latestVersion}. Close GameLibrary to continue update if prompted.`, { durationMs: 5000 })
+      onShowToast?.(`Installer launched for v${latestVersion}. Close GameLibrary to continue update if prompted.`, { durationMs: 5000, style: 'success' })
     } catch (error) {
       Logger.error('Failed to download or launch update installer:', error)
       const rawErrorMessage = error instanceof Error ? error.message : String(error)
@@ -624,7 +627,7 @@ const AppConfig = ({
         errorCode
           ? `Update install failed (HTTP ${errorCode}): ${normalizedMessage || 'Unknown error'}`
           : `Update install failed: ${normalizedMessage || 'Unknown error'}`,
-        { durationMs: 7000 }
+        { durationMs: 7000, style: 'error' }
       )
     } finally {
       setIsInstallingUpdate(false)
@@ -640,7 +643,7 @@ const AppConfig = ({
       await invoke('open_game_folder', { path })
     } catch (error) {
       Logger.error(`Failed to open folder ${path}:`, error)
-      onShowToast?.('Failed to open folder.', { durationMs: 5000 })
+      onShowToast?.('Failed to open folder.', { durationMs: 5000, style: 'error' })
     }
   }
 
@@ -783,6 +786,51 @@ const AppConfig = ({
                     <span className="text-xs text-steam-200">{option.label}</span>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+              <p className="text-sm text-steam-100 mb-3">Startup</p>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm text-steam-100">Run when computer starts</p>
+                  <p className="text-xs text-steam-400">Automatically launch GameLibrary on user login</p>
+                </div>
+                <div className="flex items-center mr-2">
+                  <div
+                    role="switch"
+                    tabIndex={0}
+                    aria-checked={runOnStartup}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        const next = !runOnStartup
+                        try {
+                          await setRunOnStartup(next)
+                          setRunOnStartupState(next)
+                          onShowToast?.(next ? 'Enabled run on startup' : 'Disabled run on startup', { durationMs: 3000, style: 'success' })
+                        } catch (err) {
+                          Logger.error('Failed to toggle run on startup:', err)
+                          onShowToast?.('Failed to change run-on-startup setting', { durationMs: 5000, style: 'error' })
+                        }
+                      }
+                    }}
+                    onClick={async () => {
+                      const next = !runOnStartup
+                      try {
+                        await setRunOnStartup(next)
+                        setRunOnStartupState(next)
+                        onShowToast?.(next ? 'Enabled run on startup' : 'Disabled run on startup', { durationMs: 3000, style: 'success' })
+                      } catch (err) {
+                        Logger.error('Failed to toggle run on startup:', err)
+                        onShowToast?.('Failed to change run-on-startup setting', { durationMs: 5000, style: 'error' })
+                      }
+                    }}
+                    className={`relative inline-flex h-8 w-16 items-center cursor-pointer select-none rounded-md p-1 transition-colors duration-300 focus:outline-none ${runOnStartup ? 'bg-sky-400' : 'bg-zinc-700'}`}
+                  >
+                    <div className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${runOnStartup ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'}`} />
+                  </div>
+                </div>
               </div>
             </div>
 

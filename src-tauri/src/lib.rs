@@ -61,6 +61,374 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 use sysinfo::{Pid, System};
 
+#[cfg(target_os = "windows")]
+const WINDOWS_RUN_VALUE_NAMES: [&str; 4] = ["Game Library", "gamelibrary", "GameLibrary", "GameLibrary.exe"];
+
+#[cfg(target_os = "windows")]
+const WINDOWS_STARTUP_APPROVED_KEYS: [&str; 2] = [
+    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run",
+    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run32",
+];
+
+#[cfg(target_os = "windows")]
+fn normalize_windows_path_like(value: &str) -> String {
+    value
+        .trim_matches('"')
+        .replace('/', "\\")
+        .trim()
+        .to_ascii_lowercase()
+}
+
+#[cfg(target_os = "windows")]
+fn log_reg_output(context: &str, output: &std::process::Output) {
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    eprintln!(
+        "[startup-reg] {} | status={} | stdout='{}' | stderr='{}'",
+        context,
+        output.status,
+        stdout,
+        stderr
+    );
+}
+
+#[cfg(target_os = "windows")]
+fn find_existing_run_value_name_for_exe_windows(exe_path: &str) -> Result<Option<String>, String> {
+    let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+    eprintln!("[startup-reg] Querying Run key for current exe: {}", exe_path);
+    let output = Command::new("reg")
+        .args(["query", key])
+        .output()
+        .map_err(|e| format!("Failed to query Run key: {}", e))?;
+
+    log_reg_output("query Run key", &output);
+
+    if !output.status.success() {
+        eprintln!("[startup-reg] Run key query did not succeed; no existing value will be reused.");
+        return Ok(None);
+    }
+
+    let exe_normalized = normalize_windows_path_like(exe_path);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    for line in stdout.lines() {
+        if !line.to_ascii_lowercase().contains("reg_sz") {
+            continue;
+        }
+
+        let Some((name_part, data_part)) = line.split_once("REG_SZ") else {
+            continue;
+        };
+
+        let value_name = name_part.trim();
+        if value_name.is_empty() {
+            continue;
+        }
+
+        let data_normalized = normalize_windows_path_like(data_part);
+        eprintln!(
+            "[startup-reg] Candidate Run value='{}' data='{}' normalized='{}'",
+            value_name,
+            data_part.trim(),
+            data_normalized
+        );
+        if data_normalized.contains(&exe_normalized) {
+            eprintln!("[startup-reg] Matched existing Run value for current exe: {}", value_name);
+            return Ok(Some(value_name.to_string()));
+        }
+    }
+
+    Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+fn remove_windows_startup_registration_for_value_name(value_name: &str) -> Result<(), String> {
+    let run_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+    eprintln!("[startup-reg] Removing existing Run entry for value='{}'", value_name);
+    let run_status = Command::new("reg")
+        .args(["delete", run_key, "/v", value_name, "/f"])
+        .status()
+        .map_err(|e| format!("Failed to delete Run value '{}': {}", value_name, e))?;
+    eprintln!("[startup-reg] Delete Run result for value='{}': {}", value_name, run_status);
+
+    for key in WINDOWS_STARTUP_APPROVED_KEYS {
+        eprintln!("[startup-reg] Removing StartupApproved entry for key='{}' value='{}'", key, value_name);
+        let status = Command::new("reg")
+            .args(["delete", key, "/v", value_name, "/f"])
+            .status()
+            .map_err(|e| format!("Failed to delete StartupApproved value '{}': {}", value_name, e))?;
+        eprintln!("[startup-reg] Delete StartupApproved result for key='{}' value='{}': {}", key, value_name, status);
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn remove_windows_startup_registration_for_exe(exe_path: &str) -> Result<Vec<String>, String> {
+    let mut removed_names = Vec::new();
+
+    if let Some(existing_name) = find_existing_run_value_name_for_exe_windows(exe_path)? {
+        remove_windows_startup_registration_for_value_name(&existing_name)?;
+        removed_names.push(existing_name);
+    }
+
+    Ok(removed_names)
+}
+
+#[cfg(target_os = "windows")]
+fn set_startup_approved_enabled_windows(value_name: &str) -> Result<bool, String> {
+    let mut touched_any = false;
+
+    // Removing StartupApproved value clears the explicit disabled state.
+    for key in WINDOWS_STARTUP_APPROVED_KEYS {
+        eprintln!("[startup-reg] Clearing StartupApproved state: key='{}' value='{}'", key, value_name);
+        let status = Command::new("reg")
+            .args(["delete", key, "/v", value_name, "/f"])
+            .status()
+            .map_err(|e| format!("Failed to update StartupApproved state: {}", e))?;
+
+        eprintln!("[startup-reg] StartupApproved delete result for key='{}' value='{}': {}", key, value_name, status);
+
+        if status.success() {
+            touched_any = true;
+        }
+    }
+
+    Ok(touched_any)
+}
+
+#[cfg(target_os = "windows")]
+fn is_startup_approved_disabled_windows(value_name: &str) -> Result<bool, String> {
+    for key in WINDOWS_STARTUP_APPROVED_KEYS {
+        eprintln!("[startup-reg] Checking if StartupApproved value is disabled: key='{}' value='{}'", key, value_name);
+        let output = Command::new("reg")
+            .args(["query", key, "/v", value_name])
+            .output()
+            .map_err(|e| format!("Failed to query StartupApproved key: {}", e))?;
+
+        log_reg_output(&format!("query StartupApproved key='{}' value='{}'", key, value_name), &output);
+
+        if !output.status.success() {
+            continue;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if !line.to_ascii_lowercase().contains("reg_binary") {
+                continue;
+            }
+
+            if let Some((_, raw_binary)) = line.split_once("REG_BINARY") {
+                let hex: String = raw_binary.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+                if hex.len() >= 2 {
+                    let first_byte = hex[..2].to_ascii_lowercase();
+                    // 0x03 marks a disabled startup entry in Startup Apps.
+                    if first_byte == "03" {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(false)
+}
+
+#[tauri::command]
+fn set_run_on_startup(enable: bool) -> Result<bool, String> {
+    // Determine current exe path
+    let exe_path = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => return Err(format!("Failed to determine executable path: {}", e)),
+    };
+
+    eprintln!("[startup-reg] set_run_on_startup(enable={}) exe_path='{}'", enable, exe_path.display());
+
+    #[cfg(target_os = "windows")]
+    {
+        // Use reg.exe to add/remove HKCU Run entry
+        use std::process::Command;
+        let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+        let name = WINDOWS_RUN_VALUE_NAMES[0];
+        let exe_str = exe_path.to_string_lossy();
+        eprintln!("[startup-reg] Windows Run key='{}' default value name='{}'", key, name);
+
+        if enable {
+            let removed_names = remove_windows_startup_registration_for_exe(&exe_str)?;
+            if removed_names.is_empty() {
+                eprintln!("[startup-reg] No existing startup registration matched current exe. Creating a fresh one.");
+            } else {
+                eprintln!("[startup-reg] Removed existing startup registrations for current exe: {:?}", removed_names);
+            }
+
+            eprintln!("[startup-reg] Creating fresh Windows startup entry.");
+            let status = Command::new("reg")
+                .args(["add", key, "/v", name, "/t", "REG_SZ", "/d", &exe_str, "/f"]) 
+                .status()
+                .map_err(|e| format!("Failed to run reg.exe: {}", e))?;
+            eprintln!("[startup-reg] reg add result for key='{}' value='{}': {}", key, name, status);
+            if !status.success() {
+                eprintln!("[startup-reg] reg add failed; startup entry was not created.");
+                return Ok(false);
+            }
+
+            match set_startup_approved_enabled_windows(name) {
+                Ok(enabled_cleared) => {
+                    eprintln!("[startup-reg] StartupApproved clear after create returned {} for '{}'.", enabled_cleared, name);
+                }
+                Err(err) => {
+                    eprintln!("[startup-reg] Failed to clear StartupApproved state after create for '{}': {}", name, err);
+                }
+            }
+            return Ok(true);
+        } else {
+            eprintln!("[startup-reg] Removing Windows startup entry '{}' from Run key.", name);
+            let status = Command::new("reg")
+                .args(["delete", key, "/v", name, "/f"]) 
+                .status()
+                .map_err(|e| format!("Failed to run reg.exe: {}", e))?;
+            eprintln!("[startup-reg] reg delete result for key='{}' value='{}': {}", key, name, status);
+            return Ok(status.success());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::fs;
+        use std::path::PathBuf;
+        let plist_name = "com.ezzud.gamelibrary.plist";
+        let home = std::env::var("HOME").map_err(|e| format!("Failed to read HOME: {}", e))?;
+        let launch_agents = PathBuf::from(home).join("Library").join("LaunchAgents");
+        let plist_path = launch_agents.join(plist_name);
+
+        if enable {
+            let _ = fs::create_dir_all(&launch_agents);
+            let plist = format!(r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"> 
+<plist version=\"1.0\"> 
+<dict>
+  <key>Label</key>
+  <string>com.ezzud.gamelibrary</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>"#, exe_path.to_string_lossy());
+            fs::write(&plist_path, plist).map_err(|e| format!("Failed to write plist: {}", e))?;
+            return Ok(true);
+        } else {
+            if plist_path.exists() {
+                fs::remove_file(&plist_path).map_err(|e| format!("Failed to remove plist: {}", e))?;
+            }
+            return Ok(true);
+        }
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        use std::fs;
+        use std::path::PathBuf;
+        let home = std::env::var("HOME").map_err(|e| format!("Failed to read HOME: {}", e))?;
+        let config_home = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
+        let autostart_dir = PathBuf::from(config_home).join("autostart");
+        let desktop_path = autostart_dir.join("gamelibrary.desktop");
+
+        if enable {
+            let _ = fs::create_dir_all(&autostart_dir);
+            let desktop = format!(r#"[Desktop Entry]
+Type=Application
+Name=GameLibrary
+Exec={}
+X-GNOME-Autostart-enabled=true
+NoDisplay=false
+Comment=Start GameLibrary on login
+"#, exe_path.to_string_lossy());
+            fs::write(&desktop_path, desktop).map_err(|e| format!("Failed to write desktop file: {}", e))?;
+            return Ok(true);
+        } else {
+            if desktop_path.exists() {
+                fs::remove_file(&desktop_path).map_err(|e| format!("Failed to remove desktop file: {}", e))?;
+            }
+            return Ok(true);
+        }
+    }
+
+    // All platform branches return; no fallback needed.
+}
+
+#[tauri::command]
+fn get_run_on_startup() -> Result<bool, String> {
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+        eprintln!("[startup-reg] Checking if run-on-startup is enabled by querying Run key '{}'.", key);
+        for name in WINDOWS_RUN_VALUE_NAMES {
+            eprintln!("[startup-reg] Querying Run value '{}'.", name);
+            let output = Command::new("reg").args(["query", key, "/v", name]).output();
+            if let Ok(out) = output {
+                log_reg_output(&format!("query Run key='{}' value='{}'", key, name), &out);
+                if out.status.success() {
+                    eprintln!("[startup-reg] Run value '{}' exists.", name);
+                    return Ok(true);
+                }
+            } else if let Err(err) = output {
+                eprintln!("[startup-reg] Failed to query Run value '{}': {}", name, err);
+            }
+        }
+        eprintln!("[startup-reg] No Windows Run value matched the app.");
+        return Ok(false);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::path::PathBuf;
+        let plist_name = "com.ezzud.gamelibrary.plist";
+        let home = std::env::var("HOME").map_err(|e| format!("Failed to read HOME: {}", e))?;
+        let plist_path = PathBuf::from(home).join("Library").join("LaunchAgents").join(plist_name);
+        return Ok(plist_path.exists());
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        use std::path::PathBuf;
+        let home = std::env::var("HOME").map_err(|e| format!("Failed to read HOME: {}", e))?;
+        let config_home = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
+        let desktop_path = PathBuf::from(config_home).join("autostart").join("gamelibrary.desktop");
+        return Ok(desktop_path.exists());
+    }
+
+    // All platform branches return; no fallback needed.
+}
+
+#[tauri::command]
+fn is_run_on_startup_disabled() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        eprintln!("[startup-reg] Checking if run-on-startup is disabled in StartupApproved keys.");
+        for name in WINDOWS_RUN_VALUE_NAMES {
+            eprintln!("[startup-reg] Testing disabled state for Run value '{}'.", name);
+            if is_startup_approved_disabled_windows(name)? {
+                eprintln!("[startup-reg] Run value '{}' is marked disabled in StartupApproved.", name);
+                return Ok(true);
+            }
+        }
+
+        eprintln!("[startup-reg] No disabled StartupApproved state found for this app.");
+        return Ok(false);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(false)
+    }
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -575,6 +943,9 @@ pub fn run() {
             get_directory_size,
             open_game_folder,
             launch_game,
+            set_run_on_startup,
+            get_run_on_startup,
+            is_run_on_startup_disabled,
             wait_for_process_exit,
             download_and_launch_installer,
             download_file_with_progress,

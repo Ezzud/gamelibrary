@@ -82,7 +82,7 @@ interface GameDetailViewProps {
     onBack: () => void
     onGameUpdated?: () => void
     onLaunchError: (message: string) => void
-    onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
+    onShowToast?: (message: string, options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }) => void
     onLaunchSuccess: () => Promise<void> | void
     isGameRunning?: boolean
     onGameRunningChange?: (gameId: string, isRunning: boolean) => void

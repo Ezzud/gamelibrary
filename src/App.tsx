@@ -21,6 +21,7 @@ import { Logger } from './utils/Logger'
 import {
     addPlayHistoryEntry,
     addFavorite,
+    ensureRunOnStartupAppliedOnLaunch,
     getAppConfig,
     getFavoriteIds,
     getPlayHistory,
@@ -54,6 +55,7 @@ interface LaunchToast {
     visible: boolean
     started: boolean
     durationMs: number
+    style: 'default' | 'success' | 'error' | 'warning'
     actionLabel?: string
     onClick?: () => void
 }
@@ -71,6 +73,19 @@ type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'Update'
 
 const MIN_LAUNCH_LOADING_MS = 5000
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
+
+const getToastProgressBarClass = (style: LaunchToast['style']) => {
+    if (style === 'success') {
+        return 'bg-emerald-400'
+    }
+    if (style === 'error') {
+        return 'bg-red-400'
+    }
+    if (style === 'warning') {
+        return 'bg-amber-400'
+    }
+    return 'bg-[#6ec1ff]'
+}
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
     const elapsed = Date.now() - startedAt
@@ -158,9 +173,10 @@ function App() {
 
     const showLaunchToast = (
         message: string,
-        options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }
+        options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }
     ) => {
         const durationMs = options?.durationMs ?? 3000
+        const style = options?.style ?? 'default'
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         setLaunchToasts((prev) => [
             {
@@ -169,6 +185,7 @@ function App() {
                 visible: false,
                 started: false,
                 durationMs,
+                style,
                 actionLabel: options?.actionLabel,
                 onClick: options?.onClick,
             },
@@ -208,6 +225,7 @@ function App() {
                 showLaunchToast(`An update is available (${latestVersion})`, {
                     durationMs: 10000,
                     actionLabel: 'Update now',
+                    style: 'warning',
                     onClick: () => {
                         setSettingsInitialCategory('Update')
                         setIsSettingsOpen(true)
@@ -297,7 +315,7 @@ function App() {
 
         const game = games.find((item) => item.id === gameId)
         if (!game) {
-            showLaunchToast('Unable to find this game in your library.')
+            showLaunchToast('Unable to find this game in your library.', { style: 'warning' })
             return
         }
 
@@ -332,7 +350,7 @@ function App() {
         } catch (error) {
             Logger.error(`Failed to launch game ${game.name}:`, error)
             const message = error instanceof Error ? error.message : String(error)
-            showLaunchToast(`Failed to launch ${game.name}: ${message}`)
+            showLaunchToast(`Failed to launch ${game.name}: ${message}`, { style: 'error' })
         } finally {
             setLaunchingGameId(null)
         }
@@ -369,7 +387,7 @@ function App() {
         } catch (error) {
             Logger.error(`Failed to persist launch file selection for ${pickerGame.name}:`, error)
             const message = error instanceof Error ? error.message : String(error)
-            showLaunchToast(`Failed to launch ${pickerGame.name}: ${message}`)
+            showLaunchToast(`Failed to launch ${pickerGame.name}: ${message}`, { style: 'error' })
         } finally {
             setLaunchingGameId(null)
             setPickerGame(null)
@@ -448,6 +466,7 @@ function App() {
             Logger.info('App mounted, loading games...')
             setIsLoadingGames(true)
             try {
+                await ensureRunOnStartupAppliedOnLaunch()
                 await validateIGDBCredentialsFromConfig()
                 await loadFavoriteGameIds()
                 await loadGames()
@@ -654,6 +673,10 @@ function App() {
                     }
                 }
                 setGames(allGames)
+                if (selectedGame) {
+                    const refreshedSelectedGame = allGames.find((item: Game) => item.id === selectedGame.id) || null
+                    setSelectedGame(refreshedSelectedGame)
+                }
                 await refreshLastPlayedCards(allGames)
             } else {
                 Logger.warn('No cached games found, starting with empty library.')
@@ -981,7 +1004,7 @@ function App() {
                         </div>
                         <div className="h-1 bg-[#325170]/50">
                             <div
-                                className="h-full bg-[#6ec1ff]"
+                                className={`h-full ${getToastProgressBarClass(toast.style)}`}
                                 style={{
                                     width: toast.started ? '0%' : '100%',
                                     transition: `width ${toast.durationMs}ms linear`,

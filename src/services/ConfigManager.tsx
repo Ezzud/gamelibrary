@@ -1,6 +1,7 @@
 // Default config path: Appdata/Local/GameLibrary/config.json
 import { exists, mkdir, readTextFile, writeTextFile, readDir, remove } from '@tauri-apps/plugin-fs'
 import { appDataDir, dirname, join } from '@tauri-apps/api/path'
+import { invoke } from '@tauri-apps/api/core'
 import { Logger } from '../utils/Logger'
 
 interface Config {
@@ -10,6 +11,7 @@ interface Config {
     twitchClientId: string
     twitchClientSecret: string
     cardHoverEffect: string
+    runOnStartup?: boolean
 }
 
 
@@ -60,6 +62,7 @@ const defaultConfig: Config = {
     twitchClientId: '',
     twitchClientSecret: '',
     cardHoverEffect: 'zoom',
+    runOnStartup: true,
 };
 const defaultGameConfig: GameConfig = {
     customArguments: '',
@@ -356,6 +359,68 @@ export async function setCardHoverEffect(cardHoverEffect: string) {
     };
     await saveConfig(nextConfig);
     Logger.info('Card hover effect saved to app config.');
+}
+
+export async function setRunOnStartup(enable: boolean) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        runOnStartup: !!enable,
+    };
+    await saveConfig(nextConfig);
+
+    try {
+        await invoke('set_run_on_startup', { enable });
+        Logger.info(`Run-on-startup ${enable ? 'enabled' : 'disabled'}`);
+    } catch (err) {
+        Logger.error('Failed to set run-on-startup via backend:', err);
+        throw err;
+    }
+}
+
+export async function getRunOnStartup() {
+    try {
+        const result = await invoke<boolean>('get_run_on_startup');
+        return !!result;
+    } catch (err) {
+        Logger.error('Failed to query run-on-startup from backend:', err);
+        return false;
+    }
+}
+
+async function isRunOnStartupDisabledBySystem() {
+    try {
+        const result = await invoke<boolean>('is_run_on_startup_disabled');
+        return !!result;
+    } catch (err) {
+        Logger.warn('Failed to query run-on-startup disabled state from backend:', err);
+        return false;
+    }
+}
+
+export async function ensureRunOnStartupAppliedOnLaunch() {
+    const config = await loadConfig();
+    if (!config.runOnStartup) {
+        return;
+    }
+
+    const currentlyEnabled = await getRunOnStartup();
+    if (currentlyEnabled) {
+        return;
+    }
+
+    const disabledBySystem = await isRunOnStartupDisabledBySystem();
+    if (disabledBySystem) {
+        Logger.info('Run-on-startup is disabled in system Startup Apps. Skipping automatic re-enable.');
+        return;
+    }
+
+    try {
+        await setRunOnStartup(true);
+        Logger.info('Run-on-startup was enabled in config but missing in OS startup list. Re-applied on launch.');
+    } catch (err) {
+        Logger.error('Failed to re-apply run-on-startup during launch sync:', err);
+    }
 }
 
 export async function saveConfig(config: Config) {

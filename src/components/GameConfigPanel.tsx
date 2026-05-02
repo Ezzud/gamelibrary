@@ -19,7 +19,7 @@ interface GameConfigPanelProps {
   game: Game
   onBack: () => void
   onConfigSaved?: () => void
-  onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
+  onShowToast?: (message: string, options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }) => void
 }
 
 /**
@@ -152,10 +152,10 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
       await onConfigSaved?.()
       await loadCurrentGameConfig()
 
-      onShowToast?.('IGDB data reset and refetched successfully.', { durationMs: 3000 })
+      onShowToast?.('IGDB data reset and refetched successfully.', { durationMs: 3000, style: 'success' })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      onShowToast?.(`Failed to reset IGDB data: ${message}`, { durationMs: 5000 })
+      onShowToast?.(`Failed to reset IGDB data: ${message}`, { durationMs: 5000, style: 'error' })
     } finally {
       setIsResettingIGDBData(false)
     }

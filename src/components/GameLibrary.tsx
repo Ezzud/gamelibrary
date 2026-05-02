@@ -89,7 +89,7 @@ interface GameLibraryProps {
   favoriteGameIds: Set<string>
   onGameSelect: (game: Game) => void
   onLaunchError: (message: string) => void
-  onShowToast?: (message: string, options?: { durationMs?: number; actionLabel?: string; onClick?: () => void }) => void
+  onShowToast?: (message: string, options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }) => void
   onLaunchSuccess: () => Promise<void> | void
   onGamesRemoved?: (gameIds: string[]) => void
   runningGameIds?: Set<string>
@@ -518,7 +518,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
       await addIgnoredFolder(game.path)
       await removeGameFromList(game.id)
       const folderName = game.path.split(/[\\/]/).filter(Boolean).pop() || game.name
-      onShowToast?.(`Folder "${folderName}" is now ignored by GameLibrary`, { durationMs: 4000 })
+      onShowToast?.(`Folder "${folderName}" is now ignored by GameLibrary`, { durationMs: 4000, style: 'warning' })
       setSelectedGameIds((prev) => {
         const next = new Set(prev)
         next.delete(game.id)
@@ -563,7 +563,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
         await addIgnoredFolder(game.path)
         await removeGameFromList(game.id)
         const folderName = game.path.split(/[\\/]/).filter(Boolean).pop() || game.name
-        onShowToast?.(`Folder "${folderName}" is now ignored by GameLibrary`, { durationMs: 4000 })
+        onShowToast?.(`Folder "${folderName}" is now ignored by GameLibrary`, { durationMs: 4000, style: 'warning' })
       }
       setSelectedGameIds(new Set())
       onGamesRemoved?.(selectedGames.map((game) => game.id))
@@ -598,10 +598,10 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
         next.add('Custom Folders')
         return next
       })
-      onShowToast?.('Custom folder added to scan configuration.', { durationMs: 4000 })
+      onShowToast?.('Custom folder added to scan configuration.', { durationMs: 4000, style: 'success' })
     } catch (error) {
       Logger.error('Failed to add custom folder from scan menu:', error)
-      onShowToast?.('Failed to add custom folder.', { durationMs: 4000 })
+      onShowToast?.('Failed to add custom folder.', { durationMs: 4000, style: 'error' })
     } finally {
       setIsAddingCustomFolder(false)
     }
@@ -616,10 +616,10 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
     try {
       await removeCustomScanFolder(folderPath)
       setCustomFolders((prev) => prev.filter((folder) => folder !== folderPath))
-      onShowToast?.('Custom folder removed from scan configuration.', { durationMs: 4000 })
+      onShowToast?.('Custom folder removed from scan configuration.', { durationMs: 4000, style: 'success' })
     } catch (error) {
       Logger.error('Failed to remove custom folder from scan menu:', error)
-      onShowToast?.('Failed to remove custom folder.', { durationMs: 4000 })
+      onShowToast?.('Failed to remove custom folder.', { durationMs: 4000, style: 'error' })
     } finally {
       setRemovingCustomFolderPath(null)
     }
@@ -641,7 +641,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
       const detectedGames = await fetchCustomGame(selectedFolder)
 
       if (!detectedGames || detectedGames.length === 0) {
-        onShowToast?.('Error: The folder is not a game folder, or is not recognized as a game folder', { durationMs: 5000 })
+        onShowToast?.('Error: The folder is not a game folder, or is not recognized as a game folder', { durationMs: 5000, style: 'error' })
         return
       }
 
@@ -671,16 +671,16 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
         }
 
         const gameNames = registeredGames.map((game) => game.name).join(', ')
-        onShowToast?.(`Successfully added ${gameNames}`, { durationMs: 4000 })
+        onShowToast?.(`Successfully added ${gameNames}`, { durationMs: 4000, style: 'success' })
       } catch (registrationError) {
         Logger.error('Failed to register manually added game:', registrationError)
         const errorMessage = registrationError instanceof Error ? registrationError.message : String(registrationError)
-        onShowToast?.(`An error occurred: ${errorMessage}`, { durationMs: 5000 })
+        onShowToast?.(`An error occurred: ${errorMessage}`, { durationMs: 5000, style: 'error' })
       }
     } catch (error) {
       Logger.error('Failed to add manual game:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
-      onShowToast?.(`An error occurred: ${errorMessage}`, { durationMs: 5000 })
+      onShowToast?.(`An error occurred: ${errorMessage}`, { durationMs: 5000, style: 'error' })
     } finally {
       setIsAddingManualGame(false)
     }
