@@ -689,6 +689,52 @@ export async function getAllLaunchFiles(gamePath: string) {
 }
 
 
+export async function fetchCustomGame(gamePath: string) {
+    const games: any[] = [];
+    const ignoredFolders = await getIgnoredFolders();
+    const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
+
+    const normalizedGamePath = gamePath.replace(/\\/g, '/').replace(/\/+$/, '');
+
+    try {
+        const pathExists = await exists(normalizedGamePath);
+        if (!pathExists) {
+            Logger.warn(`Custom game path does not exist: ${normalizedGamePath}`);
+            return games;
+        }
+
+        if (isIgnoredPath(normalizedGamePath)) {
+            Logger.info(`Custom game path is ignored, skipping: ${normalizedGamePath}`);
+            return games;
+        }
+
+        const launchFiles = await getAllLaunchFiles(normalizedGamePath);
+        if (launchFiles.length < 1) {
+            Logger.warn(`No launch files found in game path: ${normalizedGamePath}`);
+            return games;
+        }
+
+        const folderName = normalizedGamePath.split('/').pop() || '';
+        if (blacklistedGames.find(g => g.toLowerCase() === folderName.toLowerCase())) {
+            Logger.warn(`Game folder ${folderName} is blacklisted, skipping.`);
+            return games;
+        }
+
+        Logger.success(`Found custom game at: ${normalizedGamePath}`);
+        games.push({
+            id: null,
+            name: folderName,
+            path: normalizedGamePath,
+            defaultLaunchFile: launchFiles.length > 0 ? launchFiles[0] : null,
+            allLaunchFiles: launchFiles.length > 0 ? launchFiles : null
+        });
+    } catch (err) {
+        Logger.error(`Error occurred while fetching custom game from ${normalizedGamePath}:`, err);
+    }
+
+    return games;
+}
+
 export async function fetchAllCustomFolderGames(folderPath: string) {
     const games: any[] = [];
     const seenGameNames = new Set<string>();

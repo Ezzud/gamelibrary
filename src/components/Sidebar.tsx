@@ -66,6 +66,27 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
     return () => window.clearInterval(intervalId)
   }, [])
 
+  const handleLastPlayedContextMenu = (event: React.MouseEvent<any>, gameId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const targetCard = document.querySelector(`[data-game-id="${CSS.escape(gameId)}"]`) as HTMLElement | null
+    if (!targetCard) {
+      return
+    }
+
+    targetCard.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        button: 2,
+      })
+    )
+  }
+
   return (
     <div className="relative w-64 flex flex-col overflow-hidden bg-steam-900">
       <div className="pointer-events-none absolute right-0 top-1/2 h-[90%] w-px -translate-y-1/2 bg-[#2b4157]" />
@@ -104,6 +125,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
               <div
                 key={`${card.gameId}-${card.playedAt}`}
                 className="group rounded-md bg-steam-800/75 hover:bg-steam-700/75 transition-colors p-2"
+                onContextMenu={(event) => handleLastPlayedContextMenu(event, card.gameId)}
               >
                 <div className="flex items-start gap-2">
                   <button
@@ -142,7 +164,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
                     </div>
                     <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#4fd673]">
                       <Clock3 className="h-3 w-3" />
-                      <span>{formatLastPlayed(card.playedAt)}</span>
+                      <span>{isRunning ? 'Currently playing' : formatLastPlayed(card.playedAt)}</span>
                     </div>
                     {card.playtime && (
                       <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#b1b1b1]">

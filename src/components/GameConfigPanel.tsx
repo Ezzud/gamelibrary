@@ -162,9 +162,9 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
   }
 
   return (
-    <div className="flex-1 overflow-auto flex flex-col bg-gradient-to-br from-steam-900 via-[#0f1b2a] to-[#172437]">
+    <div className="flex-1 overflow-auto flex flex-col bg-linear-to-r from-steam-900 via-[#0f1b2a] to-[#172437]">
       {/* Header */}
-      <div className="p-6 bg-gradient-to-r from-steam-800/95 via-[#1d3047]/95 to-steam-800/95 shadow-[0_14px_28px_rgba(0,0,0,0.28)]">
+      <div className="p-6 bg-linear-to-r from-steam-800/95 via-[#1d3047]/95 to-steam-800/95 shadow-[0_14px_28px_rgba(0,0,0,0.28)]">
         <button
           onClick={onBack}
           className="flex items-center gap-2 text-steam-300 hover:text-white transition-all duration-200 hover:-translate-x-0.5 mb-4"
@@ -172,7 +172,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
           <ArrowLeft className="w-5 h-5" />
           Back
         </button>
-        <h2 className="text-3xl font-bold bg-gradient-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{game.name} - Properties</h2>
+        <h2 className="text-3xl font-bold bg-linear-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{game.name} - Properties</h2>
       </div>
 
       {/* Configuration Form */}

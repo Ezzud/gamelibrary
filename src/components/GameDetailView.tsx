@@ -10,7 +10,8 @@ import {
     Gamepad2,
     Loader,
     Copy,
-    Check
+    Check,
+    Star
 } from 'lucide-react'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard } from 'react-icons/fa'
 import { FaSteam, FaXbox } from 'react-icons/fa'
@@ -85,6 +86,8 @@ interface GameDetailViewProps {
     onLaunchSuccess: () => Promise<void> | void
     isGameRunning?: boolean
     onGameRunningChange?: (gameId: string, isRunning: boolean) => void
+    isFavorite?: boolean
+    onToggleFavorite?: () => void
 }
 
 /**
@@ -92,7 +95,7 @@ interface GameDetailViewProps {
  * Params: game, onBack, onGameUpdated - game data and handlers
  * Returns: JSX.Element - detail view layout
  */
-const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToast, onLaunchSuccess, isGameRunning = false, onGameRunningChange }: GameDetailViewProps) => {
+const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToast, onLaunchSuccess, isGameRunning = false, onGameRunningChange, isFavorite = false, onToggleFavorite }: GameDetailViewProps) => {
     const [isLaunching, setIsLaunching] = useState(false)
     const [showConfig, setShowConfig] = useState(false)
     const [showLaunchFilePicker, setShowLaunchFilePicker] = useState(false)
@@ -540,6 +543,15 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                                         <Play className="w-5 h-5" />
                                     )}
                                     {isLaunching ? 'Launching...' : isGameRunning ? 'Running' : 'Play'}
+                                </button>
+
+                                <button
+                                    onClick={onToggleFavorite}
+                                    className="w-12 h-12 p-0 bg-[#2f455f] hover:bg-[#3c5978] text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.2)]"
+                                    title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                                    aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                                >
+                                    <Star className={`w-5 h-5 ${isFavorite ? 'fill-[#ffd700] text-[#ffd700]' : 'text-[#a8a8a8]'}`} />
                                 </button>
 
                                 <button

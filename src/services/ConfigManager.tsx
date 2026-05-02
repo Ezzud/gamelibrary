@@ -6,8 +6,10 @@ import { Logger } from '../utils/Logger'
 interface Config {
     customScanFolders: string[]
     ignoredFolders: string[]
+    favorites: string[]
     twitchClientId: string
     twitchClientSecret: string
+    cardHoverEffect: string
 }
 
 
@@ -54,8 +56,10 @@ interface PlayHistory {
 const defaultConfig: Config = {
     customScanFolders: [],
     ignoredFolders: [],
+    favorites: [],
     twitchClientId: '',
     twitchClientSecret: '',
+    cardHoverEffect: 'zoom',
 };
 const defaultGameConfig: GameConfig = {
     customArguments: '',
@@ -117,6 +121,25 @@ export async function addIgnoredFolder(path: string) {
     config.ignoredFolders.push(path);
     await saveConfig(config);
     Logger.success(`Ignored folder added: ${path}`);
+}
+
+export async function addFavorite(gameId: string) {
+    Logger.info(`Adding favorite game ID: ${gameId}`);
+    const config = await loadConfig();
+    const normalizedGameId = gameId.trim();
+
+    if (!normalizedGameId) {
+        Logger.warn('Cannot add empty game ID to favorites.');
+        return;
+    }
+
+    if (!config.favorites.includes(normalizedGameId)) {
+        config.favorites.push(normalizedGameId);
+        await saveConfig(config);
+        Logger.success(`Favorite added: ${normalizedGameId}`);
+    } else {
+        Logger.warn(`Favorite already exists: ${normalizedGameId}`);
+    }
 }
 
 export async function deleteGameCache(gameId: string) {
@@ -241,6 +264,22 @@ export async function removeIgnoredFolder(path: string) {
     Logger.success(`Ignored folder removed: ${path}`);
 }
 
+export async function removeFavorite(gameId: string) {
+    Logger.info(`Removing favorite game ID: ${gameId}`);
+    const config = await loadConfig();
+    const normalizedGameId = gameId.trim();
+    const nextFavorites = config.favorites.filter((favoriteId) => favoriteId !== normalizedGameId);
+
+    if (nextFavorites.length === config.favorites.length) {
+        Logger.warn(`Favorite not found: ${normalizedGameId}`);
+        return;
+    }
+
+    config.favorites = nextFavorites;
+    await saveConfig(config);
+    Logger.success(`Favorite removed: ${normalizedGameId}`);
+}
+
 export async function getGameConfigLaunchFiles(gameId: string) {
     const config = await loadGameConfig(gameId);
     return config ? config.allLaunchFiles || [] : [];
@@ -261,6 +300,11 @@ export async function getIgnoredFolders() {
     return config.ignoredFolders;
 }
 
+export async function getFavoriteIds() {
+    const config = await loadConfig();
+    return config.favorites;
+}
+
 async function loadConfig() {
     const configPath = await getConfigPath();
     try {
@@ -278,8 +322,10 @@ async function loadConfig() {
             ...parsed,
             customScanFolders: Array.isArray(parsed?.customScanFolders) ? parsed.customScanFolders : [],
             ignoredFolders: Array.isArray(parsed?.ignoredFolders) ? parsed.ignoredFolders : [],
+            favorites: Array.isArray(parsed?.favorites) ? parsed.favorites : [],
             twitchClientId: typeof parsed?.twitchClientId === 'string' ? parsed.twitchClientId : '',
             twitchClientSecret: typeof parsed?.twitchClientSecret === 'string' ? parsed.twitchClientSecret : '',
+            cardHoverEffect: typeof parsed?.cardHoverEffect === 'string' ? parsed.cardHoverEffect : 'zoom',
         } as Config;
     } catch (err) {
         Logger.error(`Error occurred while reading config at ${configPath}:`, err);
@@ -300,6 +346,16 @@ export async function setTwitchCredentials(twitchClientId: string, twitchClientS
     };
     await saveConfig(nextConfig);
     Logger.info('Twitch credentials saved to app config.');
+}
+
+export async function setCardHoverEffect(cardHoverEffect: string) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        cardHoverEffect: cardHoverEffect.trim(),
+    };
+    await saveConfig(nextConfig);
+    Logger.info('Card hover effect saved to app config.');
 }
 
 export async function saveConfig(config: Config) {

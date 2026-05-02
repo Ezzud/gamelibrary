@@ -57,7 +57,7 @@ use tauri::Emitter;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 use sysinfo::{Pid, System};
 
@@ -237,6 +237,47 @@ fn open_game_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+
+fn parse_custom_arguments(args_str: Option<String>) -> Vec<String> {
+    let args = args_str
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+    
+    eprintln!("[parse_custom_arguments] Parsed arguments: {:?}", args);
+
+    return args;
+}
+
+fn normalize_launch_argument(arg: String) -> String {
+    let trimmed = arg.trim();
+    let mut normalized = if trimmed.len() >= 2 {
+        let starts_with_double = trimmed.starts_with('"') && trimmed.ends_with('"');
+        let starts_with_single = trimmed.starts_with('\'') && trimmed.ends_with('\'');
+        if starts_with_double || starts_with_single {
+            trimmed[1..trimmed.len() - 1].to_string()
+        } else {
+            trimmed.to_string()
+        }
+    } else {
+        trimmed.to_string()
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        if normalized.contains('/')
+            && !normalized.starts_with('-')
+            && !normalized.starts_with('/')
+            && !normalized.contains("://")
+        {
+            normalized = normalized.replace('/', "\\");
+        }
+    }
+
+    normalized
+}
+
 #[tauri::command]
 fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Result<u32, String> {
     let game_path = PathBuf::from(&game_path);
@@ -246,11 +287,9 @@ fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Res
 
     let game_config = read_game_config(&app, &game_id);
     let launch_file = find_launch_file(&game_path, game_config.default_launch_file)?;
-    let args: Vec<String> = game_config
-        .custom_arguments
-        .unwrap_or_default()
-        .split_whitespace()
-        .map(|s| s.to_string())
+    let args: Vec<String> = parse_custom_arguments(game_config.custom_arguments)
+        .into_iter()
+        .map(normalize_launch_argument)
         .collect();
 
     let extension = launch_file
@@ -298,6 +337,7 @@ fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Res
 #[tauri::command]
 async fn wait_for_process_exit(pid: u32, poll_interval_ms: Option<u64>) -> Result<(), String> {
     let poll_interval_ms = poll_interval_ms.unwrap_or(10000);
+    let relaunch_grace = Duration::from_secs(15);
     if pid == 0 {
         return Ok(());
     }
@@ -305,12 +345,40 @@ async fn wait_for_process_exit(pid: u32, poll_interval_ms: Option<u64>) -> Resul
     tauri::async_runtime::spawn_blocking(move || {
         let mut system = System::new();
         let target_pid = Pid::from_u32(pid);
+        let mut relaunch_deadline: Option<Instant> = None;
+
+        system.refresh_processes();
+        let target_exe = system
+            .process(target_pid)
+            .and_then(|process| process.exe().map(|path| path.to_path_buf()));
 
         loop {
             system.refresh_processes();
-            if system.process(target_pid).is_none() {
+
+            let original_running = system.process(target_pid).is_some();
+
+            let same_exe_running = target_exe.as_ref().is_some_and(|exe_path| {
+                system.processes().values().any(|process| {
+                    process
+                        .exe()
+                        .is_some_and(|path| path == exe_path.as_path())
+                })
+            });
+
+            if original_running || same_exe_running {
+                relaunch_deadline = None;
+            } else if target_exe.is_some() {
+                if let Some(deadline) = relaunch_deadline {
+                    if Instant::now() >= deadline {
+                        break;
+                    }
+                } else {
+                    relaunch_deadline = Some(Instant::now() + relaunch_grace);
+                }
+            } else {
                 break;
             }
+
             std::thread::sleep(Duration::from_millis(poll_interval_ms));
         }
 

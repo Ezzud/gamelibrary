@@ -24,8 +24,8 @@ const LaunchFilePickerModal = ({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-lg !bg-[#1b2838] border border-steam-600 shadow-2xl">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-lg bg-[#1b2838]! border border-steam-600 shadow-2xl">
         <div className="px-4 py-3 border-b border-steam-700 flex items-center justify-between">
           <h3 className="text-white font-semibold">Choose launch file</h3>
           <button

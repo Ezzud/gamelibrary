@@ -22,7 +22,10 @@ import {
   Tags,
   Trash2,
   X,
-  Wrench
+  Wrench,
+  Maximize2,
+  Expand,
+  RotateCw
 } from 'lucide-react'
 import { FaSteam, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
@@ -38,7 +41,8 @@ import {
   loadGameCache,
   loadGameList,
   removeIgnoredFolder,
-  removeCustomScanFolder
+  removeCustomScanFolder,
+  setCardHoverEffect
 } from '../services/ConfigManager'
 import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
@@ -154,6 +158,7 @@ const AppConfig = ({
   const [showClientSecret, setShowClientSecret] = useState(false)
   const [isConnectingCredentials, setIsConnectingCredentials] = useState(false)
   const [credentialsStatus, setCredentialsStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [cardHoverEffect, setCardHoverEffectState] = useState('zoom')
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckStatus>('idle')
   const [currentVersion, setCurrentVersion] = useState('Unknown')
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
@@ -259,6 +264,7 @@ const AppConfig = ({
       const config = await getAppConfig()
       setCredentialsClientId(config.twitchClientId || '')
       setCredentialsClientSecret(config.twitchClientSecret || '')
+      setCardHoverEffectState(config.cardHoverEffect || 'zoom')
     }
 
     void loadCredentials()
@@ -563,6 +569,38 @@ const AppConfig = ({
     }
   }
 
+  const handleSetCardHoverEffect = async (effect: string) => {
+    setCardHoverEffectState(effect)
+    try {
+      await setCardHoverEffect(effect)
+      Logger.info(`Card hover effect changed to: ${effect}`)
+    } catch (error) {
+      Logger.error('Failed to save card hover effect:', error)
+    }
+  }
+
+  const getHoverEffectIcon = (effect: string) => {
+    switch (effect) {
+      case 'zoom':
+        return <Maximize2 className="w-4 h-4" />
+      case 'grow':
+        return <Expand className="w-4 h-4" />
+      case 'shine':
+        return <Sparkles className="w-4 h-4" />
+      case 'spin':
+        return <RotateCw className="w-4 h-4" />
+      default:
+        return null
+    }
+  }
+
+  const hoverEffectOptions = [
+    { value: 'zoom', label: 'Small Zoom' },
+    { value: 'grow', label: 'Grow' },
+    { value: 'shine', label: 'Shine' },
+    { value: 'spin', label: 'Spin' }
+  ]
+
   const handleInstallUpdate = async () => {
     if (isInstallingUpdate || !latestVersion) {
       return
@@ -713,6 +751,39 @@ const AppConfig = ({
                   {credentialsStatus.message}
                 </div>
               )}
+            </div>
+
+            <div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+              <p className="text-sm text-steam-100 mb-3">Card Hover Effect</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {hoverEffectOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => void handleSetCardHoverEffect(option.value)}
+                    className={`px-3 py-2 rounded-lg flex flex-col items-center gap-1.5 transition-all ${
+                      option.value === 'zoom' ? 'hover:scale-105' : 
+                      option.value === 'grow' ? 'hover:scale-[1.15] origin-center' : 
+                      option.value === 'shine' ? 'shine-card-preview' : 
+                      option.value === 'spin' ? 'spin-card-preview' : ''
+                    } ${
+                      cardHoverEffect === option.value
+                        ? 'bg-steam-600 ring-2 ring-steam-400 shadow-[0_4px_12px_rgba(100,200,255,0.2)]'
+                        : 'bg-steam-700/60 hover:bg-steam-700'
+                    }`}
+                    title={option.label}
+                  >
+                    <span className={`${
+                      option.value === 'zoom' ? 'text-sky-400' :
+                      option.value === 'grow' ? 'text-emerald-400' :
+                      option.value === 'shine' ? 'text-amber-400' :
+                      option.value === 'spin' ? 'text-violet-400' :
+                      'text-steam-300'
+                    }`}>{getHoverEffectIcon(option.value)}</span>
+                    <span className="text-xs text-steam-200">{option.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
-import { FolderOpen, Gamepad2, Loader2, Play, Settings, Trash2, LocateOff } from 'lucide-react'
+import { FolderOpen, Gamepad2, Loader2, Play, Settings, Star, Trash2, LocateOff } from 'lucide-react'
 import { exists } from '@tauri-apps/plugin-fs'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
@@ -22,9 +22,12 @@ interface GameCardProps {
   onPlay?: (game: Game) => Promise<void> | void
   isPlayLoading?: boolean
   isRunning?: boolean
+  isFavorite?: boolean
   onOpenFolder?: (game: Game) => void
   onGameSettings?: (game: Game) => void
   onDelete?: (game: Game) => void
+  onToggleFavorite?: (game: Game) => Promise<void> | void
+  cardHoverEffect?: string
 }
 
 /**
@@ -32,12 +35,26 @@ interface GameCardProps {
  * Params: game, onClick - game data and click handler
  * Returns: JSX.Element - card UI
  */
-const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = false, onOpenFolder, onGameSettings, onDelete }: GameCardProps) => {
+const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = false, isFavorite = false, onOpenFolder, onGameSettings, onDelete, onToggleFavorite, cardHoverEffect = 'zoom' }: GameCardProps) => {
   const [isContextOpen, setIsContextOpen] = useState(false)
   const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 })
   const [specialTags, setSpecialTags] = useState<string[]>([])
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [isMissing, setIsMissing] = useState<boolean>(false)
+
+  const getHoverEffectClasses = () => {
+    switch (cardHoverEffect) {
+      case 'grow':
+        return 'group-hover:scale-[1.15] origin-center'
+      case 'shine':
+        return 'shine-card'
+      case 'spin':
+        return 'spin-card'
+      case 'zoom':
+      default:
+        return ''
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -236,12 +253,22 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
     setIsContextOpen(false)
   }
 
+  const handleFavoriteAction = async () => {
+    if (!onToggleFavorite) {
+      return
+    }
+
+    await onToggleFavorite(game)
+    setIsContextOpen(false)
+  }
+
   return (
     <>
       <button
         onClick={onClick}
         onContextMenu={handleContextMenu}
-        className="group relative w-full aspect-[2/3] rounded-lg overflow-hidden bg-steam-800 ring-1 ring-inset ring-steam-600/35 shadow-[0_6px_18px_rgba(0,0,0,0.28)] transition-all duration-200 hover:ring-steam-400/55 hover:shadow-[0_10px_28px_rgba(58,98,133,0.28)] cursor-pointer"
+        data-game-id={game.id}
+        className={`group relative w-full aspect-2/3 rounded-lg overflow-hidden bg-steam-800 ring-1 ring-inset ring-steam-600/35 shadow-[0_6px_18px_rgba(0,0,0,0.28)] transition-all duration-200 hover:ring-steam-400/55 hover:shadow-[0_10px_28px_rgba(58,98,133,0.28)] cursor-pointer ${getHoverEffectClasses()}`}
       >
         {visibleTags.length > 0 && (
           <div className="absolute top-2 right-2 z-10 flex items-center justify-end gap-1">
@@ -269,10 +296,10 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
               src={game.coverUrl}
               alt={game.name}
               onError={handleImageError}
-              className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 ${isMissing ? 'grayscale opacity-60' : ''}`}
+              className={`w-full h-full object-cover transition-transform duration-200 ${cardHoverEffect === 'zoom' || cardHoverEffect === 'shine' ? 'group-hover:scale-105' : ''} ${isMissing ? 'grayscale opacity-60' : ''}`}
             />
           ) : (
-            <div className={`w-full h-full bg-gradient-to-br from-steam-700 to-steam-800 flex items-center justify-center ${isMissing ? 'grayscale opacity-60' : ''}`}>
+            <div className={`w-full h-full bg-linear-to-br from-steam-700 to-steam-800 flex items-center justify-center ${isMissing ? 'grayscale opacity-60' : ''}`}>
               <Gamepad2 className="w-12 h-12 text-steam-500" />
             </div>
           )}
@@ -301,7 +328,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
             type="button"
             onClick={() => void handlePlayAction()}
             disabled={isPlayLoading || isRunning}
-            className="w-full block px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-150 flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-150 flex items-center gap-2"
           >
             {isPlayLoading || isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             {isPlayLoading ? 'Launching...' : isRunning ? 'Running' : 'Play'}
@@ -309,7 +336,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
           <button
             type="button"
             onClick={() => handleAction(onOpenFolder)}
-            className="w-full block px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! transition-colors duration-150 flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! transition-colors duration-150 flex items-center gap-2"
           >
             <FolderOpen className="w-4 h-4" />
             Open Folder
@@ -317,15 +344,23 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
           <button
             type="button"
             onClick={() => handleAction(onGameSettings || onClick)}
-            className="w-full block px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! transition-colors duration-150 flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! transition-colors duration-150 flex items-center gap-2"
           >
             <Settings className="w-4 h-4" />
             Game Settings
           </button>
           <button
             type="button"
+            onClick={() => void handleFavoriteAction()}
+            className="w-full px-3 py-2 text-left text-sm text-white bg-[#2a475e]! hover:bg-[#3a6285]! active:bg-[#4d7aa1]! transition-colors duration-150 flex items-center gap-2"
+          >
+            <Star className={`w-4 h-4 ${isFavorite ? 'text-yellow-400 fill-yellow-400' : 'text-steam-400'}`} />
+            {isFavorite ? 'Remove from favorite' : 'Add to favorite'}
+          </button>
+          <button
+            type="button"
             onClick={() => handleAction(onDelete)}
-            className="w-full block px-3 py-2 text-left text-sm text-white bg-[#8b1f1f]! hover:bg-[#a62d2d]! active:bg-[#c94343]! transition-colors duration-150 flex items-center gap-2"
+            className="w-full px-3 py-2 text-left text-sm text-white bg-[#8b1f1f]! hover:bg-[#a62d2d]! active:bg-[#c94343]! transition-colors duration-150 flex items-center gap-2"
           >
             <Trash2 className="w-4 h-4" />
             Delete

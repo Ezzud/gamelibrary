@@ -20,13 +20,16 @@ import {
 import { Logger } from './utils/Logger'
 import {
     addPlayHistoryEntry,
+    addFavorite,
     getAppConfig,
+    getFavoriteIds,
     getPlayHistory,
     loadGameCache,
     loadGameConfig,
     loadGameList,
     saveGameConfig,
     saveGameInfoCache,
+    removeFavorite,
     setTwitchCredentials,
     updateLatestPlayHistoryEntry,
 } from './services/ConfigManager'
@@ -94,6 +97,7 @@ function App() {
     const [scanStatusMessage, setScanStatusMessage] = useState('Idle')
     const [launchToasts, setLaunchToasts] = useState<LaunchToast[]>([])
     const [lastPlayedCards, setLastPlayedCards] = useState<LastPlayedCard[]>([])
+    const [favoriteGameIds, setFavoriteGameIds] = useState<Set<string>>(new Set())
     const [launchingGameId, setLaunchingGameId] = useState<string | null>(null)
     const [runningGameIds, setRunningGameIds] = useState<Set<string>>(new Set())
     const [pickerGame, setPickerGame] = useState<Game | null>(null)
@@ -256,6 +260,11 @@ function App() {
         setLastPlayedCards(cards)
     }
 
+    const loadFavoriteGameIds = async () => {
+        const favoriteIds = await getFavoriteIds()
+        setFavoriteGameIds(new Set(favoriteIds.filter((gameId): gameId is string => typeof gameId === 'string' && gameId.trim().length > 0)))
+    }
+
     const handleLaunchSuccess = async () => {
         await refreshLastPlayedCards()
     }
@@ -267,11 +276,14 @@ function App() {
                 next.add(gameId)
             } else {
                 next.delete(gameId)
-                updateLatestPlayHistoryEntry(gameId).catch((error) => {
+                updateLatestPlayHistoryEntry(gameId)
+                .catch((error) => {
                     Logger.error(`Failed to update play history for game ID ${gameId}:`, error)
                 })
-                refreshLastPlayedCards().catch((error) => {
-                    Logger.error(`Failed to refresh last played cards after game ID ${gameId} stopped:`, error)
+                .then(() => {
+                    refreshLastPlayedCards().catch((error) => {
+                        Logger.error('Failed to refresh last played cards after play history update:', error)
+                    })
                 })
             }
             return next
@@ -403,6 +415,25 @@ function App() {
         return { success: true }
     }
 
+    const handleToggleFavorite = async (game: Game) => {
+        if (favoriteGameIds.has(game.id)) {
+            await removeFavorite(game.id)
+            setFavoriteGameIds((prev) => {
+                const next = new Set(prev)
+                next.delete(game.id)
+                return next
+            })
+            return
+        }
+
+        await addFavorite(game.id)
+        setFavoriteGameIds((prev) => {
+            const next = new Set(prev)
+            next.add(game.id)
+            return next
+        })
+    }
+
     useEffect(() => {
         void checkForStartupUpdateNotice()
     }, [])
@@ -418,6 +449,7 @@ function App() {
             setIsLoadingGames(true)
             try {
                 await validateIGDBCredentialsFromConfig()
+                await loadFavoriteGameIds()
                 await loadGames()
                 Logger.info('Initial game loading complete.')
             } finally {
@@ -798,6 +830,23 @@ function App() {
         })
     }
 
+    const handleGamesAdded = (newGames: Game[]) => {
+        if (!Array.isArray(newGames) || newGames.length < 1) {
+            return
+        }
+
+        setGames((prev) => {
+            const existingPaths = new Set(prev.map((g) => g.path.replace(/[\\/]+$/, '').toLowerCase()))
+            const filtered = newGames.filter((g) => !existingPaths.has(g.path.replace(/[\\/]+$/, '').toLowerCase()))
+            if (filtered.length < 1) {
+                return prev
+            }
+            const next = [...prev, ...filtered]
+            void refreshLastPlayedCards(next)
+            return next
+        })
+    }
+
     const handleRefreshLibrary = async () => {
         if (isScanning || isLoadingGames) {
             return
@@ -995,15 +1044,19 @@ function App() {
                         onLaunchSuccess={handleLaunchSuccess}
                         isGameRunning={runningGameIds.has(selectedGame.id)}
                         onGameRunningChange={handleGameRunningChange}
+                        isFavorite={favoriteGameIds.has(selectedGame.id)}
+                        onToggleFavorite={() => handleToggleFavorite(selectedGame)}
                     />
                 ) : (
                     <GameLibrary
                         games={games}
+                        favoriteGameIds={favoriteGameIds}
                         onGameSelect={setSelectedGame}
                         onLaunchError={showLaunchToast}
                         onShowToast={showLaunchToast}
                         onLaunchSuccess={handleLaunchSuccess}
                         onGamesRemoved={handleGamesRemoved}
+                        onGamesAdded={handleGamesAdded}
                         runningGameIds={runningGameIds}
                         onGameRunningChange={handleGameRunningChange}
                         igdbConnectionStatus={igdbConnectionStatus}
@@ -1011,6 +1064,7 @@ function App() {
                         onOpenSettings={handleOpenSettings}
                         onRefresh={handleRefreshLibrary}
                         onScanPlatforms={handleScanPlatforms}
+                        onToggleFavorite={handleToggleFavorite}
                         isLoading={isScanning}
                         isLoadingGames={isLoadingGames}
                         scanProgress={scanProgress}
