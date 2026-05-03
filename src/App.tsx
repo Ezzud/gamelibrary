@@ -473,8 +473,11 @@ function App() {
             } finally {
                 setIsLoadingGames(false)
             }
+            void ensureRunOnStartupAppliedOnLaunch().catch((err) => {
+                Logger.error('Failed to sync run-on-startup on launch:', err)
+            })
             void (async () => {
-                await ensureRunOnStartupAppliedOnLaunch()
+                
                 setIsScanning(true)
                 setScanProgress(0)
                 setScanStatusMessage('Scanning all custom folders...')

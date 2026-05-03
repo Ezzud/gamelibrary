@@ -66,12 +66,18 @@ export const formatPlaytime = (totalMs: number) => {
   }
 
   const totalMinutes = Math.floor(totalMs / 60000)
-  if (totalMinutes >= 60) {
-    const hours = Math.floor(totalMinutes / 60)
-    return `${hours}h`
+  if (totalMinutes < 60) {
+    return `${Math.max(1, totalMinutes)}m`
   }
 
-  return `${Math.max(1, totalMinutes)}m`
+  const totalHours = Math.floor(totalMinutes / 60)
+  const remainingMinutes = totalMinutes % 60
+
+  if (totalHours < 10) {
+    return remainingMinutes > 0 ? `${totalHours}h ${remainingMinutes}m` : `${totalHours}h`
+  }
+
+  return `${totalHours}h`
 }
 
 export const addPlaytime = async (gameId: string, durationMs: number, endedAtMs: number) => {

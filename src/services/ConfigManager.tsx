@@ -389,30 +389,24 @@ export async function getRunOnStartup() {
     }
 }
 
-async function isRunOnStartupDisabledBySystem() {
-    try {
-        const result = await invoke<boolean>('is_run_on_startup_disabled');
-        return !!result;
-    } catch (err) {
-        Logger.warn('Failed to query run-on-startup disabled state from backend:', err);
-        return false;
-    }
-}
-
 export async function ensureRunOnStartupAppliedOnLaunch() {
     const config = await loadConfig();
+    if (config.runOnStartup === null || config.runOnStartup === undefined) {
+        try {
+            await setRunOnStartup(true);
+            Logger.info('Run-on-startup was enabled in config and re-applied on launch.');
+        } catch (err) {
+            Logger.error('Failed to re-apply run-on-startup during launch sync:', err);
+        }
+        return;
+    }
+
     if (!config.runOnStartup) {
         return;
     }
 
     const currentlyEnabled = await getRunOnStartup();
     if (currentlyEnabled) {
-        return;
-    }
-
-    const disabledBySystem = await isRunOnStartupDisabledBySystem();
-    if (disabledBySystem) {
-        Logger.info('Run-on-startup is disabled in system Startup Apps. Skipping automatic re-enable.');
         return;
     }
 

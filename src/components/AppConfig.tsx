@@ -161,6 +161,7 @@ const AppConfig = ({
   const [credentialsStatus, setCredentialsStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [cardHoverEffect, setCardHoverEffectState] = useState('zoom')
   const [runOnStartup, setRunOnStartupState] = useState(false)
+  const [isUpdatingRunOnStartup, setIsUpdatingRunOnStartup] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckStatus>('idle')
   const [currentVersion, setCurrentVersion] = useState('Unknown')
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
@@ -582,6 +583,25 @@ const AppConfig = ({
     }
   }
 
+  const handleToggleRunOnStartup = async () => {
+    if (isUpdatingRunOnStartup) {
+      return
+    }
+
+    const next = !runOnStartup
+    setIsUpdatingRunOnStartup(true)
+    try {
+      await setRunOnStartup(next)
+      setRunOnStartupState(next)
+      onShowToast?.(next ? 'Enabled run on startup' : 'Disabled run on startup', { durationMs: 3000, style: 'success' })
+    } catch (err) {
+      Logger.error('Failed to toggle run on startup:', err)
+      onShowToast?.('Failed to change run-on-startup setting', { durationMs: 5000, style: 'error' })
+    } finally {
+      setIsUpdatingRunOnStartup(false)
+    }
+  }
+
   const getHoverEffectIcon = (effect: string) => {
     switch (effect) {
       case 'zoom':
@@ -801,34 +821,30 @@ const AppConfig = ({
                     role="switch"
                     tabIndex={0}
                     aria-checked={runOnStartup}
+                    aria-disabled={isUpdatingRunOnStartup}
+                    aria-busy={isUpdatingRunOnStartup}
                     onKeyDown={async (e) => {
+                      if (isUpdatingRunOnStartup) {
+                        return
+                      }
+
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault()
-                        const next = !runOnStartup
-                        try {
-                          await setRunOnStartup(next)
-                          setRunOnStartupState(next)
-                          onShowToast?.(next ? 'Enabled run on startup' : 'Disabled run on startup', { durationMs: 3000, style: 'success' })
-                        } catch (err) {
-                          Logger.error('Failed to toggle run on startup:', err)
-                          onShowToast?.('Failed to change run-on-startup setting', { durationMs: 5000, style: 'error' })
-                        }
+                        void handleToggleRunOnStartup()
                       }
                     }}
-                    onClick={async () => {
-                      const next = !runOnStartup
-                      try {
-                        await setRunOnStartup(next)
-                        setRunOnStartupState(next)
-                        onShowToast?.(next ? 'Enabled run on startup' : 'Disabled run on startup', { durationMs: 3000, style: 'success' })
-                      } catch (err) {
-                        Logger.error('Failed to toggle run on startup:', err)
-                        onShowToast?.('Failed to change run-on-startup setting', { durationMs: 5000, style: 'error' })
-                      }
-                    }}
-                    className={`relative inline-flex h-8 w-16 items-center cursor-pointer select-none rounded-md p-1 transition-colors duration-300 focus:outline-none ${runOnStartup ? 'bg-sky-400' : 'bg-zinc-700'}`}
+                    onClick={() => void handleToggleRunOnStartup()}
+                    className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none ${
+                      isUpdatingRunOnStartup
+                        ? 'cursor-not-allowed opacity-50 grayscale bg-zinc-600'
+                        : 'cursor-pointer '
+                    } ${runOnStartup ? 'bg-sky-400' : 'bg-zinc-700'}`}
                   >
-                    <div className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${runOnStartup ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'}`} />
+                    <div
+                      className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${
+                        runOnStartup ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'
+                      } ${isUpdatingRunOnStartup ? 'opacity-80' : ''}`}
+                    />
                   </div>
                 </div>
               </div>
