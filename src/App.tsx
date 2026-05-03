@@ -611,6 +611,7 @@ function App() {
                     const cacheData = await loadGameCache(game.id)
                     if (cacheData) {
                         game.name = cacheData.title || game.name
+                        game.platform = cacheData.platform || game.platform
                         if (!game.coverUrl && !cacheData.cover_url) {
                             if (cacheData.fetched) {
                                 Logger.warn(
@@ -645,7 +646,6 @@ function App() {
                         } else {
                             game.coverUrl = cacheData.cover_url || game.coverUrl
                             game.thumbnailUrl = cacheData.thumbnail_url || game.thumbnailUrl
-                            game.platform = cacheData.platform || game.platform
                         }
                     } else {
                         try {

@@ -1181,11 +1181,6 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                   })}
                 </div>
 
-                <div className="rounded-lg border border-steam-700/70 bg-steam-900/50 px-3 py-2 mt-3">
-                  <p className="text-xs text-steam-400">Selected platforms</p>
-                  <p className="text-sm text-steam-100 mt-1">{Array.from(selectedPlatforms).join(', ') || 'None'}</p>
-                </div>
-
                 <div className="mt-3 rounded-lg bg-steam-900/50 px-3 py-3">
                   <p className="text-xs text-steam-400 mb-2">Custom folder source</p>
                   <button

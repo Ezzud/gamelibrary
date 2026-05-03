@@ -1125,11 +1125,6 @@ const AppConfig = ({
               })}
             </div>
 
-            <div className="rounded-lg bg-steam-900/45 px-3 py-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-              <p className="text-xs text-steam-400">Selected platforms</p>
-              <p className="text-sm text-steam-100 mt-1">{Array.from(selectedPlatforms).join(', ') || 'None'}</p>
-            </div>
-
             <button
               type="button"
               onClick={handleBeginScan}

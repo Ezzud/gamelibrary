@@ -1,108 +1,57 @@
-# GameLibrary
+# <img src="./readme-assets/icon.png" width="48" style="vertical-align: middle; margin-right: 10px;" alt="GameLibrary icon"> GameLibrary
 
-GameLibrary is a desktop game launcher and organizer built with Tauri, React, and TypeScript.
 
-It helps you manage games from multiple sources, launch them reliably, track play activity, and enrich your library metadata with IGDB.
+GameLibrary is a desktop app to regroup all of your installed games from all launchers, as well as configurable custom folders or games.
+It has an integrated game launcher and playtime tracker to centralize every playtime from all games
 
-## Key Features
+-----
+## Features
 
-- Clean desktop UI for browsing and launching your games.
-- Multi-source scanning workflow:
-	- Steam
-	- Custom folders
-	- Extensible platform list for future providers
-- Smart refresh behavior:
-	- Rescans all custom folders
-	- Rescans Steam when Steam titles exist in the current library
-- Search, filter, and sort controls for fast library navigation.
-- Launch file picker support when a game has multiple possible launch files.
-- Recently played sidebar with one-click quick launch.
-- Play history tracking and maintenance actions.
-- Twitch credentials flow for IGDB integration.
-- In-app update checker against this repository with version comparison.
-- Persistent logging to app data logs:
-	- latest.log (reset on each app launch)
-	- DD-MM-YYYY.log
+- Game Scanner: Choose what platform you want to scan your installed games, and it will work by itself and scan for new games every time you launch or refresh the library
+![Scanner Demo](readme-assets/scans.png)
+<br>
+- Game Tracker: Track your playtime and your latest time played
+![Scanner Demo](readme-assets/tracker.png)
+<br>
+- Custom Game Launcher: Specify launch arguments, choose your default launch file
+![Scanner Demo](readme-assets/launcher.png)
+<br>
+- Custom Folders: Add custom folders where the app will try to find games on
+![Scanner Demo](readme-assets/folders.png)
+<br>
+- Special tags: Add special tags for modified games/fixed games
+- IGDB API: Fetch all your games cover and artwork
+- Favorites: Add your games to favorites to see them on top of your library
+- Fully Client-side: The app only use IGDB for getting game covers, full name or thumbnail, which is not mandatory. The app can also make requests to Github for version checking, which is not mandatory too
 
-## Tech Stack
+-----
 
-- Tauri 2
+## How to install
+
+- Go to the [RELEASES](https://github.com/Ezzud/gamelibrary/releases)
+- Download **gamelibrary_x64-setup.exe**
+- Launch the file and proceed to the installation
+
+-----
+
+## Stack
+
+- Tauri v2
 - React 19
-- TypeScript
 - Vite
-- Tailwind CSS
+- TailwindCSS
+- Lucide Icons
+- NodeJS v20 + Typescript
 
-## Getting Started
 
-### Prerequisites
+-----
 
-- Node.js 18+ (or current LTS)
-- pnpm
-- Rust toolchain
-- Tauri system prerequisites (WebView2 and platform tooling)
+## How to compile yourself
+Requirement: Rustc, NodeJS v20
 
-### Install
-
-Run:
-
-pnpm install
-
-### Development
-
-Run:
-
-pnpm tauri dev
-
-### Production Build
-
-Run:
-
-pnpm tauri build
-
-## Configuration and Data
-
-GameLibrary stores config, game metadata, play history, and logs in the Tauri app data directory under the GameLibrary folder.
-
-Important runtime data includes:
-
-- App config (including Twitch credentials)
-- Game list and per-game config/cache
-- Play history
-- Logs folder
-
-## IGDB Credentials
-
-To use IGDB-backed metadata, provide your Twitch Developer credentials in-app:
-
-1. Open the Twitch Developer Console and create an application.
-2. Copy your Client ID and Client Secret.
-3. Open Settings in GameLibrary and connect credentials.
-
-If credentials are missing or invalid, the app surfaces warnings and guidance in the UI.
-
-## Update Checking
-
-The Update section in App Config checks the repository package version from:
-
-- https://github.com/Ezzud/gamelibrary
-
-States shown in-app:
-
-- Up to date
-- New version available (with update action)
-- Unable to fetch version
-
-## Logging
-
-Logs are written to both:
-
-- latest.log (cleared at app launch)
-- DD-MM-YYYY.log
-
-This keeps a clean current-session log while preserving daily history.
-
-## Recommended IDE Setup
-
-- VS Code
-- Tauri extension
-- rust-analyzer extension
+- Clone the repo
+- Execute command
+```
+pnpm run tauri build
+```
+- You will have the setup file + the .exe to directly launch the app in `src-tauri\target\release\bundle\nsis\`
