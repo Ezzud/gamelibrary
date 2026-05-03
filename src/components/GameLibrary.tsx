@@ -139,6 +139,8 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
   const [gameTagsById, setGameTagsById] = useState<Record<string, string[]>>({})
   const [isAddingManualGame, setIsAddingManualGame] = useState(false)
   const [cardHoverEffect, setCardHoverEffect] = useState('zoom')
+  const [showSkipIGDBConfirmation, setShowSkipIGDBConfirmation] = useState(false)
+  const [skipIGDBSetup, setSkipIGDBSetup] = useState(false)
   const platformMenuRef = useRef<HTMLDivElement | null>(null)
   const tagMenuRef = useRef<HTMLDivElement | null>(null)
   const sortMenuRef = useRef<HTMLDivElement | null>(null)
@@ -994,6 +996,49 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
         <div className="absolute bottom-0 left-1/2 h-px w-[90%] -translate-x-1/2 bg-[#2b4157]" />
       </div>
 
+      {/* Skip IGDB Confirmation Modal */}
+      {showSkipIGDBConfirmation && (
+        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-steam-800 border border-sky-500 rounded-xl shadow-2xl max-w-md w-full mx-4">
+            <div className="px-6 py-4">
+              <h3 className="text-lg font-semibold text-white">Skip IGDB Credentials?</h3>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              <p className="text-sm text-steam-300">
+                Are you sure you want to skip the IGDB credentials? Your games will not have
+              </p>
+              <div className="text-sm text-blue-400 font-medium">
+                Game Covers and Thumbnails, Formatted titles
+              </div>
+              <p className="text-xs text-steam-400">
+                You can always set up IGDB credentials later in the settings.
+              </p>
+            </div>
+            <div className="px-6 py-4 flex items-center gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowSkipIGDBConfirmation(false)}
+                className="px-4 py-2 rounded-lg bg-steam-700 hover:bg-steam-600 text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSkipIGDBConfirmation(false)
+                  setSkipIGDBSetup(true)
+                  setTwitchClientId('')
+                  setTwitchClientSecret('')
+                }}
+                className="px-4 py-2 rounded-lg bg-red-700/70 hover:bg-red-600 text-white transition-colors"
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Games Grid */}
       <div className="p-6">
         {isLoadingGames ? (
@@ -1002,7 +1047,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
             <p className="text-steam-300">Loading games...</p>
           </div>
         ) : games.length === 0 ? (
-          igdbConnectionStatus !== 'connected' ? (
+          igdbConnectionStatus !== 'connected' && !skipIGDBSetup ? (
             <div className="min-h-[60vh] flex items-center">
               <div className="max-w-2xl mx-auto w-full rounded-xl bg-linear-to-b from-steam-800/75 to-steam-900/75 px-5 py-6 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
                 <div className="text-center mb-4">
@@ -1075,15 +1120,26 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                     <p className="text-xs text-red-300">{igdbConnectError}</p>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => void handleConnectIGDB()}
-                    disabled={isConnectingIGDB || !twitchClientId.trim() || !twitchClientSecret.trim() || igdbConnectionStatus === 'checking'}
-                    className="w-full px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
-                  >
-                    {isConnectingIGDB ? <Loader className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                    {isConnectingIGDB ? 'Connecting...' : 'Connect'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectIGDB()}
+                      disabled={isConnectingIGDB || !twitchClientId.trim() || !twitchClientSecret.trim() || igdbConnectionStatus === 'checking'}
+                      className="flex-1 px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+                    >
+                      {isConnectingIGDB ? <Loader className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                      {isConnectingIGDB ? 'Connecting...' : 'Connect'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowSkipIGDBConfirmation(true)}
+                      disabled={isConnectingIGDB}
+                      className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-white hover:text-white font-medium hover:shadow-lg"
+                      title="Skip IGDB credentials setup"
+                    >
+                      Skip
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1133,7 +1189,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                     type="button"
                     onClick={() => void handleAddCustomFolderInEmptyState()}
                     disabled={isAddingCustomFolder || isLoading}
-                    className="w-full px-3 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+                    className="w-full px-3 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-[1.02] inline-flex items-center justify-center gap-2"
                   >
                     {isAddingCustomFolder ? <Loader className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
                     {isAddingCustomFolder ? 'Adding folder...' : 'Add Custom Folder'}
@@ -1173,7 +1229,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                     type="button"
                     onClick={handleBeginScan}
                     disabled={isLoading || selectedPlatforms.size < 1}
-                    className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+                    className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-[1.02] inline-flex items-center gap-2"
                   >
                     <Play className="w-4 h-4" />
                     {isLoading ? 'Scanning...' : 'Begin Scan'}

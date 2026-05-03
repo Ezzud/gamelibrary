@@ -996,7 +996,13 @@ export async function registerGames(games: any[], platform: string, onProgress?:
             const normalizedPath = game.path?.replace(/[\\/]+$/, '') || '';
             const folderName = normalizedPath.split(/[\\/]/).pop() || '';
             const searchName = folderName || game.name;
-            const gameData = await searchGame(searchName || game.name);
+            let gameData = null;
+            try {
+                gameData = await searchGame(searchName || game.name);
+            } catch (err) {
+                Logger.error(`Error occurred while fetching game info from IGDB for ${game.name}:`, err);
+                gameData = { success: false, code: 'IGDB_FETCH_ERROR' };
+            }
             const id = await generateGameId();
             game.id = id; // Assign generated ID to game object for later use
             if(gameData.success && gameData.data) {
@@ -1018,7 +1024,7 @@ export async function registerGames(games: any[], platform: string, onProgress?:
                     Logger.error(`Error occurred while saving game info cache for ${gameEntry.title}:`, err);
                 }
             } else {
-                if(!gameData.success && gameData.code === 'GAME_NOT_FOUND') {
+                if(gameData.code === 'GAME_NOT_FOUND') {
                     Logger.warn(`Game "${game.name}" not found in IGDB, saving with basic info only.`);
                     const gameEntry: GameCacheConfig = {
                         id,
@@ -1031,9 +1037,28 @@ export async function registerGames(games: any[], platform: string, onProgress?:
                         fetched: true,
                     }
                     try {
-                    await saveGameInfoCache(id, gameEntry);
+                        await saveGameInfoCache(id, gameEntry);
                         Logger.success(`Saved game info cache for ${gameEntry.title} with ID: ${id}`);
                     } catch (err) {
+                        Logger.error(`Error occurred while saving game info cache for ${gameEntry.title}:`, err);
+                    }
+                } else {
+                    Logger.error(`Failed to fetch game info from IGDB for "${game.name}" due to an error. Saving with basic info only.`);
+                    const gameEntry: GameCacheConfig = {
+                        id,
+                        title: game.name,
+                        cover_url: null,
+                        thumbnail_url: null,
+                        igdb_id: null,
+                        platform: platform || null,
+                        folder: game.path,
+                        fetched: false,
+                    }
+                    try {
+                        await saveGameInfoCache(id, gameEntry);
+                        Logger.success(`Saved game info cache for ${gameEntry.title} with ID: ${id}`);
+                    }
+                    catch (err) {
                         Logger.error(`Error occurred while saving game info cache for ${gameEntry.title}:`, err);
                     }
                 }
