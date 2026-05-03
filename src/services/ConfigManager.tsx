@@ -152,6 +152,7 @@ export async function deleteGameCache(gameId: string) {
         if (fileExists) {
             const currentConfig = await loadGameCache(gameId);
             let defaultConfig = defaultGameCacheConfig;
+            defaultConfig.id = currentConfig?.id || null;
             defaultConfig.platform = currentConfig?.platform || null;
             defaultConfig.folder = currentConfig?.folder || '';
             await writeTextFile(cachePath, JSON.stringify(defaultGameCacheConfig, null, 2));
