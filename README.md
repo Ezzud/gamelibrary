@@ -8,15 +8,19 @@ It has an integrated game launcher and playtime tracker to centralize every play
 ## Features
 
 - Game Scanner: Choose what platform you want to scan your installed games, and it will work by itself and scan for new games every time you launch or refresh the library
+
 ![Scanner Demo](readme-assets/scans.png)
 <br>
 - Game Tracker: Track your playtime and your latest time played
+
 ![Scanner Demo](readme-assets/tracker.png)
 <br>
 - Custom Game Launcher: Specify launch arguments, choose your default launch file
+
 ![Scanner Demo](readme-assets/launcher.png)
 <br>
 - Custom Folders: Add custom folders where the app will try to find games on
+
 ![Scanner Demo](readme-assets/folders.png)
 <br>
 - Special tags: Add special tags for modified games/fixed games
