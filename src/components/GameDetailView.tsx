@@ -399,7 +399,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                 }}
             />
 
-            <div className="flex-1 overflow-auto flex flex-col bg-gradient-to-br from-steam-900 via-[#0e1725] to-[#18263b] relative">
+            <div className="flex-1 overflow-auto flex flex-col bg-linear-to-br from-steam-900 via-[#0e1725] to-[#18263b] relative">
                 {backgroundThumbnailUrl && (
                     <div
                         className="pointer-events-none absolute inset-x-0 top-0 h-[56vh] bg-cover bg-center opacity-30"
@@ -412,7 +412,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                 )}
 
                 {/* Header with Back Button */}
-                <div className="relative z-10 p-6 bg-gradient-to-r from-steam-800/95 via-[#1a2b43]/95 to-steam-800/95 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
+                <div className="relative z-10 p-6 bg-linear-to-r from-steam-800/95 via-[#1a2b43]/95 to-steam-800/95 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
                     <button
                         onClick={onBack}
                         className="flex items-center gap-2 text-steam-300 hover:text-white transition-all duration-200 hover:-translate-x-0.5 mb-4"
@@ -420,14 +420,14 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                         <ArrowLeft className="w-5 h-5" />
                         Back to Library
                     </button>
-                    <h2 className="text-3xl font-bold bg-gradient-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{game.name}</h2>
+                    <h2 className="text-3xl font-bold bg-linear-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{game.name}</h2>
                 </div>
 
                 {/* Main Content */}
                 <div className="relative z-10 flex-1 p-6 flex flex-col lg:flex-row gap-6 items-start">
                     {/* Cover Art */}
-                    <div className="w-full lg:w-[240px] lg:shrink-0">
-                        <div className="w-full max-w-[240px] rounded-xl overflow-hidden bg-steam-800/85 aspect-[2/3] shadow-[0_18px_34px_rgba(0,0,0,0.28)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_42px_rgba(0,0,0,0.34)]">
+                    <div className="w-full lg:w-60 lg:shrink-0">
+                        <div className="w-full max-w-60 rounded-xl overflow-hidden bg-steam-800/85 aspect-2/3 shadow-[0_18px_34px_rgba(0,0,0,0.28)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_42px_rgba(0,0,0,0.34)]">
                             {game.coverUrl ? (
                                 <img
                                     src={game.coverUrl}
@@ -435,7 +435,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                                     className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
                                 />
                             ) : (
-                                <div className="w-full h-full bg-gradient-to-br from-steam-700 to-steam-800 flex items-center justify-center">
+                                <div className="w-full h-full bg-linear-to-br from-steam-700 to-steam-800 flex items-center justify-center">
                                     <Gamepad2 className="w-24 h-24 text-steam-500" />
                                 </div>
                             )}
@@ -513,7 +513,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 
                         {/* Action Buttons */}
                         <div className="flex flex-wrap justify-between items-end gap-4 mt-auto w-full">
-                            <div className="flex flex-wrap items-center gap-2 min-h-[48px]">
+                            <div className="flex flex-wrap items-center gap-2 min-h-12">
                                 {specialTags
                                     .filter((tag) => tagVisuals[tag])
                                     .map((tag) => {
@@ -535,7 +535,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                                 <button
                                     onClick={handleLaunch}
                                     disabled={isLaunching || isMissing || isGameRunning}
-                                    className="w-[260px] bg-[#1f8f4e] hover:bg-[#27a45a] disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
+                                    className="w-65 bg-[#1f8f4e] hover:bg-[#27a45a] disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
                                 >
                                     {isLaunching || isGameRunning ?  (
                                         <Loader className="w-5 h-5 animate-spin" />
