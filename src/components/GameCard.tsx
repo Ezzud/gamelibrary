@@ -313,8 +313,11 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
         </div>
 
         {/* Overlay */}
-        <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-3">
-          <p className="text-white font-semibold text-sm line-clamp-2">{game.name}</p>
+        <div className="absolute inset-0 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:scale-[1.025]">
+          <div className="absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-black/85 via-black/35 to-transparent" />
+          <div className="relative z-10 flex h-full flex-col justify-end p-3">
+            <p className="text-white font-semibold text-sm line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{game.name}</p>
+          </div>
         </div>
       </button>
 
