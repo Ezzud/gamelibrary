@@ -935,6 +935,13 @@ fn cleanup_updates_dir_on_startup(app: &tauri::AppHandle) {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[tauri::command]
+fn copy_file(source: String, destination: String) -> Result<(), String> {
+    fs::copy(&source, &destination)
+        .map_err(|e| format!("Failed to copy file from {} to {}: {}", source, destination, e))?;
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -967,7 +974,8 @@ pub fn run() {
             wait_for_process_exit,
             download_and_launch_installer,
             download_file_with_progress,
-            unzip_file
+            unzip_file,
+            copy_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

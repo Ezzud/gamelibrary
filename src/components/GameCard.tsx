@@ -4,7 +4,7 @@ import { FolderOpen, Gamepad2, Loader2, Play, Settings, Star, Trash2, LocateOff 
 import { exists } from '@tauri-apps/plugin-fs'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
-import { loadGameConfig } from '../services/ConfigManager'
+import { getGameCoverPath, loadGameConfig } from '../services/ConfigManager'
 
 interface Game {
   id: string
@@ -39,6 +39,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
   const [isContextOpen, setIsContextOpen] = useState(false)
   const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 })
   const [specialTags, setSpecialTags] = useState<string[]>([])
+  const [displayCoverUrl, setDisplayCoverUrl] = useState<string | undefined>(game.coverUrl)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [isMissing, setIsMissing] = useState<boolean>(false)
 
@@ -69,6 +70,31 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
     checkPath()
     return () => { cancelled = true }
   }, [game.path])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadConfigAndResolveCover() {
+      try {
+        const coverPath = await getGameCoverPath(game.id)
+        if (!cancelled) {
+          if (coverPath) {
+            // Convert local file path to file:// URL
+            let filePath = coverPath.trim().replace(/\\/g, '/')
+            if (!filePath.startsWith('file://')) {
+              filePath = filePath[1] === ':' ? 'file:///' + filePath : 'file://' + filePath
+            }
+            setDisplayCoverUrl(filePath)
+          } else {
+            setDisplayCoverUrl(game.coverUrl)
+          }
+        }
+      } catch (error) {
+        if (!cancelled) setDisplayCoverUrl(game.coverUrl)
+      }
+    }
+    loadConfigAndResolveCover()
+    return () => { cancelled = true }
+  }, [game.id, game.coverUrl])
 
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -291,9 +317,9 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
         {/* Cover Art */}
 
         <div className="relative w-full h-full">
-          {game.coverUrl ? (
+          {displayCoverUrl ? (
             <img
-              src={game.coverUrl}
+              src={displayCoverUrl}
               alt={game.name}
               onError={handleImageError}
               className={`w-full h-full object-cover transition-transform duration-200 ${cardHoverEffect === 'zoom' || cardHoverEffect === 'shine' ? 'group-hover:scale-105' : ''} ${isMissing ? 'grayscale opacity-60' : ''}`}

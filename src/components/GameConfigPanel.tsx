@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Save, Loader, FolderOpen, TerminalSquare, FolderCog, FileCog, Info, Rocket } from 'lucide-react'
+import { ArrowLeft, Save, Loader, FolderOpen, TerminalSquare, FolderCog, FileCog, Info, Rocket, X, RefreshCw, Image as ImageIcon } from 'lucide-react'
 import { dirname } from '@tauri-apps/api/path'
-import { loadGameConfig, saveGameConfig, getGameCachePath } from '../services/ConfigManager'
+import { open } from '@tauri-apps/plugin-dialog'
+import { loadGameConfig, saveGameConfig, getGameCachePath, copyFileToGameCache, getGameCoverPath, getGameThumbnailPath } from '../services/ConfigManager'
 import { openGameFolder } from '../services/GameLauncher'
 import { resetAndRefetchGameIGDBData } from '../services/GameDataManager'
+import { getAllLaunchFiles } from '../services/GameScanner'
 
 interface Game {
   id: string
@@ -34,10 +36,14 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
   const [defaultLaunchFile, setDefaultLaunchFile] = useState('')
   const [allLaunchFiles, setAllLaunchFiles] = useState<string[]>([])
   const [cachePath, setCachePath] = useState('')
+  const [forcedIGDBId, setForcedIGDBId] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [isResettingIGDBData, setIsResettingIGDBData] = useState(false)
+  const [isRefreshingLaunchFiles, setIsRefreshingLaunchFiles] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [localCoverPath, setLocalCoverPath] = useState<string | null>(null)
+  const [localBannerPath, setLocalBannerPath] = useState<string | null>(null)
 
   const getFolderName = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || ''
   const folderName = getFolderName(game.path)
@@ -56,7 +62,14 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
       const config = await loadGameConfig(game.id)
       const cacheFilePath = await getGameCachePath(game.id)
       const cacheDirectoryPath = await dirname(cacheFilePath)
+      
       setCachePath(cacheDirectoryPath)
+
+      // Load local image paths
+      const coverPath = await getGameCoverPath(game.id)
+      const thumbnailPath = await getGameThumbnailPath(game.id)
+      setLocalCoverPath(coverPath)
+      setLocalBannerPath(thumbnailPath)
 
       if (config) {
         setLaunchArgs(config.customArguments || '')
@@ -65,6 +78,13 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
         setAllLaunchFiles(config.allLaunchFiles || [])
         const hasSearchName = typeof config.searchName === 'string'
         setSearchName(hasSearchName ? config.searchName : folderName)
+        
+        // Load forced_igdb_id from config
+        if (config.forced_igdb_id) {
+          setForcedIGDBId(String(config.forced_igdb_id))
+        } else {
+          setForcedIGDBId('')
+        }
       } else {
         setSearchName(folderName)
       }
@@ -85,10 +105,21 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
     try {
       const currentConfig = await loadGameConfig(game.id)
       const trimmedSearchName = searchName.trim()
+      
+      // Prepare forced_igdb_id value
+      let forcedId: number | null = null
+      if (forcedIGDBId.trim()) {
+        const parsed = parseInt(forcedIGDBId.trim(), 10)
+        if (!isNaN(parsed)) {
+          forcedId = parsed
+        }
+      }
+      
       await saveGameConfig(game.id, {
         ...currentConfig,
         customArguments: launchArgs,
         searchName: trimmedSearchName || folderName || game.name,
+        forced_igdb_id: forcedId,
       })
 
       setSaveMessage('Configuration saved successfully!')
@@ -97,6 +128,27 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
     } catch (error) {
       console.error('Failed to save config:', error)
       setSaveMessage('Failed to save configuration')
+      setTimeout(() => setSaveMessage(''), 3000)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleClearForcedIGDBId = async () => {
+    setIsSaving(true)
+    try {
+      const config = await loadGameConfig(game.id)
+      await saveGameConfig(game.id, {
+        ...config,
+        forced_igdb_id: null,
+      })
+      setForcedIGDBId('')
+      setSaveMessage('Forced IGDB ID cleared successfully!')
+      setTimeout(() => setSaveMessage(''), 3000)
+      onConfigSaved?.()
+    } catch (error) {
+      console.error('Failed to clear forced IGDB ID:', error)
+      setSaveMessage('Failed to clear forced IGDB ID')
       setTimeout(() => setSaveMessage(''), 3000)
     } finally {
       setIsSaving(false)
@@ -158,6 +210,96 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
       onShowToast?.(`Failed to reset IGDB data: ${message}`, { durationMs: 5000, style: 'error' })
     } finally {
       setIsResettingIGDBData(false)
+    }
+  }
+
+  const handleRefreshLaunchFiles = async () => {
+    if (isRefreshingLaunchFiles) {
+      return
+    }
+
+    setIsRefreshingLaunchFiles(true)
+    try {
+      const launchFiles = await getAllLaunchFiles(game.path)
+      setAllLaunchFiles(launchFiles || [])
+      
+      // Save updated launch files to config
+      const currentConfig = await loadGameConfig(game.id)
+      await saveGameConfig(game.id, {
+        ...currentConfig,
+        allLaunchFiles: launchFiles || [],
+      })
+      
+      onShowToast?.('Launch files refreshed successfully.', { durationMs: 2000, style: 'success' })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      onShowToast?.(`Failed to refresh launch files: ${message}`, { durationMs: 3000, style: 'error' })
+    } finally {
+      setIsRefreshingLaunchFiles(false)
+    }
+  }
+
+  const handleSetLocalImage = async (imageType: 'cover' | 'banner') => {
+    try {
+      const selectedFile = await open({
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }],
+        multiple: false,
+        directory: false,
+      }) as string | null
+      
+      if (!selectedFile) return;
+      
+      // Copy file to game cache style folder
+      const cachedFilePath = await copyFileToGameCache(game.id, selectedFile, imageType === 'cover' ? 'cover' : 'thumbnail')
+      
+      // Save cached file path to config
+      const currentConfig = await loadGameConfig(game.id)
+      const configKey = imageType === 'cover' ? 'localCoverPath' : 'localBannerPath'
+      
+      await saveGameConfig(game.id, {
+        ...currentConfig,
+        [configKey]: cachedFilePath,
+      })
+      
+      // Update local state
+      if (imageType === 'cover') {
+        setLocalCoverPath(cachedFilePath)
+      } else {
+        setLocalBannerPath(cachedFilePath)
+      }
+      
+      const imageName = imageType === 'cover' ? 'Cover' : 'Banner'
+      onShowToast?.(`${imageName} image updated successfully.`, { durationMs: 2000, style: 'success' })
+      onConfigSaved?.()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      onShowToast?.(`Failed to set ${imageType}: ${message}`, { durationMs: 3000, style: 'error' })
+    }
+  }
+
+  const handleClearLocalImage = async (imageType: 'cover' | 'banner') => {
+    try {
+      const currentConfig = await loadGameConfig(game.id)
+      const configKey = imageType === 'cover' ? 'localCoverPath' : 'localBannerPath'
+      
+      await saveGameConfig(game.id, {
+        ...currentConfig,
+        [configKey]: undefined,
+      })
+      
+      // Update local state
+      if (imageType === 'cover') {
+        setLocalCoverPath(null)
+      } else {
+        setLocalBannerPath(null)
+      }
+      
+      const imageName = imageType === 'cover' ? 'Cover' : 'Banner'
+      onShowToast?.(`${imageName} image cleared successfully.`, { durationMs: 2000, style: 'success' })
+      onConfigSaved?.()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      onShowToast?.(`Failed to clear ${imageType}: ${message}`, { durationMs: 3000, style: 'error' })
     }
   }
 
@@ -237,6 +379,37 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 
               <div className="mb-6">
                 <label className="flex items-center gap-2 text-steam-300 font-semibold mb-2">
+                  <Info className="w-4 h-4 text-steam-300" />
+                  Forced IGDB ID
+                </label>
+                <p className="text-steam-400 text-sm mb-3">
+                  Directly fetch game details by IGDB ID. When set, IGDB searches will use this ID instead of searching by name.
+                </p>
+                <div className="w-full bg-[#0f1a2a]/95 text-white rounded-lg p-3 font-mono text-sm flex items-center gap-2 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
+                  <input
+                    type="number"
+                    value={forcedIGDBId}
+                    onChange={(e) => setForcedIGDBId(e.target.value)}
+                    placeholder="Enter IGDB ID (optional)"
+                    className="flex-1 bg-transparent text-white focus:outline-none"
+                  />
+                  {forcedIGDBId && (
+                    <button
+                      type="button"
+                      onClick={() => void handleClearForcedIGDBId()}
+                      disabled={isSaving}
+                      className="shrink-0 w-9 h-9 rounded-md bg-[#8b1f1f] hover:bg-[#a82a2a] disabled:opacity-50 disabled:cursor-not-allowed text-white inline-flex items-center justify-center transition-colors"
+                      title="Clear forced IGDB ID"
+                      aria-label="Clear forced IGDB ID"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="flex items-center gap-2 text-steam-300 font-semibold mb-2">
                   <FileCog className="w-4 h-4 text-steam-300" />
                   Cache Path
                 </label>
@@ -279,6 +452,26 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
                 )}
                 Save Configuration
               </button>
+
+              {/* Actions Section */}
+              <div className="bg-[#27181c]/86 rounded-xl p-6 shadow-[0_14px_28px_rgba(0,0,0,0.22)] mt-6">
+                <h3 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Actions
+                </h3>
+                <p className="text-red-200/90 text-sm mb-4">
+                  Reset cached IGDB fields for this game and refetch fresh metadata.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void handleResetIGDBData()}
+                  disabled={isResettingIGDBData || isSaving}
+                  className="w-full bg-red-700 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  {isResettingIGDBData ? <Loader className="w-5 h-5 animate-spin" /> : <Info className="w-5 h-5" />}
+                  {isResettingIGDBData ? 'Resetting...' : 'Reset IGDB Data'}
+                </button>
+              </div>
             </div>
 
             <div className="space-y-8">
@@ -302,10 +495,22 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 
               {/* Launch Files Section */}
               <div className="bg-[#15263b]/86 rounded-xl p-6 shadow-[0_14px_28px_rgba(0,0,0,0.22)]">
-                <h3 className="text-steam-300 font-semibold mb-3 flex items-center gap-2">
-                  <Rocket className="w-4 h-4" />
-                  Launch Files
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-steam-300 font-semibold flex items-center gap-2">
+                    <Rocket className="w-4 h-4" />
+                    Launch Files
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => void handleRefreshLaunchFiles()}
+                    disabled={isRefreshingLaunchFiles}
+                    className="p-2 bg-transparent hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-all duration-200"
+                    title="Refresh launch files"
+                    aria-label="Refresh launch files"
+                  >
+                    <RefreshCw className={`w-4 h-4 transition-transform duration-500 ${isRefreshingLaunchFiles ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
 
                 <div className="mb-6">
                   <label className="block text-steam-300 font-semibold mb-2">
@@ -361,23 +566,99 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
                 </div>
               </div>
 
-              <div className="bg-[#27181c]/86 rounded-xl p-6 shadow-[0_14px_28px_rgba(0,0,0,0.22)]">
-                <h3 className="text-red-300 font-semibold mb-3 flex items-center gap-2">
-                  <Info className="w-4 h-4" />
-                  Actions
+              {/* Style Section */}
+              <div className="bg-[#1a2d42]/86 rounded-xl p-6 shadow-[0_14px_28px_rgba(0,0,0,0.22)]">
+                <h3 className="text-steam-300 font-semibold mb-4 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" />
+                  Style
                 </h3>
-                <p className="text-red-200/90 text-sm mb-4">
-                  Reset cached IGDB fields for this game and refetch fresh metadata.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void handleResetIGDBData()}
-                  disabled={isResettingIGDBData || isSaving}
-                  className="w-full bg-red-700 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
-                >
-                  {isResettingIGDBData ? <Loader className="w-5 h-5 animate-spin" /> : <Info className="w-5 h-5" />}
-                  {isResettingIGDBData ? 'Resetting...' : 'Reset IGDB Data'}
-                </button>
+                <div className="space-y-6">
+                  {/* Game Cover Card */}
+                  <div>
+                    <p className="text-steam-300 font-semibold text-sm mb-1">Game Cover</p>
+                    <p className="text-steam-500 text-xs mb-3">Recommended: 264x352px (3:4 aspect ratio)</p>
+                    <div className="relative inline-block">
+                      <button
+                        type="button"
+                        onClick={() => void handleSetLocalImage('cover')}
+                        className="group relative w-24 aspect-2/3 rounded-lg overflow-hidden bg-[#0f1a2a]/95 hover:bg-[#172a3d] transition-colors shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] flex items-center justify-center"
+                        title="Click to select a custom cover image"
+                      >
+                        {localCoverPath || game.coverUrl ? (
+                          <>
+                            <img
+                              src={localCoverPath ? 'file:///' + localCoverPath.replace(/\\/g, '/').replace(/^([a-zA-Z]:)/, '$1') : game.coverUrl}
+                              alt={game.name}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <ImageIcon className="w-8 h-8 text-white" />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 text-steam-400 group-hover:text-steam-300 transition-colors">
+                            <ImageIcon className="w-10 h-10" />
+                            <span className="text-xs">Choose Cover</span>
+                          </div>
+                        )}
+                      </button>
+                      {localCoverPath && (
+                        <button
+                          type="button"
+                          onClick={() => void handleClearLocalImage('cover')}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white shadow-lg transition-colors"
+                          title="Clear custom cover image"
+                          aria-label="Clear custom cover image"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Game Banner Card */}
+                  <div>
+                    <p className="text-steam-300 font-semibold text-sm mb-1">Game Banner</p>
+                    <p className="text-steam-500 text-xs mb-3">Recommended: 1080x1080px or wider</p>
+                    <div className="relative inline-block w-full">
+                      <button
+                        type="button"
+                        onClick={() => void handleSetLocalImage('banner')}
+                        className="group relative w-full max-w-xs aspect-video rounded-lg overflow-hidden bg-[#0f1a2a]/95 hover:bg-[#172a3d] transition-colors shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] flex items-center justify-center"
+                        title="Click to select a custom banner image"
+                      >
+                        {localBannerPath || game.thumbnailUrl ? (
+                          <>
+                            <img
+                              src={localBannerPath ? 'file:///' + localBannerPath.replace(/\\/g, '/').replace(/^([a-zA-Z]:)/, '$1') : game.thumbnailUrl}
+                              alt={`${game.name} banner`}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <ImageIcon className="w-8 h-8 text-white" />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 text-steam-400 group-hover:text-steam-300 transition-colors">
+                            <ImageIcon className="w-10 h-10" />
+                            <span className="text-xs">Choose Banner</span>
+                          </div>
+                        )}
+                      </button>
+                      {localBannerPath && (
+                        <button
+                          type="button"
+                          onClick={() => void handleClearLocalImage('banner')}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white shadow-lg transition-colors"
+                          title="Clear custom banner image"
+                          aria-label="Clear custom banner image"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

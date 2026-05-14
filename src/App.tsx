@@ -34,7 +34,7 @@ import {
     setTwitchCredentials,
     updateLatestPlayHistoryEntry,
 } from './services/ConfigManager'
-import { initIGDB, searchGame } from './services/GameDataManager'
+import { initIGDB, searchGame, getGameDetails } from './services/GameDataManager'
 import { launchGame } from './services/GameLauncher'
 import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from './services/PlaytimeManager'
 import { getVersion } from '@tauri-apps/api/app'
@@ -625,8 +625,20 @@ function App() {
                                     `No cover URL in cache for game ${game.name} (ID: ${game.id}), fetching from IGDB...`
                                 )
                                 try {
-                                    const searchName = await resolveSearchName(game.id, game.name, game.path)
-                                    const igdbData = await searchGame(searchName)
+                                    const config = await loadGameConfig(game.id)
+                                    const forcedIGDBId = (config as any)?.forced_igdb_id
+                                    let igdbData: any = null
+                                    
+                                    if (forcedIGDBId && typeof forcedIGDBId === 'number') {
+                                        const gameDetails = await getGameDetails(forcedIGDBId)
+                                        if (gameDetails) {
+                                            igdbData = { success: true, data: { ...gameDetails, id: forcedIGDBId } }
+                                        }
+                                    } else {
+                                        const searchName = await resolveSearchName(game.id, game.name, game.path)
+                                        igdbData = await searchGame(searchName)
+                                    }
+                                    
                                     if (igdbData.success && igdbData.data) {
                                         game.coverUrl = igdbData.data.cover_url || undefined
                                         game.thumbnailUrl = igdbData.data.thumbnail_url || undefined
@@ -652,8 +664,20 @@ function App() {
                         }
                     } else {
                         try {
-                            const searchName = await resolveSearchName(game.id, game.name, game.path)
-                            const igdbData = await searchGame(searchName)
+                            const config = await loadGameConfig(game.id)
+                            const forcedIGDBId = (config as any)?.forced_igdb_id
+                            let igdbData: any = null
+                            
+                            if (forcedIGDBId && typeof forcedIGDBId === 'number') {
+                                const gameDetails = await getGameDetails(forcedIGDBId)
+                                if (gameDetails) {
+                                    igdbData = { success: true, data: { ...gameDetails, id: forcedIGDBId } }
+                                }
+                            } else {
+                                const searchName = await resolveSearchName(game.id, game.name, game.path)
+                                igdbData = await searchGame(searchName)
+                            }
+                            
                             if (igdbData.success && igdbData.data) {
                                 game.coverUrl = igdbData.data.cover_url || undefined
                                 game.name = igdbData.data.title || game.name

@@ -342,6 +342,9 @@ export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: stri
     const config = await loadGameConfig(gameId);
     const configuredSearchName = typeof config?.searchName === 'string' ? config.searchName.trim() : '';
     const searchName = configuredSearchName || gameName;
+    
+    // Get forced_igdb_id from config instead of cache
+    const forcedIGDBId = config?.forced_igdb_id;
 
     await saveGameInfoCache(gameId, {
         ...cacheData,
@@ -353,7 +356,28 @@ export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: stri
         fetched: false,
     });
 
-    const igdbData = await searchGame(searchName);
+    let igdbData: any;
+    
+    // If forced_igdb_id is set, use getGameDetails instead of searchGame
+    if (forcedIGDBId && typeof forcedIGDBId === 'number') {
+        const gameDetails = await getGameDetails(forcedIGDBId);
+        if (gameDetails) {
+            igdbData = {
+                success: true,
+                data: {
+                    title: gameDetails.title,
+                    cover_url: gameDetails.cover_url,
+                    thumbnail_url: gameDetails.thumbnail_url,
+                    id: forcedIGDBId
+                }
+            };
+        } else {
+            throw new Error('Failed to fetch game details using forced_igdb_id.');
+        }
+    } else {
+        igdbData = await searchGame(searchName);
+    }
+
     if (!igdbData.success || !igdbData.data) {
         throw new Error('Failed to refetch IGDB data.');
     }
@@ -373,6 +397,7 @@ export const resetAndRefetchGameIGDBData = async (gameId: string, gameName: stri
         cover_url: igdbData.data.cover_url || null,
         thumbnail_url: igdbData.data.thumbnail_url || null,
         igdb_id: igdbData.data.id || null,
-        platform: cacheData.platform || null
+        platform: cacheData.platform || null,
+        forced_igdb_id: forcedIGDBId
     };
 }

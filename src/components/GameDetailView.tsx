@@ -20,7 +20,7 @@ import GameConfigPanel from './GameConfigPanel'
 import { getGameSize as fetchGameSize } from '../services/GameDataManager'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
 import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from '../services/PlaytimeManager'
-import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, saveGameConfig } from '../services/ConfigManager'
+import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, saveGameConfig, getGameCoverPath, getGameThumbnailPath } from '../services/ConfigManager'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 
 const MIN_LAUNCH_LOADING_MS = 5000
@@ -110,7 +110,10 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
     const [copiedPath, setCopiedPath] = useState(false)
     const [isMissing, setIsMissing] = useState(false)
     const [gamePlaytime, setGamePlaytime] = useState<string>('')
-    const backgroundThumbnailUrl = game.thumbnailUrl || (game.coverUrl ? game.coverUrl.replace('t_cover_big', 't_thumb') : '')
+    const [displayCoverUrl, setDisplayCoverUrl] = useState<string | undefined>(game.coverUrl)
+    const [displayThumbnailUrl, setDisplayThumbnailUrl] = useState<string | undefined>(game.thumbnailUrl)
+    const [imageRefreshTrigger, setImageRefreshTrigger] = useState(0)
+    const backgroundThumbnailUrl = displayThumbnailUrl || (displayCoverUrl ? displayCoverUrl.replace('t_cover_big', 't_thumb') : '')
 
     const tagVisuals: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
         hypervisor: {
@@ -160,7 +163,8 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
         getGameSpecialTags()
         getGamePlayHistory()
         getGamePlaytime()
-    }, [game.id])
+        resolveImageUrls()
+    }, [game.id, imageRefreshTrigger])
 
     useEffect(() => {
         const intervalId = window.setInterval(() => {
@@ -220,12 +224,39 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
         }
     }
 
+    const resolveImageUrls = async () => {
+        try {
+            let coverUrl = game.coverUrl
+            let thumbnailUrl = game.thumbnailUrl
 
-    /**
-     * Gets the size of the game directory
-     * Params: none
-     * Returns: Promise<void>
-     */
+            const coverPath = await getGameCoverPath(game.id)
+            if (coverPath) {
+                let filePath = coverPath.trim().replace(/\\/g, '/')
+                if (!filePath.startsWith('file://')) {
+                    filePath = filePath[1] === ':' ? 'file:///' + filePath : 'file://' + filePath
+                }
+                coverUrl = filePath
+            }
+
+            const thumbnailPath = await getGameThumbnailPath(game.id)
+            if (thumbnailPath) {
+                let filePath = thumbnailPath.trim().replace(/\\/g, '/')
+                if (!filePath.startsWith('file://')) {
+                    filePath = filePath[1] === ':' ? 'file:///' + filePath : 'file://' + filePath
+                }
+                thumbnailUrl = filePath
+            }
+
+            setDisplayCoverUrl(coverUrl)
+            setDisplayThumbnailUrl(thumbnailUrl)
+        } catch (error) {
+            console.error('Failed to resolve image URLs:', error)
+            setDisplayCoverUrl(game.coverUrl)
+            setDisplayThumbnailUrl(game.thumbnailUrl)
+        }
+    }
+
+
     const getGameSize = async () => {
         try {
             const size = await fetchGameSize(game.path)
@@ -373,11 +404,18 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
     }
 
     if (showConfig) {
+        const handleConfigSaved = () => {
+            // Trigger image refresh
+            setImageRefreshTrigger(prev => prev + 1)
+            // Call the original onGameUpdated callback
+            onGameUpdated?.()
+        }
+
         return (
             <GameConfigPanel
                 game={game}
                 onBack={() => setShowConfig(false)}
-                onConfigSaved={onGameUpdated}
+                onConfigSaved={handleConfigSaved}
                 onShowToast={onShowToast}
             />
         )
@@ -428,9 +466,9 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                     {/* Cover Art */}
                     <div className="w-full lg:w-60 lg:shrink-0">
                         <div className="w-full max-w-60 rounded-xl overflow-hidden bg-steam-800/85 aspect-2/3 shadow-[0_18px_34px_rgba(0,0,0,0.28)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_42px_rgba(0,0,0,0.34)]">
-                            {game.coverUrl ? (
+                            {displayCoverUrl ? (
                                 <img
-                                    src={game.coverUrl}
+                                    src={displayCoverUrl}
                                     alt={game.name}
                                     className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
                                 />

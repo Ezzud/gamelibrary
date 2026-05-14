@@ -10,7 +10,7 @@ import { chooseFolder, fetchCustomGame, registerGames } from '../services/GameSc
 import { Logger } from '../utils/Logger'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 
-const SCAN_PLATFORMS = ['Custom Folders', 'Steam', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
+const SCAN_PLATFORMS = ['Steam', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const MIN_LAUNCH_LOADING_MS = 5000
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
@@ -239,6 +239,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
       Object.values(gameTagsById)
         .flat()
         .map((tag) => tag.toLowerCase())
+        .filter((tag) => tagVisuals.hasOwnProperty(tag))
     )
   ).sort((a, b) => a.localeCompare(b))
 
@@ -276,8 +277,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
       }
 
       if (platformFilter !== 'All') {
-        const tags = (gameTagsById[game.id] || []).map((tag) => tag.toLowerCase())
-        if (!tags.includes(platformFilter.toLowerCase())) {
+        if ((game.platform || '').toLowerCase() !== platformFilter.toLowerCase()) {
           return false
         }
       }

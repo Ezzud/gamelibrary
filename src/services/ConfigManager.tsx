@@ -1,6 +1,6 @@
 // Default config path: Appdata/Local/GameLibrary/config.json
 import { exists, mkdir, readTextFile, writeTextFile, readDir, remove } from '@tauri-apps/plugin-fs'
-import { appDataDir, dirname, join } from '@tauri-apps/api/path'
+import { appDataDir, dirname, join, extname } from '@tauri-apps/api/path'
 import { invoke } from '@tauri-apps/api/core'
 import { Logger } from '../utils/Logger'
 
@@ -22,6 +22,9 @@ interface GameConfig {
     lockedLaunchFile?: boolean,
     specialTags?: string[]
     searchName?: string
+    forced_igdb_id?: number | null
+    localCoverPath?: string
+    localBannerPath?: string
 }
 interface GameCacheConfig {
     title: string | null
@@ -70,7 +73,10 @@ const defaultGameConfig: GameConfig = {
     allLaunchFiles: undefined,
     lockedLaunchFile: false,
     specialTags: [],
-    searchName: ''
+    searchName: '',
+    forced_igdb_id: null,
+    localCoverPath: undefined,
+    localBannerPath: undefined
 };
 const defaultGameCacheConfig: GameCacheConfig = {
     title: null,
@@ -708,6 +714,146 @@ export async function removeGameFromList(gameId: string) {
 export async function getGameList() {
     const gameList = await loadGameList();
     return gameList.games;
+}
+
+/**
+ * Converts a local file path to a file:// URL
+ * Params: filePath (string) - local file path
+ * Returns: string - file:// URL
+ */
+function convertFilePathToUrl(filePath: string): string {
+    // Remove leading/trailing whitespace
+    filePath = filePath.trim()
+    
+    // Convert backslashes to forward slashes (for Windows paths)
+    filePath = filePath.replace(/\\/g, '/')
+    
+    // Add file:// prefix if not already present
+    if (!filePath.startsWith('file://')) {
+        // For Windows paths like C:/..., add file:///
+        // For Unix paths like /home/..., add file://
+        if (filePath[1] === ':') {
+            // Windows absolute path
+            filePath = 'file:///' + filePath
+        } else {
+            // Unix absolute path
+            filePath = 'file://' + filePath
+        }
+    }
+    
+    return filePath
+}
+
+/**
+ * Resolves image URLs for a game, preferring local paths if set
+ * Params: config (GameConfig), cacheData (GameCacheConfig)
+ * Returns: Object with coverUrl and thumbnailUrl
+ */
+export function resolveGameImageUrls(config: GameConfig | null, cacheData: GameCacheConfig | null) {
+    const localCoverPath = config?.localCoverPath
+    const localBannerPath = config?.localBannerPath
+    
+    return {
+        coverUrl: localCoverPath ? convertFilePathToUrl(localCoverPath) : (cacheData?.cover_url || undefined),
+        thumbnailUrl: localBannerPath ? convertFilePathToUrl(localBannerPath) : (cacheData?.thumbnail_url || undefined),
+    };
+}
+
+/**
+ * Get the cache style directory for a game
+ * Params: gameId (string)
+ * Returns: string - path to style folder
+ */
+export async function getGameStyleDir(gameId: string) {
+    const appDataPath = await appDataDir();
+    return await join(appDataPath, 'GameLibrary', 'games', `${gameId}`, 'cache', 'style');
+}
+
+/**
+ * Get the cover image path for a game
+ * Params: gameId (string)
+ * Returns: string - path to cover.{ext} file
+ */
+export async function getGameCoverPath(gameId: string): Promise<string | null> {
+    const styleDir = await getGameStyleDir(gameId);
+    const styleExists = await exists(styleDir);
+    
+    if (!styleExists) {
+        return null;
+    }
+    
+    try {
+        const entries = await readDir(styleDir);
+        const coverEntry = entries.find(entry => entry.name?.startsWith('cover.'));
+        if (coverEntry && coverEntry.name) {
+            return await join(styleDir, coverEntry.name);
+        }
+    } catch (err) {
+        Logger.warn(`Failed to find cover file for game ${gameId}:`, err);
+    }
+    
+    return null;
+}
+
+/**
+ * Get the thumbnail image path for a game
+ * Params: gameId (string)
+ * Returns: string - path to thumbnail.{ext} file
+ */
+export async function getGameThumbnailPath(gameId: string): Promise<string | null> {
+    const styleDir = await getGameStyleDir(gameId);
+    const styleExists = await exists(styleDir);
+    
+    if (!styleExists) {
+        return null;
+    }
+    
+    try {
+        const entries = await readDir(styleDir);
+        const thumbnailEntry = entries.find(entry => entry.name?.startsWith('thumbnail.'));
+        if (thumbnailEntry && thumbnailEntry.name) {
+            return await join(styleDir, thumbnailEntry.name);
+        }
+    } catch (err) {
+        Logger.warn(`Failed to find thumbnail file for game ${gameId}:`, err);
+    }
+    
+    return null;
+}
+
+/**
+ * Copy a file to the game's style cache directory with the specified name
+ * Params: gameId (string), sourceFilePath (string), fileName ('cover' or 'thumbnail')
+ * Returns: string - path to copied file
+ */
+export async function copyFileToGameCache(gameId: string, sourceFilePath: string, fileName: 'cover' | 'thumbnail'): Promise<string> {
+    const styleDir = await getGameStyleDir(gameId);
+    
+    // Ensure style directory exists
+    await mkdir(styleDir, { recursive: true });
+    
+    // Get file extension from source
+    const ext = await extname(sourceFilePath);
+    const destFileName = `${fileName}.${ext}`;
+    const destFilePath = await join(styleDir, destFileName);
+    
+    // Remove existing file if it exists
+    if (await exists(destFilePath)) {
+        await remove(destFilePath);
+    }
+    
+    // Copy file using Rust backend
+    try {
+        await invoke('copy_file', { 
+            source: sourceFilePath,
+            destination: destFilePath 
+        });
+        Logger.info(`Copied ${fileName} file to game cache: ${destFilePath}`);
+        return destFilePath;
+    } catch (err) {
+        Logger.error(`Failed to copy file to game cache: ${err}`);
+        throw new Error(`Failed to copy ${fileName} file: ${err}`);
+    }
 }
 
 export type { GameListEntry, GameCacheConfig, GameConfig, Config, PlayHistoryEntry, PlayHistory };

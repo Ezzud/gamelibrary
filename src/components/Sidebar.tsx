@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Clock3, Gamepad2, Loader2, Play, Home, Settings} from 'lucide-react'
+import { getGameCoverPath } from '../services/ConfigManager'
 
 interface LastPlayedCard {
   gameId: string
@@ -57,6 +58,33 @@ const formatLastPlayed = (playedAt: string) => {
  */
 const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, lastPlayedCards, onPlayLastPlayed, launchingGameId, runningGameIds }: SidebarProps) => {
   const [, setRefreshTick] = useState(0)
+  const [resolvedCardImages, setResolvedCardImages] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    const loadResolvedImages = async () => {
+      const resolved: Record<string, string> = {}
+      for (const card of lastPlayedCards) {
+        try {
+          const coverPath = await getGameCoverPath(card.gameId)
+          if (coverPath) {
+            let filePath = coverPath.trim().replace(/\\/g, '/')
+            if (!filePath.startsWith('file://')) {
+              filePath = filePath[1] === ':' ? 'file:///' + filePath : 'file://' + filePath
+            }
+            resolved[card.gameId] = filePath
+          } else if (card.coverUrl) {
+            resolved[card.gameId] = card.coverUrl
+          }
+        } catch (error) {
+          if (card.coverUrl) {
+            resolved[card.gameId] = card.coverUrl
+          }
+        }
+      }
+      setResolvedCardImages(resolved)
+    }
+    loadResolvedImages()
+  }, [lastPlayedCards])
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -136,9 +164,9 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
                     aria-label={`Play ${card.name}`}
                     title={`Play ${card.name}`}
                   >
-                    {card.coverUrl ? (
+                    {resolvedCardImages[card.gameId] ? (
                       <img
-                        src={card.coverUrl}
+                        src={resolvedCardImages[card.gameId]}
                         alt={card.name}
                         className="w-10 h-15 object-cover transition-all duration-200 saturate-75 brightness-90 group-hover:grayscale group-hover:brightness-75"
                       />

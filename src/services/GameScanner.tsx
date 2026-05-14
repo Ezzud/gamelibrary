@@ -636,6 +636,17 @@ export async function getAllLaunchFiles(gamePath: string) {
             }
         }
 
+        const binWin64Path = `${gamePath}/bin/x64`;
+        const binWin64Exists = await exists(binWin64Path);
+        if (binWin64Exists) {
+            try {
+                const binWin64Entries = await readDir(binWin64Path);
+                processEntries(binWin64Entries, 'bin/x64/');
+            } catch (binWin64Err) {
+                Logger.warn(`Could not read bin/x64 in ${gamePath}:`, binWin64Err);
+            }
+        }
+
         const sourceEngineBinariesPath = `${gamePath}/bin/win64`;
         const sourceEngineBinariesExists = await exists(sourceEngineBinariesPath);
         if (sourceEngineBinariesExists) {
@@ -788,25 +799,47 @@ export async function fetchAllCustomFolderGames(folderPath: string) {
                 continue;
             }
 
-            const gamePath = `${normalizedFolderPath}/${entry.name}`;
-            const launchFiles = await getAllLaunchFiles(gamePath);
+            // If content of entry is only made of 1 folder, check that folder instead
+            const subEntries = await readDir(`${normalizedFolderPath}/${entry.name}`);
+            if (subEntries.length === 1 && subEntries[0].isDirectory) {
+                const potentialGamePath = `${normalizedFolderPath}/${entry.name}/${subEntries[0].name}`;
 
-            if (launchFiles.length < 1) {
-                Logger.warn(`No launch files found for game at ${gamePath}, skipping.`);
-                continue;
+                if (blacklistedGames.find(g => g.toLowerCase() === subEntries[0].name.toLowerCase())) {
+                    Logger.warn(`Game ${subEntries[0].name} is blacklisted, skipping.`);
+                    continue;
+                }
+
+                const launchFilesInSubfolder = await getAllLaunchFiles(potentialGamePath);
+                if (launchFilesInSubfolder.length > 0) {
+                    Logger.info(`Found single subfolder in ${entry.name} with launch files, treating it as the game folder.`);
+                    addDiscoveredGame({
+                        name: subEntries[0].name,
+                        path: potentialGamePath,
+                        defaultLaunchFile: launchFilesInSubfolder[0],
+                        allLaunchFiles: launchFilesInSubfolder
+                    });
+                }
+            } else {
+                const gamePath = `${normalizedFolderPath}/${entry.name}`;
+                const launchFiles = await getAllLaunchFiles(gamePath);
+
+                if (launchFiles.length < 1) {
+                    Logger.warn(`No launch files found for game at ${gamePath}, skipping.`);
+                    continue;
+                }
+
+                if (blacklistedGames.find(g => g.toLowerCase() === entry.name.toLowerCase())) {
+                    Logger.warn(`Game ${entry.name} is blacklisted, skipping.`);
+                    continue;
+                }
+
+                addDiscoveredGame({
+                    name: entry.name,
+                    path: gamePath,
+                    defaultLaunchFile: launchFiles.length > 0 ? launchFiles[0] : null,
+                    allLaunchFiles: launchFiles.length > 0 ? launchFiles : null
+                });
             }
-
-            if (blacklistedGames.find(g => g.toLowerCase() === entry.name.toLowerCase())) {
-                Logger.warn(`Game ${entry.name} is blacklisted, skipping.`);
-                continue;
-            }
-
-            addDiscoveredGame({
-                name: entry.name,
-                path: gamePath,
-                defaultLaunchFile: launchFiles.length > 0 ? launchFiles[0] : null,
-                allLaunchFiles: launchFiles.length > 0 ? launchFiles : null
-            });
         }
     } catch (err) {
         Logger.error(`Error occurred while fetching games from custom folder ${normalizedFolderPath}:`, err);
