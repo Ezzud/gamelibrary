@@ -5,29 +5,85 @@ import { exists } from '@tauri-apps/plugin-fs'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
 import { getGameCoverPath, loadGameConfig } from '../services/ConfigManager'
+import type { Game, GameCardProps } from '../types/appTypes'
 
-interface Game {
-  id: string
-  name: string
-  path: string
-  platform: string
-  coverUrl?: string
-  thumbnailUrl?: string
-  size?: number
+const specialTagsCache = new Map<string, string[]>()
+const pendingTagSubscribers = new Map<string, Set<(tags: string[]) => void>>()
+const pendingTagQueue: string[] = []
+let activeTagLoads = 0
+const MAX_CONCURRENT_TAG_LOADS = 4
+
+const normalizeSpecialTags = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.filter((tag): tag is string => typeof tag === 'string')
 }
 
-interface GameCardProps {
-  game: Game
-  onClick: () => void
-  onPlay?: (game: Game) => Promise<void> | void
-  isPlayLoading?: boolean
-  isRunning?: boolean
-  isFavorite?: boolean
-  onOpenFolder?: (game: Game) => void
-  onGameSettings?: (game: Game) => void
-  onDelete?: (game: Game) => void
-  onToggleFavorite?: (game: Game) => Promise<void> | void
-  cardHoverEffect?: string
+const processSpecialTagQueue = () => {
+  while (activeTagLoads < MAX_CONCURRENT_TAG_LOADS && pendingTagQueue.length > 0) {
+    const nextGameId = pendingTagQueue.shift()
+    if (!nextGameId) {
+      continue
+    }
+
+    if (specialTagsCache.has(nextGameId)) {
+      const cached = specialTagsCache.get(nextGameId) || []
+      pendingTagSubscribers.get(nextGameId)?.forEach((listener) => listener(cached))
+      pendingTagSubscribers.delete(nextGameId)
+      continue
+    }
+
+    activeTagLoads += 1
+
+    window.setTimeout(() => {
+      void (async () => {
+        try {
+          const config = await loadGameConfig(nextGameId)
+          const tags = normalizeSpecialTags((config as any)?.specialTags)
+          specialTagsCache.set(nextGameId, tags)
+          pendingTagSubscribers.get(nextGameId)?.forEach((listener) => listener(tags))
+        } catch {
+          specialTagsCache.set(nextGameId, [])
+          pendingTagSubscribers.get(nextGameId)?.forEach((listener) => listener([]))
+        } finally {
+          pendingTagSubscribers.delete(nextGameId)
+          activeTagLoads = Math.max(0, activeTagLoads - 1)
+          processSpecialTagQueue()
+        }
+      })()
+    }, 0)
+  }
+}
+
+const subscribeToSpecialTags = (gameId: string, listener: (tags: string[]) => void) => {
+  const cachedTags = specialTagsCache.get(gameId)
+  if (cachedTags) {
+    listener(cachedTags)
+    return () => undefined
+  }
+
+  const existingListeners = pendingTagSubscribers.get(gameId)
+  if (existingListeners) {
+    existingListeners.add(listener)
+  } else {
+    pendingTagSubscribers.set(gameId, new Set([listener]))
+    pendingTagQueue.push(gameId)
+    processSpecialTagQueue()
+  }
+
+  return () => {
+    const listeners = pendingTagSubscribers.get(gameId)
+    if (!listeners) {
+      return
+    }
+
+    listeners.delete(listener)
+    if (listeners.size < 1) {
+      pendingTagSubscribers.delete(gameId)
+    }
+  }
 }
 
 /**
@@ -35,7 +91,7 @@ interface GameCardProps {
  * Params: game, onClick - game data and click handler
  * Returns: JSX.Element - card UI
  */
-const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = false, isFavorite = false, onOpenFolder, onGameSettings, onDelete, onToggleFavorite, cardHoverEffect = 'zoom' }: GameCardProps) => {
+const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = false, isFavorite = false, onOpenFolder, onGameSettings, onDelete, onToggleFavorite, onSpecialTagsLoaded, cardHoverEffect = 'zoom' }: GameCardProps) => {
   const [isContextOpen, setIsContextOpen] = useState(false)
   const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 })
   const [specialTags, setSpecialTags] = useState<string[]>([])
@@ -181,18 +237,11 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
   }, [isContextOpen])
 
   useEffect(() => {
-    const loadSpecialTags = async () => {
-      try {
-        const config = await loadGameConfig(game.id)
-        const tags = Array.isArray((config as any)?.specialTags) ? (config as any).specialTags : []
-        setSpecialTags(tags.filter((tag: unknown) => typeof tag === 'string'))
-      } catch {
-        setSpecialTags([])
-      }
-    }
-
-    void loadSpecialTags()
-  }, [game.id])
+    return subscribeToSpecialTags(game.id, (tags) => {
+      setSpecialTags(tags)
+      onSpecialTagsLoaded?.(game.id, tags)
+    })
+  }, [game.id, onSpecialTagsLoaded])
 
   const tagVisuals: Record<string, { label: string; className: string; icon: ReactElement }> = {
     steam: {

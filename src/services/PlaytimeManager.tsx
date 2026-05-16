@@ -2,15 +2,7 @@ import { appDataDir, join } from '@tauri-apps/api/path'
 import { exists, mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { Logger } from '../utils/Logger'
 import { waitForProcessExit } from './GameLauncher'
-
-type PlaytimeEntry = {
-  totalMs: number
-  lastPlayedAt?: string
-}
-
-type PlaytimeStore = {
-  games: Record<string, PlaytimeEntry>
-}
+import type { PlaytimeEntry, PlaytimeStore } from '../types/appTypes'
 
 const defaultStore: PlaytimeStore = { games: {} }
 const activeSessions = new Map<string, { pid: number; startedAtMs: number }>()

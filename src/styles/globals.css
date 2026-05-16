@@ -83,6 +83,7 @@ input[type="number"] {
   position: relative;
   overflow: hidden;
   border-radius: 0.5rem;
+  transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
 .shine-card::before {
@@ -103,7 +104,9 @@ input[type="number"] {
   );
   pointer-events: none;
   z-index: 5;
-  filter: blur(0.5px);
+  filter: blur(6px);
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
   opacity: 0;
 }
 
@@ -113,8 +116,8 @@ input[type="number"] {
 }
 
 .shine-card:hover {
-  filter: brightness(1.5);
   transform: scale(1.02);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
 }
 
 .spin-card {
@@ -131,6 +134,7 @@ input[type="number"] {
   perspective: 1000px;
   position: relative;
   overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
 .shine-card-preview::before {
@@ -151,7 +155,9 @@ input[type="number"] {
   );
   pointer-events: none;
   z-index: 5;
-  filter: blur(0.5px);
+  filter: blur(6px);
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
   opacity: 0;
 }
 
@@ -161,8 +167,8 @@ input[type="number"] {
 }
 
 .shine-card-preview:hover {
-  filter: brightness(1.5);
   transform: scale(1.02);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
 }
 
 .spin-card-preview {

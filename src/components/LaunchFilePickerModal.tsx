@@ -1,14 +1,5 @@
 import { Check, X } from 'lucide-react'
-
-interface LaunchFilePickerModalProps {
-  isOpen: boolean
-  gameName: string
-  launchFiles: string[]
-  selectedLaunchFile: string
-  onSelect: (launchFile: string) => void
-  onConfirm: () => void
-  onCancel: () => void
-}
+import type { LaunchFilePickerModalProps } from '../types/appTypes'
 
 const LaunchFilePickerModal = ({
   isOpen,

@@ -3,59 +3,7 @@ import { exists, mkdir, readTextFile, writeTextFile, readDir, remove } from '@ta
 import { appDataDir, dirname, join, extname } from '@tauri-apps/api/path'
 import { invoke } from '@tauri-apps/api/core'
 import { Logger } from '../utils/Logger'
-
-interface Config {
-    customScanFolders: string[]
-    ignoredFolders: string[]
-    favorites: string[]
-    twitchClientId: string
-    twitchClientSecret: string
-    cardHoverEffect: string
-    runOnStartup?: boolean
-}
-
-
-interface GameConfig {
-    customArguments: string
-    defaultLaunchFile?: string
-    allLaunchFiles?: string[],
-    lockedLaunchFile?: boolean,
-    specialTags?: string[]
-    searchName?: string
-    forced_igdb_id?: number | null
-    localCoverPath?: string
-    localBannerPath?: string
-}
-interface GameCacheConfig {
-    title: string | null
-    cover_url: string | null
-    thumbnail_url?: string | null
-    igdb_id: number | null
-    id: string | null
-    platform: string | null
-    folder: string
-    fetched: boolean
-}
-interface GameListEntry {
-    id: string
-    name: string
-    path: string
-    launchFile: string
-    platform: string
-}
-interface GameList {
-    games: GameListEntry[]
-}
-
-interface PlayHistoryEntry {
-    id: string
-    gameId: string
-    playedAt: string
-}
-
-interface PlayHistory {
-    plays: PlayHistoryEntry[]
-}
+import type { Config, GameCacheConfig, GameConfig, GameList, GameListEntry, PlayHistory } from '../types/appTypes'
 
 
 const defaultConfig: Config = {
@@ -66,6 +14,7 @@ const defaultConfig: Config = {
     twitchClientSecret: '',
     cardHoverEffect: 'zoom',
     runOnStartup: true,
+    reduceWhilePlaying: false,
 };
 const defaultGameConfig: GameConfig = {
     customArguments: '',
@@ -336,6 +285,7 @@ async function loadConfig() {
             twitchClientId: typeof parsed?.twitchClientId === 'string' ? parsed.twitchClientId : '',
             twitchClientSecret: typeof parsed?.twitchClientSecret === 'string' ? parsed.twitchClientSecret : '',
             cardHoverEffect: typeof parsed?.cardHoverEffect === 'string' ? parsed.cardHoverEffect : 'zoom',
+            reduceWhilePlaying: typeof parsed?.reduceWhilePlaying === 'boolean' ? parsed.reduceWhilePlaying : false,
         } as Config;
     } catch (err) {
         Logger.error(`Error occurred while reading config at ${configPath}:`, err);
@@ -393,6 +343,16 @@ export async function getRunOnStartup() {
         Logger.error('Failed to query run-on-startup from backend:', err);
         return false;
     }
+}
+
+export async function setReduceWhilePlaying(enable: boolean) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        reduceWhilePlaying: !!enable,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`Reduce-while-playing ${enable ? 'enabled' : 'disabled'}`);
 }
 
 export async function ensureRunOnStartupAppliedOnLaunch() {
@@ -856,4 +816,4 @@ export async function copyFileToGameCache(gameId: string, sourceFilePath: string
     }
 }
 
-export type { GameListEntry, GameCacheConfig, GameConfig, Config, PlayHistoryEntry, PlayHistory };
+export type { GameListEntry, GameCacheConfig, GameConfig, Config, PlayHistoryEntry, PlayHistory } from '../types/appTypes';

@@ -61,6 +61,7 @@ use std::process::Command;
 use std::os::windows::process::CommandExt;
 use std::time::{Duration, Instant};
 use tauri::Manager;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use sysinfo::{Pid, System};
 
 #[cfg(target_os = "windows")]
@@ -722,8 +723,8 @@ fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Res
 
 #[tauri::command]
 async fn wait_for_process_exit(pid: u32, poll_interval_ms: Option<u64>) -> Result<(), String> {
-    let poll_interval_ms = poll_interval_ms.unwrap_or(10000);
-    let relaunch_grace = Duration::from_secs(15);
+    let poll_interval_ms = poll_interval_ms.unwrap_or(4000);
+    let relaunch_grace = Duration::from_secs(10);
     if pid == 0 {
         return Ok(());
     }
@@ -944,11 +945,37 @@ fn copy_file(source: String, destination: String) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            let _ = app.emit("restore-app-window", ());
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             cleanup_updates_dir_on_startup(app.handle());
+
+            let tray_icon = app
+                .default_window_icon()
+                .cloned()
+                .or_else(|| app.app_handle().default_window_icon().cloned());
+
+            if let Some(icon) = tray_icon {
+                let _ = TrayIconBuilder::with_id("main")
+                    .tooltip("Game Library")
+                    .icon(icon)
+                    .show_menu_on_left_click(false)
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let _ = tray.app_handle().emit("restore-app-window", ());
+                        }
+                    })
+                    .build(app);
+            }
 
             // --- Custom URI scheme handler ---
             // On Windows, when the app is launched via a custom protocol, the URL is passed as a command-line argument

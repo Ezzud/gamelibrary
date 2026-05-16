@@ -1,25 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Clock3, Gamepad2, Loader2, Play, Home, Settings} from 'lucide-react'
 import { getGameCoverPath } from '../services/ConfigManager'
-
-interface LastPlayedCard {
-  gameId: string
-  name: string
-  coverUrl?: string
-  playedAt: string
-  playtime?: string
-}
-
-interface SidebarProps {
-  onGoHome: () => void
-  onToggleSettings: () => void
-  isHomeActive: boolean
-  isSettingsActive: boolean
-  lastPlayedCards: LastPlayedCard[]
-  onPlayLastPlayed: (gameId: string) => void
-  launchingGameId: string | null
-  runningGameIds?: Set<string>
-}
+import type { SidebarProps } from '../types/appTypes'
 
 const formatLastPlayed = (playedAt: string) => {
   const playedAtMs = new Date(playedAt).getTime()

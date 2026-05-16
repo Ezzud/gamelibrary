@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { listen } from '@tauri-apps/api/event'
 import AppConfig from './components/AppConfig'
 import GameLibrary from './components/GameLibrary'
 import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
+import ToastSystem, { useToastSystem } from './components/ToastSystem'
 import {
     fetchAllCustomFolderGames,
     refetchAllSpecialTags,
@@ -38,60 +41,43 @@ import { initIGDB, searchGame, getGameDetails } from './services/GameDataManager
 import { launchGame } from './services/GameLauncher'
 import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from './services/PlaytimeManager'
 import { getVersion } from '@tauri-apps/api/app'
-
-interface Game {
-    id: string
-    name: string
-    path: string
-    platform: string
-    coverUrl?: string
-    thumbnailUrl?: string
-    size?: number
-}
-
-interface LaunchToast {
-    id: string
-    message: string
-    visible: boolean
-    started: boolean
-    durationMs: number
-    style: 'default' | 'success' | 'error' | 'warning'
-    actionLabel?: string
-    onClick?: () => void
-}
-
-interface LastPlayedCard {
-    gameId: string
-    name: string
-    coverUrl?: string
-    playedAt: string
-    playtime?: string
-}
-
-type IGDBConnectionStatus = 'checking' | 'missing' | 'invalid' | 'connected'
-type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'Update'
+import type { ConfigCategory, Game, IGDBConnectionStatus, LastPlayedCard, SortField } from './types/appTypes'
 
 const MIN_LAUNCH_LOADING_MS = 5000
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
-
-const getToastProgressBarClass = (style: LaunchToast['style']) => {
-    if (style === 'success') {
-        return 'bg-emerald-400'
-    }
-    if (style === 'error') {
-        return 'bg-red-400'
-    }
-    if (style === 'warning') {
-        return 'bg-amber-400'
-    }
-    return 'bg-[#6ec1ff]'
-}
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
     const elapsed = Date.now() - startedAt
     const remaining = MIN_LAUNCH_LOADING_MS - elapsed
     if (remaining > 0) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, remaining))
+    }
+}
+
+const reduceAppWindow = async () => {
+    try {
+        const currentWindow = getCurrentWindow()
+        await currentWindow.minimize()
+        await currentWindow.hide()
+    } catch (error) {
+        Logger.warn('Failed to reduce the main window while a game is running:', error)
+    }
+}
+
+const restoreAppWindow = async () => {
+    try {
+        const currentWindow = getCurrentWindow()
+        if(!(await currentWindow.isVisible())) {
+            await currentWindow.show()
+        }
+        if(await currentWindow.isMinimized()) {
+            await currentWindow.unminimize()
+        }
+        if(!(await currentWindow.isFocused())) {
+            await currentWindow.setFocus()
+        }
+    } catch (error) {
+        Logger.warn('Failed to restore the main window after game exit:', error)
     }
 }
 
@@ -102,6 +88,7 @@ const waitForMinimumLaunchLoading = async (startedAt: number) => {
  */
 function App() {
     const didRunStartupScanRef = useRef(false)
+    const appWindowReducedRef = useRef(false)
     const [games, setGames] = useState<Game[]>([])
     const [selectedGame, setSelectedGame] = useState<Game | null>(null)
     const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -110,7 +97,7 @@ function App() {
     const [isRefetchingTags, setIsRefetchingTags] = useState(false)
     const [scanProgress, setScanProgress] = useState(0)
     const [scanStatusMessage, setScanStatusMessage] = useState('Idle')
-    const [launchToasts, setLaunchToasts] = useState<LaunchToast[]>([])
+    const { toasts: launchToasts, showToast: showLaunchToast, dismissToast } = useToastSystem()
     const [lastPlayedCards, setLastPlayedCards] = useState<LastPlayedCard[]>([])
     const [favoriteGameIds, setFavoriteGameIds] = useState<Set<string>>(new Set())
     const [launchingGameId, setLaunchingGameId] = useState<string | null>(null)
@@ -121,6 +108,12 @@ function App() {
     const [pickerPendingConfig, setPickerPendingConfig] = useState<any>(null)
     const [igdbConnectionStatus, setIgdbConnectionStatus] = useState<IGDBConnectionStatus>('checking')
     const [settingsInitialCategory, setSettingsInitialCategory] = useState<ConfigCategory>('General')
+    const [reduceWhilePlaying, setReduceWhilePlaying] = useState(true)
+    const [searchQuery, setSearchQuery] = useState('')
+    const [platformFilter, setPlatformFilter] = useState('All')
+    const [tagFilter, setTagFilter] = useState('All')
+    const [sortField, setSortField] = useState<SortField>('name')
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
     const compareSemver = (currentVersion: string, latestVersion: string) => {
         const normalize = (version: string) =>
@@ -171,42 +164,6 @@ function App() {
         }
     }
 
-    const showLaunchToast = (
-        message: string,
-        options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }
-    ) => {
-        const durationMs = options?.durationMs ?? 3000
-        const style = options?.style ?? 'default'
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        setLaunchToasts((prev) => [
-            {
-                id,
-                message,
-                visible: false,
-                started: false,
-                durationMs,
-                style,
-                actionLabel: options?.actionLabel,
-                onClick: options?.onClick,
-            },
-            ...prev,
-        ])
-
-        window.requestAnimationFrame(() => {
-            setLaunchToasts((prev) =>
-                prev.map((toast) => (toast.id === id ? { ...toast, visible: true, started: true } : toast))
-            )
-        })
-
-        window.setTimeout(() => {
-            setLaunchToasts((prev) => prev.map((toast) => (toast.id === id ? { ...toast, visible: false } : toast)))
-        }, durationMs)
-
-        window.setTimeout(() => {
-            setLaunchToasts((prev) => prev.filter((toast) => toast.id !== id))
-        }, durationMs + 300)
-    }
-
     const checkForStartupUpdateNotice = async () => {
         try {
             const localVersion = await getVersion()
@@ -251,7 +208,7 @@ function App() {
                 acc.push(entry)
                 return acc
             }, [])
-            .slice(0, 10)
+            .slice(0, 6)
 
         const cardsPromises = uniqueLatestByGame
             .map(async (entry: any) => {
@@ -283,11 +240,22 @@ function App() {
         setFavoriteGameIds(new Set(favoriteIds.filter((gameId): gameId is string => typeof gameId === 'string' && gameId.trim().length > 0)))
     }
 
+    const loadAppSettings = async () => {
+        try {
+            const config = await getAppConfig()
+            setReduceWhilePlaying(config.reduceWhilePlaying !== false)
+        } catch (error) {
+            Logger.warn('Failed to load app settings:', error)
+            setReduceWhilePlaying(true)
+        }
+    }
+
     const handleLaunchSuccess = async () => {
         await refreshLastPlayedCards()
     }
 
     const handleGameRunningChange = (gameId: string, isRunning: boolean) => {
+        let nextRunningCount = 0
         setRunningGameIds((prev) => {
             const next = new Set(prev)
             if (isRunning) {
@@ -304,8 +272,28 @@ function App() {
                     })
                 })
             }
+            nextRunningCount = next.size
             return next
         })
+
+        if (!reduceWhilePlaying) {
+            return
+        }
+
+        if (isRunning) {
+            if (!appWindowReducedRef.current) {
+                appWindowReducedRef.current = true
+                setTimeout(() => {
+                    void reduceAppWindow()
+                }, 3000)
+            }
+            return
+        }
+
+        if (nextRunningCount === 0 && appWindowReducedRef.current) {
+            appWindowReducedRef.current = false
+            void restoreAppWindow()
+        }
     }
 
     const handlePlayLastPlayed = async (gameId: string) => {
@@ -457,6 +445,22 @@ function App() {
     }, [])
 
     useEffect(() => {
+        let unlisten: (() => void) | undefined
+
+        const registerTrayRestoreListener = async () => {
+            unlisten = await listen('restore-app-window', () => {
+                void restoreAppWindow()
+            })
+        }
+
+        void registerTrayRestoreListener()
+
+        return () => {
+            unlisten?.()
+        }
+    }, [])
+
+    useEffect(() => {
         if (didRunStartupScanRef.current) {
             return
         }
@@ -468,6 +472,7 @@ function App() {
             try {
                 await validateIGDBCredentialsFromConfig()
                 await loadFavoriteGameIds()
+                await loadAppSettings()
                 await loadGames()
                 Logger.info('Initial game loading complete.')
             } finally {
@@ -594,6 +599,7 @@ function App() {
             const cachedGames = await loadGameList()
             if (cachedGames) {
                 const allGames = cachedGames.games || []
+
                 const getFolderName = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || ''
                 const resolveSearchName = async (gameId: string, fallbackName: string, gamePath: string) => {
                     const config = await loadGameConfig(gameId)
@@ -610,6 +616,8 @@ function App() {
                     })
                     return nextSearchName
                 }
+
+
                 for (const game of allGames) {
                     const cacheData = await loadGameCache(game.id)
                     if (cacheData) {
@@ -662,11 +670,22 @@ function App() {
                             game.coverUrl = cacheData.cover_url || game.coverUrl
                             game.thumbnailUrl = cacheData.thumbnail_url || game.thumbnailUrl
                         }
+
+                        const config = await loadGameConfig(game.id)
+                        if(!config.dateAdded) {
+                            config.dateAdded = Date.now()
+                            await saveGameConfig(game.id, config)
+                        }
                     } else {
                         try {
                             const config = await loadGameConfig(game.id)
                             const forcedIGDBId = (config as any)?.forced_igdb_id
                             let igdbData: any = null
+
+                            if(!config.dateAdded) {
+                                config.dateAdded = Date.now()
+                                await saveGameConfig(game.id, config)
+                            }
                             
                             if (forcedIGDBId && typeof forcedIGDBId === 'number') {
                                 const gameDetails = await getGameDetails(forcedIGDBId)
@@ -698,6 +717,7 @@ function App() {
                         }
                     }
                 }
+
                 setGames(allGames)
                 if (selectedGame) {
                     const refreshedSelectedGame = allGames.find((item: Game) => item.id === selectedGame.id) || null
@@ -1009,37 +1029,7 @@ function App() {
 
     return (
         <div className="flex h-screen bg-steam-900 text-white overflow-hidden">
-            <div className="fixed top-4 right-4 z-10000 flex flex-col gap-2 pointer-events-none">
-                {launchToasts.map((toast) => (
-                    <div
-                        key={toast.id}
-                        onClick={() => {
-                            if (!toast.onClick) {
-                                return
-                            }
-                            toast.onClick()
-                            setLaunchToasts((prev) => prev.filter((item) => item.id !== toast.id))
-                        }}
-                        className={`pointer-events-auto w-80 rounded-lg bg-[#21364f] border border-[#3a5f84] text-white shadow-[0_10px_26px_rgba(0,0,0,0.35)] overflow-hidden transform transition-all duration-300 ${
-                            toast.visible ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
-                        } ${toast.onClick ? 'cursor-pointer' : ''}`}
-                    >
-                        <div className="px-3 py-2 text-sm">
-                            <div>{toast.message}</div>
-                            {toast.actionLabel && <div className="underline mt-1">{toast.actionLabel}</div>}
-                        </div>
-                        <div className="h-1 bg-[#325170]/50">
-                            <div
-                                className={`h-full ${getToastProgressBarClass(toast.style)}`}
-                                style={{
-                                    width: toast.started ? '0%' : '100%',
-                                    transition: `width ${toast.durationMs}ms linear`,
-                                }}
-                            />
-                        </div>
-                    </div>
-                ))}
-            </div>
+            <ToastSystem toasts={launchToasts} onDismiss={dismissToast} />
 
             <Sidebar
                 onGoHome={handleGoHome}
@@ -1075,6 +1065,7 @@ function App() {
                         scanProgress={scanProgress}
                         scanStatusMessage={scanStatusMessage}
                         initialCategory={settingsInitialCategory}
+                        onConfigChanged={loadAppSettings}
                         onScanPlatforms={handleScanPlatforms}
                         onCustomFolderAdded={handleCustomFolderAdded}
                         onRefreshGames={loadGames}
@@ -1118,6 +1109,16 @@ function App() {
                         isLoadingGames={isLoadingGames}
                         scanProgress={scanProgress}
                         scanStatusMessage={scanStatusMessage}
+                        searchQuery={searchQuery}
+                        onSearchQueryChange={setSearchQuery}
+                        platformFilter={platformFilter}
+                        onPlatformFilterChange={setPlatformFilter}
+                        tagFilter={tagFilter}
+                        onTagFilterChange={setTagFilter}
+                        sortField={sortField}
+                        onSortFieldChange={setSortField}
+                        sortDirection={sortDirection}
+                        onSortDirectionChange={setSortDirection}
                     />
                 )}
             </div>

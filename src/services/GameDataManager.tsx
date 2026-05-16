@@ -1,12 +1,7 @@
 import { Logger } from "../utils/Logger";
 import { invoke } from "@tauri-apps/api/core";
 import { getAppConfig, loadGameCache, loadGameConfig, saveGameInfoCache } from "./ConfigManager";
-
-
-interface IGDBCredentials {
-    clientId: string;
-    clientSecret: string;
-}
+import type { IGDBCredentials } from "../types/appTypes";
 
 const config = await getAppConfig();
 

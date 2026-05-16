@@ -21,6 +21,12 @@
     "dialog:allow-confirm",
     "dialog:allow-message",
     "dialog:allow-save",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
     {
       "identifier": "fs:scope",
       "allow": [

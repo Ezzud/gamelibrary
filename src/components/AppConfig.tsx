@@ -43,28 +43,13 @@ import {
   removeIgnoredFolder,
   removeCustomScanFolder,
   setCardHoverEffect,
-  setRunOnStartup
+  setRunOnStartup,
+  setReduceWhilePlaying
 } from '../services/ConfigManager'
 import { chooseFolder } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import { getVersion } from '@tauri-apps/api/app'
-
-type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'Update' | 'About'
-
-interface AppConfigProps {
-  isScanning?: boolean
-  isRefetchingTags?: boolean
-  scanProgress?: number
-  scanStatusMessage?: string
-  initialCategory?: ConfigCategory
-  onScanPlatforms: (platforms: string[]) => Promise<void> | void
-  onCustomFolderAdded: (folderPath: string) => Promise<void> | void
-  onRefreshGames: () => Promise<void> | void
-  onRefetchSpecialTags: () => Promise<void> | void
-  onRemoveDuplicates: () => Promise<void> | void
-  onConnectIGDB: (clientId: string, clientSecret: string) => Promise<{ success: boolean; message?: string }>
-  onShowToast?: (message: string, options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }) => void
-}
+import type { AppConfigProps, ConfigCategory, UpdateCheckStatus } from '../types/appTypes'
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
@@ -72,8 +57,6 @@ const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
 const REPO_BRANCH = 'master'
 const APP_NAME = 'gamelibrary'
 const APP_AUTHOR = 'Ezzud'
-
-type UpdateCheckStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'
 
 const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 
@@ -142,6 +125,7 @@ const AppConfig = ({
   onRefetchSpecialTags,
   onRemoveDuplicates,
   onConnectIGDB,
+  onConfigChanged,
   onShowToast,
 }: AppConfigProps) => {
   const [activeCategory, setActiveCategory] = useState<ConfigCategory>(initialCategory)
@@ -161,7 +145,9 @@ const AppConfig = ({
   const [credentialsStatus, setCredentialsStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [cardHoverEffect, setCardHoverEffectState] = useState('zoom')
   const [runOnStartup, setRunOnStartupState] = useState(false)
+  const [reduceWhilePlaying, setReduceWhilePlayingState] = useState(true)
   const [isUpdatingRunOnStartup, setIsUpdatingRunOnStartup] = useState(false)
+  const [isUpdatingReduceWhilePlaying, setIsUpdatingReduceWhilePlaying] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckStatus>('idle')
   const [currentVersion, setCurrentVersion] = useState('Unknown')
   const [latestVersion, setLatestVersion] = useState<string | null>(null)
@@ -269,6 +255,7 @@ const AppConfig = ({
       setCredentialsClientSecret(config.twitchClientSecret || '')
       setCardHoverEffectState(config.cardHoverEffect || 'zoom')
       setRunOnStartupState(!!config.runOnStartup)
+      setReduceWhilePlayingState(config.reduceWhilePlaying !== false)
     }
 
     void loadCredentials()
@@ -593,12 +580,33 @@ const AppConfig = ({
     try {
       await setRunOnStartup(next)
       setRunOnStartupState(next)
+      await onConfigChanged?.()
       onShowToast?.(next ? 'Enabled run on startup' : 'Disabled run on startup', { durationMs: 3000, style: 'success' })
     } catch (err) {
       Logger.error('Failed to toggle run on startup:', err)
       onShowToast?.('Failed to change run-on-startup setting', { durationMs: 5000, style: 'error' })
     } finally {
       setIsUpdatingRunOnStartup(false)
+    }
+  }
+
+  const handleToggleReduceWhilePlaying = async () => {
+    if (isUpdatingReduceWhilePlaying) {
+      return
+    }
+
+    const next = !reduceWhilePlaying
+    setIsUpdatingReduceWhilePlaying(true)
+    try {
+      await setReduceWhilePlaying(next)
+      setReduceWhilePlayingState(next)
+      await onConfigChanged?.()
+      onShowToast?.(next ? 'Enabled reduce while playing' : 'Disabled reduce while playing', { durationMs: 3000, style: 'success' })
+    } catch (err) {
+      Logger.error('Failed to toggle reduce while playing:', err)
+      onShowToast?.('Failed to change reduce-while-playing setting', { durationMs: 5000, style: 'error' })
+    } finally {
+      setIsUpdatingReduceWhilePlaying(false)
     }
   }
 
@@ -844,6 +852,44 @@ const AppConfig = ({
                       className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${
                         runOnStartup ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'
                       } ${isUpdatingRunOnStartup ? 'opacity-80' : ''}`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm text-steam-100">Reduce when running a game</p>
+                  <p className="text-xs text-steam-400">Hide the main window while a game is active, then bring it back when playtime tracking stops.</p>
+                </div>
+                <div className="flex items-center mr-2">
+                  <div
+                    role="switch"
+                    tabIndex={0}
+                    aria-checked={reduceWhilePlaying}
+                    aria-disabled={isUpdatingReduceWhilePlaying}
+                    aria-busy={isUpdatingReduceWhilePlaying}
+                    onKeyDown={async (e) => {
+                      if (isUpdatingReduceWhilePlaying) {
+                        return
+                      }
+
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        void handleToggleReduceWhilePlaying()
+                      }
+                    }}
+                    onClick={() => void handleToggleReduceWhilePlaying()}
+                    className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none ${
+                      isUpdatingReduceWhilePlaying
+                        ? 'cursor-not-allowed opacity-50 grayscale bg-zinc-600'
+                        : 'cursor-pointer '
+                    } ${reduceWhilePlaying ? 'bg-sky-400' : 'bg-zinc-700'}`}
+                  >
+                    <div
+                      className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${
+                        reduceWhilePlaying ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'
+                      } ${isUpdatingReduceWhilePlaying ? 'opacity-80' : ''}`}
                     />
                   </div>
                 </div>

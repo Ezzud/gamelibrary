@@ -4,7 +4,7 @@ import { appDataDir } from "@tauri-apps/api/path";
 import { Logger } from "../utils/Logger";
 import { searchGame } from "./GameDataManager";
 import { addGamesToList, saveGameConfig, saveGameInfoCache, loadGameList, loadGameConfig, removeGameFromList, getCustomScanFolders, getIgnoredFolders, loadGameCache } from "./ConfigManager";
-import type { GameCacheConfig, GameConfig, GameListEntry } from "./ConfigManager";
+import type { GameCacheConfig, GameConfig, GameListEntry, ScanProgressCallback } from "../types/appTypes";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -73,14 +73,6 @@ const BattleNetGamesPaths = [
     "Program Files/Battle.net/Games",
     "Battle.net/Games"
 ];
-
-
-export interface ScanProgressUpdate {
-    percent: number;
-    message: string;
-}
-
-type ScanProgressCallback = (update: ScanProgressUpdate) => void;
 
 const inFlightRegistrationPaths = new Set<string>();
 
@@ -362,6 +354,7 @@ export async function refetchAllSpecialTags(onProgress?: ScanProgressCallback) {
                 lockedLaunchFile: existingConfig?.lockedLaunchFile,
                 specialTags,
                 searchName: existingConfig?.searchName,
+                dateAdded: existingConfig?.dateAdded || Date.now()
             };
 
             await saveGameConfig(game.id, mergedConfig);
@@ -1110,7 +1103,8 @@ export async function registerGames(games: any[], platform: string, onProgress?:
                 defaultLaunchFile: game.defaultLaunchFile,
                 allLaunchFiles: game.allLaunchFiles,
                 specialTags: specialTags,
-                searchName: searchName
+                searchName: searchName,
+                dateAdded: Date.now(),
             } 
 
             try {

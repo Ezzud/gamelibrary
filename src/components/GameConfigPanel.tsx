@@ -6,23 +6,7 @@ import { loadGameConfig, saveGameConfig, getGameCachePath, copyFileToGameCache, 
 import { openGameFolder } from '../services/GameLauncher'
 import { resetAndRefetchGameIGDBData } from '../services/GameDataManager'
 import { getAllLaunchFiles } from '../services/GameScanner'
-
-interface Game {
-  id: string
-  name: string
-  path: string
-  platform: string
-  coverUrl?: string
-  thumbnailUrl?: string
-  size?: number
-}
-
-interface GameConfigPanelProps {
-  game: Game
-  onBack: () => void
-  onConfigSaved?: () => void
-  onShowToast?: (message: string, options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }) => void
-}
+import type { GameConfigPanelProps } from '../types/appTypes'
 
 /**
  * GameConfigPanel component - allows configuration of game launch settings

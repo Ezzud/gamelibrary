@@ -9,6 +9,7 @@ import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomSc
 import { chooseFolder, fetchCustomGame, registerGames } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
+import type { Game, GameLibraryProps, SortField } from '../types/appTypes'
 
 const SCAN_PLATFORMS = ['Steam', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const MIN_LAUNCH_LOADING_MS = 5000
@@ -21,7 +22,28 @@ const waitForMinimumLaunchLoading = async (startedAt: number) => {
   }
 }
 
-type SortField = 'name' | 'platform' | 'tag'
+const parseDateAdded = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return null
+    }
+
+    const asNumber = Number(trimmed)
+    if (Number.isFinite(asNumber)) {
+      return asNumber
+    }
+
+    const parsed = Date.parse(trimmed)
+    return Number.isNaN(parsed) ? null : parsed
+  }
+
+  return null
+}
 
 const tagVisuals: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
   hypervisor: {
@@ -74,56 +96,50 @@ const getPlatformIcon = (platform: string) => {
   }
 }
 
-interface Game {
-  id: string
-  name: string
-  path: string
-  platform: string
-  coverUrl?: string
-  thumbnailUrl?: string
-  size?: number
-}
-
-interface GameLibraryProps {
-  games: Game[]
-  favoriteGameIds: Set<string>
-  onGameSelect: (game: Game) => void
-  onLaunchError: (message: string) => void
-  onShowToast?: (message: string, options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }) => void
-  onLaunchSuccess: () => Promise<void> | void
-  onGamesRemoved?: (gameIds: string[]) => void
-  runningGameIds?: Set<string>
-  onGameRunningChange?: (gameId: string, isRunning: boolean) => void
-  igdbConnectionStatus: 'checking' | 'missing' | 'invalid' | 'connected'
-  onConnectIGDB: (clientId: string, clientSecret: string) => Promise<{ success: boolean; message?: string }>
-  onOpenSettings: () => void
-  onRefresh: () => void
-  onGamesAdded?: (games: Game[]) => void
-  onScanPlatforms: (platforms: string[]) => Promise<void> | void
-  onToggleFavorite: (game: Game) => Promise<void> | void
-  isLoading: boolean
-  isLoadingGames: boolean
-  scanProgress: number
-  scanStatusMessage: string
-}
-
 /**
  * GameLibrary component - displays all games as a grid of cards
  * Params: games, onGameSelect, isLoading, scanProgress - data and handlers
  * Returns: JSX.Element - game library grid layout
  */
-const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onShowToast, onLaunchSuccess, onGamesRemoved, runningGameIds, onGameRunningChange, igdbConnectionStatus, onConnectIGDB, onOpenSettings, onRefresh, onGamesAdded, onScanPlatforms, onToggleFavorite, isLoading, isLoadingGames, scanProgress, scanStatusMessage }: GameLibraryProps) => {
+const GameLibrary = (props: GameLibraryProps) => {
+  const {
+    games,
+    favoriteGameIds,
+    onGameSelect,
+    onLaunchError,
+    onShowToast,
+    onLaunchSuccess,
+    onGamesRemoved,
+    runningGameIds,
+    onGameRunningChange,
+    igdbConnectionStatus,
+    onConnectIGDB,
+    onOpenSettings,
+    onRefresh,
+    onGamesAdded,
+    onScanPlatforms,
+    onToggleFavorite,
+    isLoading,
+    isLoadingGames,
+    scanProgress,
+    scanStatusMessage,
+    searchQuery,
+    onSearchQueryChange,
+    platformFilter,
+    onPlatformFilterChange,
+    tagFilter,
+    onTagFilterChange,
+    sortField,
+    onSortFieldChange,
+    sortDirection,
+    onSortDirectionChange,
+  } = props
   const [pickerGame, setPickerGame] = useState<Game | null>(null)
   const [pickerLaunchFiles, setPickerLaunchFiles] = useState<string[]>([])
   const [pickerSelectedLaunchFile, setPickerSelectedLaunchFile] = useState('')
   const [pickerPendingConfig, setPickerPendingConfig] = useState<any>(null)
   const [launchingGameId, setLaunchingGameId] = useState<string | null>(null)
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set(['Steam']))
-  const [searchQuery, setSearchQuery] = useState('')
-  const [platformFilter, setPlatformFilter] = useState('All')
-  const [tagFilter, setTagFilter] = useState('All')
-  const [sortField, setSortField] = useState<SortField>('name')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [twitchClientId, setTwitchClientId] = useState('')
   const [twitchClientSecret, setTwitchClientSecret] = useState('')
   const [isConnectingIGDB, setIsConnectingIGDB] = useState(false)
@@ -137,6 +153,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
   const [customFolders, setCustomFolders] = useState<string[]>([])
   const [removingCustomFolderPath, setRemovingCustomFolderPath] = useState<string | null>(null)
   const [gameTagsById, setGameTagsById] = useState<Record<string, string[]>>({})
+  const [gameDateAddedById, setGameDateAddedById] = useState<Record<string, number | null>>({})
   const [isAddingManualGame, setIsAddingManualGame] = useState(false)
   const [cardHoverEffect, setCardHoverEffect] = useState('zoom')
   const [showSkipIGDBConfirmation, setShowSkipIGDBConfirmation] = useState(false)
@@ -207,9 +224,10 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
   }, [])
 
   useEffect(() => {
-    const loadTagsForGames = async () => {
+    const loadDateAddedData = async () => {
       if (games.length < 1) {
         setGameTagsById({})
+        setGameDateAddedById({})
         return
       }
 
@@ -217,20 +235,23 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
         games.map(async (game) => {
           try {
             const config = await loadGameConfig(game.id)
-            const tags = Array.isArray((config as any)?.specialTags)
-              ? (config as any).specialTags.filter((tag: unknown) => typeof tag === 'string')
-              : []
-            return [game.id, tags as string[]] as const
+            const dateAdded = parseDateAdded((config as any)?.dateAdded)
+            return [game.id, dateAdded] as const
           } catch {
-            return [game.id, [] as string[]] as const
+            return [game.id, null] as const
           }
         })
       )
 
-      setGameTagsById(Object.fromEntries(pairs))
+      setGameDateAddedById(Object.fromEntries(pairs))
+      setGameTagsById((prev) => {
+        const validIds = new Set(games.map((game) => game.id))
+        const next = Object.fromEntries(Object.entries(prev).filter(([gameId]) => validIds.has(gameId)))
+        return Object.keys(next).length === Object.keys(prev).length ? prev : next
+      })
     }
 
-    void loadTagsForGames()
+    void loadDateAddedData()
   }, [games])
 
   const availablePlatforms = Array.from(new Set([...SCAN_PLATFORMS, ...games.map((game) => game.platform)])).filter(Boolean).sort((a, b) => a.localeCompare(b))
@@ -245,16 +266,16 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
 
   useEffect(() => {
     if (platformFilter !== 'All' && !availablePlatforms.includes(platformFilter)) {
-      setPlatformFilter('All')
+      onPlatformFilterChange('All')
     }
 
     if (tagFilter !== 'All') {
       const normalizedTag = tagFilter.toLowerCase()
       if (!availableTags.includes(normalizedTag)) {
-        setTagFilter('All')
+        onTagFilterChange('All')
       }
     }
-  }, [availablePlatforms, availableTags, platformFilter, tagFilter])
+  }, [availablePlatforms, availableTags, onPlatformFilterChange, onTagFilterChange, platformFilter, tagFilter])
 
   const hasActiveFilters = searchQuery.trim().length > 0 || platformFilter !== 'All' || tagFilter !== 'All'
 
@@ -298,6 +319,19 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
         result = a.name.localeCompare(b.name)
       } else if (sortField === 'platform') {
         result = (a.platform || '').localeCompare(b.platform || '') || a.name.localeCompare(b.name)
+      } else if (sortField === 'dateAdded') {
+        const aDateAdded = gameDateAddedById[a.id] ?? null
+        const bDateAdded = gameDateAddedById[b.id] ?? null
+
+        if (aDateAdded !== null && bDateAdded !== null) {
+          result = aDateAdded - bDateAdded
+        } else if (aDateAdded !== null) {
+          result = -1
+        } else if (bDateAdded !== null) {
+          result = 1
+        } else {
+          result = a.name.localeCompare(b.name)
+        }
       } else {
         const aFirstTag = ((gameTagsById[a.id] || [])[0] || '').toLowerCase()
         const bFirstTag = ((gameTagsById[b.id] || [])[0] || '').toLowerCase()
@@ -309,6 +343,25 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
 
   const favoriteGames = displayedGames.filter((game) => favoriteGameIds.has(game.id))
   const regularGames = displayedGames.filter((game) => !favoriteGameIds.has(game.id))
+
+  const handleCardSpecialTagsLoaded = (gameId: string, tags: string[]) => {
+    setGameTagsById((prev) => {
+      const currentTags = prev[gameId] || []
+      const nextTags = tags.map((tag) => tag.toLowerCase())
+
+      if (
+        currentTags.length === nextTags.length
+        && currentTags.every((tag, index) => tag === nextTags[index])
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        [gameId]: nextTags,
+      }
+    })
+  }
 
   const renderGameCards = (gamesToRender: Game[]) => (
     <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 ${isDeletingSelected ? 'pointer-events-none opacity-70' : ''}`}>
@@ -349,6 +402,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                 onGameSettings={() => onGameSelect(game)}
                 onDelete={handleDeleteGame}
                 onToggleFavorite={onToggleFavorite}
+                onSpecialTagsLoaded={handleCardSpecialTagsLoaded}
                 cardHoverEffect={cardHoverEffect}
               />
             </div>
@@ -364,6 +418,9 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
     }
     if (field === 'platform') {
       return 'Platform'
+    }
+    if (field === 'dateAdded') {
+      return 'Date Added'
     }
     return 'Tag'
   }
@@ -398,9 +455,9 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
   }
 
   const handleClearFilters = () => {
-    setSearchQuery('')
-    setPlatformFilter('All')
-    setTagFilter('All')
+    onSearchQueryChange('')
+    onPlatformFilterChange('All')
+    onTagFilterChange('All')
     setIsPlatformMenuOpen(false)
     setIsTagMenuOpen(false)
     setIsSortMenuOpen(false)
@@ -754,8 +811,8 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search by name or path"
+                  onChange={(event) => onSearchQueryChange(event.target.value)}
+                  placeholder={`Search by name or path`}
                   className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
                 />
               </div>
@@ -789,7 +846,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                     <button
                       type="button"
                       onClick={() => {
-                        setPlatformFilter('All')
+                        onPlatformFilterChange('All')
                         setIsPlatformMenuOpen(false)
                       }}
                       className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${platformFilter === 'All' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
@@ -801,7 +858,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                         key={platform}
                         type="button"
                         onClick={() => {
-                          setPlatformFilter(platform)
+                          onPlatformFilterChange(platform)
                           setIsPlatformMenuOpen(false)
                         }}
                         className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${platformFilter === platform ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
@@ -849,7 +906,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                     <button
                       type="button"
                       onClick={() => {
-                        setTagFilter('All')
+                        onTagFilterChange('All')
                         setIsTagMenuOpen(false)
                       }}
                       className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${tagFilter === 'All' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
@@ -861,7 +918,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                         key={tag}
                         type="button"
                         onClick={() => {
-                          setTagFilter(tag)
+                          onTagFilterChange(tag)
                           setIsTagMenuOpen(false)
                         }}
                         className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${tagFilter === tag ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
@@ -908,7 +965,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                     <button
                       type="button"
                       onClick={() => {
-                        setSortField('name')
+                        onSortFieldChange('name')
                         setIsSortMenuOpen(false)
                       }}
                       className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${sortField === 'name' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
@@ -918,7 +975,7 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                     <button
                       type="button"
                       onClick={() => {
-                        setSortField('platform')
+                        onSortFieldChange('platform')
                         setIsSortMenuOpen(false)
                       }}
                       className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${sortField === 'platform' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
@@ -928,19 +985,29 @@ const GameLibrary = ({ games, favoriteGameIds, onGameSelect, onLaunchError, onSh
                     <button
                       type="button"
                       onClick={() => {
-                        setSortField('tag')
+                        onSortFieldChange('tag')
                         setIsSortMenuOpen(false)
                       }}
                       className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${sortField === 'tag' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
                     >
                       Tag
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSortFieldChange('dateAdded')
+                        setIsSortMenuOpen(false)
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${sortField === 'dateAdded' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
+                    >
+                      Date Added
+                    </button>
                   </div>
                 )}
 
                 <button
                   type="button"
-                  onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  onClick={() => onSortDirectionChange(sortDirection === 'asc' ? 'desc' : 'asc')}
                   className="inline-flex items-center justify-center w-9 h-9 rounded-md text-steam-300 hover:text-white hover:bg-steam-600 transition-colors"
                   title={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}
                   aria-label={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}

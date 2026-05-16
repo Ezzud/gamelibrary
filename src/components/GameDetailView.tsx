@@ -20,8 +20,10 @@ import GameConfigPanel from './GameConfigPanel'
 import { getGameSize as fetchGameSize } from '../services/GameDataManager'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
 import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from '../services/PlaytimeManager'
-import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, saveGameConfig, getGameCoverPath, getGameThumbnailPath } from '../services/ConfigManager'
+import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, saveGameConfig, getGameCoverPath, getGameThumbnailPath, loadGameList, saveGameList, saveGameInfoCache } from '../services/ConfigManager'
+import { chooseFolder, getAllLaunchFiles } from '../services/GameScanner'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
+import type { Game, GameDetailViewProps } from '../types/appTypes'
 
 const MIN_LAUNCH_LOADING_MS = 5000
 
@@ -67,29 +69,6 @@ const formatLastPlayed = (playedAt?: string | null) => {
     return 'Last played recently'
 }
 
-interface Game {
-    id: string
-    name: string
-    path: string
-    platform: string
-    coverUrl?: string
-    thumbnailUrl?: string
-    size?: number
-}
-
-interface GameDetailViewProps {
-    game: Game
-    onBack: () => void
-    onGameUpdated?: () => void
-    onLaunchError: (message: string) => void
-    onShowToast?: (message: string, options?: { durationMs?: number; style?: 'default' | 'success' | 'error' | 'warning'; actionLabel?: string; onClick?: () => void }) => void
-    onLaunchSuccess: () => Promise<void> | void
-    isGameRunning?: boolean
-    onGameRunningChange?: (gameId: string, isRunning: boolean) => void
-    isFavorite?: boolean
-    onToggleFavorite?: () => void
-}
-
 /**
  * GameDetailView component - displays detailed information about a selected game
  * Params: game, onBack, onGameUpdated - game data and handlers
@@ -109,6 +88,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
     const [lastPlayedAt, setLastPlayedAt] = useState<string | null>(null)
     const [copiedPath, setCopiedPath] = useState(false)
     const [isMissing, setIsMissing] = useState(false)
+    const [isRelocatingGameFolder, setIsRelocatingGameFolder] = useState(false)
     const [gamePlaytime, setGamePlaytime] = useState<string>('')
     const [displayCoverUrl, setDisplayCoverUrl] = useState<string | undefined>(game.coverUrl)
     const [displayThumbnailUrl, setDisplayThumbnailUrl] = useState<string | undefined>(game.thumbnailUrl)
@@ -382,6 +362,62 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
         }
     }
 
+    const handleSelectNewGameFolder = async () => {
+        if (isRelocatingGameFolder) {
+            return
+        }
+
+        setIsRelocatingGameFolder(true)
+        try {
+            const selectedFolder = await chooseFolder()
+            if (!selectedFolder) {
+                return
+            }
+
+            const launchFiles = await getAllLaunchFiles(selectedFolder)
+            if (!Array.isArray(launchFiles) || launchFiles.length < 1) {
+                onShowToast?.("This folder doesn't appear to be a valid game.", { durationMs: 5000, style: 'warning' })
+                return
+            }
+
+            const gameList = await loadGameList()
+            const gameIndex = gameList.games.findIndex((entry: any) => entry.id === game.id)
+
+            if (gameIndex < 0) {
+                onShowToast?.('Could not update game location because the game is not in the library list.', { durationMs: 5000, style: 'error' })
+                return
+            }
+
+            gameList.games[gameIndex] = {
+                ...gameList.games[gameIndex],
+                path: selectedFolder,
+            }
+            await saveGameList(gameList)
+
+            const cacheData = await loadGameCache(game.id)
+            await saveGameInfoCache(game.id, {
+                ...cacheData,
+                title: cacheData?.title ?? game.name,
+                cover_url: cacheData?.cover_url ?? null,
+                thumbnail_url: cacheData?.thumbnail_url ?? null,
+                igdb_id: cacheData?.igdb_id ?? null,
+                id: cacheData?.id ?? game.id,
+                platform: cacheData?.platform ?? game.platform,
+                folder: selectedFolder,
+                fetched: cacheData?.fetched ?? false,
+            })
+
+            onShowToast?.('Game folder updated successfully.', { durationMs: 3000, style: 'success' })
+            await onGameUpdated?.()
+        } catch (error) {
+            console.error('Failed to update game folder:', error)
+            const message = error instanceof Error ? error.message : String(error)
+            onShowToast?.(`Failed to update game folder: ${message}`, { durationMs: 5000, style: 'error' })
+        } finally {
+            setIsRelocatingGameFolder(false)
+        }
+    }
+
     /**
      * Gets the platform icon component
      * Params: platform - platform name
@@ -605,7 +641,16 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
                         {isMissing && (
                             <div className="w-full mt-4">
                                 <div className="bg-[#8b1f1f]/90 border border-[#c94343] text-[#ffdada] rounded-lg px-4 py-3 text-center text-base font-semibold shadow-md">
-                                    Game not found: The game folder has been moved or deleted
+                                    <span>Game not found: The game folder has been moved or deleted. </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleSelectNewGameFolder()}
+                                        disabled={isRelocatingGameFolder}
+                                        className="inline-flex items-center gap-2 rounded-md bg-red-950/55 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-900/70 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        {isRelocatingGameFolder && <Loader className="w-4 h-4 animate-spin" />}
+                                        <span>{isRelocatingGameFolder ? 'Selecting...' : 'Select a new game folder'}</span>
+                                    </button>
                                 </div>
                             </div>
                         )}
