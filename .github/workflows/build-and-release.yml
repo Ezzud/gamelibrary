@@ -127,7 +127,7 @@ jobs:
 
       - name: Build and create release
         if: steps.tag_check.outputs.tag_exists == 'false'
-        uses: tauri-apps/tauri-action@main
+        uses: tauri-apps/tauri-action@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
