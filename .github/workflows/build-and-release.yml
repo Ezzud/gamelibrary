@@ -113,6 +113,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Sync version files
+        run: pnpm run sync:version
+
       - name: Check if release tag exists
         id: tag_check
         shell: bash
