@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - '**'
+  workflow_dispatch:
 
 jobs:
   detect_version_change:
@@ -138,10 +139,12 @@ jobs:
           PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -v "^$VERSION$" | head -n 1 || true)
           echo "Previous tag: $PREV_TAG"
           if [ -n "$PREV_TAG" ]; then
-            LOG=$(git log --pretty=format:'%h%x1f%s (%an)%x1f%b%x1e' "$PREV_TAG..HEAD" | awk 'BEGIN { RS="\x1e"; FS="\x1f"; ORS="" } NF { hash=$1; subject=$2; gsub(/^[ \t]*[-*][ \t]*/, "", subject); if (subject == "") { subject = "(no subject)" } printf("- %s (#%s)\n", subject, hash); body=$3; n=split(body, lines, "\n"); for (i=1; i<=n; i++) { line=lines[i]; sub(/\r$/, "", line); if (line == "") { continue } sub(/^[ \t]*/, "", line); if (line ~ /^[-*][ \t]+/) { sub(/^[-*][ \t]+/, "", line) } printf("- %s (#%s)\n", line, hash) } printf("\n") }')
+            RANGE="$PREV_TAG..HEAD"
           else
-            LOG=$(git log --pretty=format:'%h%x1f%s (%an)%x1f%b%x1e' | awk 'BEGIN { RS="\x1e"; FS="\x1f"; ORS="" } NF { hash=$1; subject=$2; gsub(/^[ \t]*[-*][ \t]*/, "", subject); if (subject == "") { subject = "(no subject)" } printf("- %s (#%s)\n", subject, hash); body=$3; n=split(body, lines, "\n"); for (i=1; i<=n; i++) { line=lines[i]; sub(/\r$/, "", line); if (line == "") { continue } sub(/^[ \t]*/, "", line); if (line ~ /^[-*][ \t]+/) { sub(/^[-*][ \t]+/, "", line) } printf("- %s (#%s)\n", line, hash) } printf("\n") }')
+            RANGE="HEAD"
           fi
+
+          LOG=$(git log --pretty=format:'- %s (%an) (#%h)' "$RANGE")
           if [ -z "$LOG" ]; then
             LOG="No commits found."
           fi
@@ -162,5 +165,6 @@ jobs:
           releaseBody: ${{ steps.changelog.outputs.changelog }}
           releaseDraft: false
           prerelease: false
+          args: --config src-tauri/tauri.microsoftstore.conf.json
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
