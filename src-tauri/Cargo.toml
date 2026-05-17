@@ -1,6 +1,6 @@
 [package]
 name = "GameLibrary"
-version = "0.2.7"
+version = "0.2.8"
 description = "A Game Library Manager built with Tauri and React"
 authors = ["Ezzud"]
 edition = "2021"
@@ -29,4 +29,7 @@ serde_json = "1"
 zip = "8.6.0"
 futures-util = "0.3.32"
 sysinfo = "0.30"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 

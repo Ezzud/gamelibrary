@@ -37,3 +37,4 @@ src-tauri/gen/
 
 # Optional local cargo config
 src-tauri/.cargo/
+.tauri

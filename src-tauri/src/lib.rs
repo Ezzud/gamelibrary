@@ -1,12 +1,18 @@
-use std::io::{self, Write};
-use std::fs::File;
-use zip::ZipArchive;
 use reqwest;
+use std::fs::File;
+use std::io::{self, Write};
+use zip::ZipArchive;
 #[tauri::command]
-async fn download_file_with_progress(app: tauri::AppHandle, url: String, dest_folder: String, file_name: String) -> Result<String, String> {
+async fn download_file_with_progress(
+    app: tauri::AppHandle,
+    url: String,
+    dest_folder: String,
+    file_name: String,
+) -> Result<String, String> {
     let dest_path = Path::new(&dest_folder).join(&file_name);
     let client = reqwest::Client::new();
-    let mut resp = client.get(&url)
+    let mut resp = client
+        .get(&url)
         .send()
         .await
         .map_err(|e| format!("Failed to start download: {}", e))?;
@@ -15,8 +21,13 @@ async fn download_file_with_progress(app: tauri::AppHandle, url: String, dest_fo
     let mut file = File::create(&dest_path).map_err(|e| format!("Failed to create file: {}", e))?;
     let mut downloaded: u64 = 0;
 
-    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("Download error: {}", e))? {
-        file.write_all(&chunk).map_err(|e| format!("Write error: {}", e))?;
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| format!("Download error: {}", e))?
+    {
+        file.write_all(&chunk)
+            .map_err(|e| format!("Write error: {}", e))?;
         downloaded += chunk.len() as u64;
         let progress = if total_size > 0 {
             (downloaded as f64 / total_size as f64 * 100.0) as u8
@@ -32,40 +43,53 @@ async fn download_file_with_progress(app: tauri::AppHandle, url: String, dest_fo
 #[tauri::command]
 fn unzip_file(zip_path: String, dest_folder: String) -> Result<(), String> {
     let zip_file = File::open(&zip_path).map_err(|e| format!("Failed to open zip file: {}", e))?;
-    let mut archive = ZipArchive::new(zip_file).map_err(|e| format!("Failed to read zip archive: {}", e))?;
+    let mut archive =
+        ZipArchive::new(zip_file).map_err(|e| format!("Failed to read zip archive: {}", e))?;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| format!("Failed to access file in zip: {}", e))?;
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to access file in zip: {}", e))?;
         let outpath = Path::new(&dest_folder).join(file.name());
 
         if file.is_dir() {
-            fs::create_dir_all(&outpath).map_err(|e| format!("Failed to create directory: {}", e))?;
+            fs::create_dir_all(&outpath)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
         } else {
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
-                    fs::create_dir_all(p).map_err(|e| format!("Failed to create parent directory: {}", e))?;
+                    fs::create_dir_all(p)
+                        .map_err(|e| format!("Failed to create parent directory: {}", e))?;
                 }
             }
-            let mut outfile = File::create(&outpath).map_err(|e| format!("Failed to create file: {}", e))?;
-            io::copy(&mut file, &mut outfile).map_err(|e| format!("Failed to extract file: {}", e))?;
+            let mut outfile =
+                File::create(&outpath).map_err(|e| format!("Failed to create file: {}", e))?;
+            io::copy(&mut file, &mut outfile)
+                .map_err(|e| format!("Failed to extract file: {}", e))?;
         }
     }
     Ok(())
 }
 use serde::Deserialize;
-use tauri::Emitter;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, Instant};
-use tauri::Manager;
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use sysinfo::{Pid, System};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::Emitter;
+use tauri::Manager;
+use tauri_plugin_updater::UpdaterExt;
 
 #[cfg(target_os = "windows")]
-const WINDOWS_RUN_VALUE_NAMES: [&str; 4] = ["Game Library", "gamelibrary", "GameLibrary", "GameLibrary.exe"];
+const WINDOWS_RUN_VALUE_NAMES: [&str; 4] = [
+    "Game Library",
+    "gamelibrary",
+    "GameLibrary",
+    "GameLibrary.exe",
+];
 
 #[cfg(target_os = "windows")]
 const WINDOWS_STARTUP_APPROVED_KEYS: [&str; 2] = [
@@ -88,17 +112,17 @@ fn log_reg_output(context: &str, output: &std::process::Output) {
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     eprintln!(
         "[startup-reg] {} | status={} | stdout='{}' | stderr='{}'",
-        context,
-        output.status,
-        stdout,
-        stderr
+        context, output.status, stdout, stderr
     );
 }
 
 #[cfg(target_os = "windows")]
 fn find_existing_run_value_name_for_exe_windows(exe_path: &str) -> Result<Option<String>, String> {
     let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
-    eprintln!("[startup-reg] Querying Run key for current exe: {}", exe_path);
+    eprintln!(
+        "[startup-reg] Querying Run key for current exe: {}",
+        exe_path
+    );
     let output = Command::new("reg")
         .args(["query", key])
         .creation_flags(0x08000000)
@@ -137,7 +161,10 @@ fn find_existing_run_value_name_for_exe_windows(exe_path: &str) -> Result<Option
             data_normalized
         );
         if data_normalized.contains(&exe_normalized) {
-            eprintln!("[startup-reg] Matched existing Run value for current exe: {}", value_name);
+            eprintln!(
+                "[startup-reg] Matched existing Run value for current exe: {}",
+                value_name
+            );
             return Ok(Some(value_name.to_string()));
         }
     }
@@ -149,22 +176,39 @@ fn find_existing_run_value_name_for_exe_windows(exe_path: &str) -> Result<Option
 fn remove_windows_startup_registration_for_value_name(value_name: &str) -> Result<(), String> {
     let run_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 
-    eprintln!("[startup-reg] Removing existing Run entry for value='{}'", value_name);
+    eprintln!(
+        "[startup-reg] Removing existing Run entry for value='{}'",
+        value_name
+    );
     let run_status = Command::new("reg")
         .args(["delete", run_key, "/v", value_name, "/f"])
         .creation_flags(0x08000000)
         .status()
         .map_err(|e| format!("Failed to delete Run value '{}': {}", value_name, e))?;
-    eprintln!("[startup-reg] Delete Run result for value='{}': {}", value_name, run_status);
+    eprintln!(
+        "[startup-reg] Delete Run result for value='{}': {}",
+        value_name, run_status
+    );
 
     for key in WINDOWS_STARTUP_APPROVED_KEYS {
-        eprintln!("[startup-reg] Removing StartupApproved entry for key='{}' value='{}'", key, value_name);
+        eprintln!(
+            "[startup-reg] Removing StartupApproved entry for key='{}' value='{}'",
+            key, value_name
+        );
         let status = Command::new("reg")
             .args(["delete", key, "/v", value_name, "/f"])
             .creation_flags(0x08000000)
             .status()
-            .map_err(|e| format!("Failed to delete StartupApproved value '{}': {}", value_name, e))?;
-        eprintln!("[startup-reg] Delete StartupApproved result for key='{}' value='{}': {}", key, value_name, status);
+            .map_err(|e| {
+                format!(
+                    "Failed to delete StartupApproved value '{}': {}",
+                    value_name, e
+                )
+            })?;
+        eprintln!(
+            "[startup-reg] Delete StartupApproved result for key='{}' value='{}': {}",
+            key, value_name, status
+        );
     }
 
     Ok(())
@@ -188,14 +232,20 @@ fn set_startup_approved_enabled_windows(value_name: &str) -> Result<bool, String
 
     // Removing StartupApproved value clears the explicit disabled state.
     for key in WINDOWS_STARTUP_APPROVED_KEYS {
-        eprintln!("[startup-reg] Clearing StartupApproved state: key='{}' value='{}'", key, value_name);
+        eprintln!(
+            "[startup-reg] Clearing StartupApproved state: key='{}' value='{}'",
+            key, value_name
+        );
         let status = Command::new("reg")
             .args(["delete", key, "/v", value_name, "/f"])
             .creation_flags(0x08000000)
             .status()
             .map_err(|e| format!("Failed to update StartupApproved state: {}", e))?;
 
-        eprintln!("[startup-reg] StartupApproved delete result for key='{}' value='{}': {}", key, value_name, status);
+        eprintln!(
+            "[startup-reg] StartupApproved delete result for key='{}' value='{}': {}",
+            key, value_name, status
+        );
 
         if status.success() {
             touched_any = true;
@@ -208,14 +258,20 @@ fn set_startup_approved_enabled_windows(value_name: &str) -> Result<bool, String
 #[cfg(target_os = "windows")]
 fn is_startup_approved_disabled_windows(value_name: &str) -> Result<bool, String> {
     for key in WINDOWS_STARTUP_APPROVED_KEYS {
-        eprintln!("[startup-reg] Checking if StartupApproved value is disabled: key='{}' value='{}'", key, value_name);
+        eprintln!(
+            "[startup-reg] Checking if StartupApproved value is disabled: key='{}' value='{}'",
+            key, value_name
+        );
         let output = Command::new("reg")
             .args(["query", key, "/v", value_name])
             .creation_flags(0x08000000)
             .output()
             .map_err(|e| format!("Failed to query StartupApproved key: {}", e))?;
 
-        log_reg_output(&format!("query StartupApproved key='{}' value='{}'", key, value_name), &output);
+        log_reg_output(
+            &format!("query StartupApproved key='{}' value='{}'", key, value_name),
+            &output,
+        );
 
         if !output.status.success() {
             continue;
@@ -228,7 +284,10 @@ fn is_startup_approved_disabled_windows(value_name: &str) -> Result<bool, String
             }
 
             if let Some((_, raw_binary)) = line.split_once("REG_BINARY") {
-                let hex: String = raw_binary.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+                let hex: String = raw_binary
+                    .chars()
+                    .filter(|c| c.is_ascii_hexdigit())
+                    .collect();
                 if hex.len() >= 2 {
                     let first_byte = hex[..2].to_ascii_lowercase();
                     // 0x03 marks a disabled startup entry in Startup Apps.
@@ -379,10 +438,16 @@ async fn get_run_on_startup() -> Result<bool, String> {
         {
             use std::process::Command;
             let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
-            eprintln!("[startup-reg] Checking if run-on-startup is enabled by querying Run key '{}'.", key);
+            eprintln!(
+                "[startup-reg] Checking if run-on-startup is enabled by querying Run key '{}'.",
+                key
+            );
             for name in WINDOWS_RUN_VALUE_NAMES {
                 eprintln!("[startup-reg] Querying Run value '{}'.", name);
-                let output = Command::new("reg").args(["query", key, "/v", name]).creation_flags(0x08000000).output();
+                let output = Command::new("reg")
+                    .args(["query", key, "/v", name])
+                    .creation_flags(0x08000000)
+                    .output();
                 if let Ok(out) = output {
                     log_reg_output(&format!("query Run key='{}' value='{}'", key, name), &out);
                     if out.status.success() {
@@ -390,7 +455,10 @@ async fn get_run_on_startup() -> Result<bool, String> {
                         return Ok(true);
                     }
                 } else if let Err(err) = output {
-                    eprintln!("[startup-reg] Failed to query Run value '{}': {}", name, err);
+                    eprintln!(
+                        "[startup-reg] Failed to query Run value '{}': {}",
+                        name, err
+                    );
                 }
             }
             eprintln!("[startup-reg] No Windows Run value matched the app.");
@@ -402,7 +470,10 @@ async fn get_run_on_startup() -> Result<bool, String> {
             use std::path::PathBuf;
             let plist_name = "com.ezzud.gamelibrary.plist";
             let home = std::env::var("HOME").map_err(|e| format!("Failed to read HOME: {}", e))?;
-            let plist_path = PathBuf::from(home).join("Library").join("LaunchAgents").join(plist_name);
+            let plist_path = PathBuf::from(home)
+                .join("Library")
+                .join("LaunchAgents")
+                .join(plist_name);
             return Ok(plist_path.exists());
         }
 
@@ -410,8 +481,11 @@ async fn get_run_on_startup() -> Result<bool, String> {
         {
             use std::path::PathBuf;
             let home = std::env::var("HOME").map_err(|e| format!("Failed to read HOME: {}", e))?;
-            let config_home = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
-            let desktop_path = PathBuf::from(config_home).join("autostart").join("gamelibrary.desktop");
+            let config_home =
+                std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
+            let desktop_path = PathBuf::from(config_home)
+                .join("autostart")
+                .join("gamelibrary.desktop");
             return Ok(desktop_path.exists());
         }
 
@@ -426,11 +500,19 @@ async fn is_run_on_startup_disabled() -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            eprintln!("[startup-reg] Checking if run-on-startup is disabled in StartupApproved keys.");
+            eprintln!(
+                "[startup-reg] Checking if run-on-startup is disabled in StartupApproved keys."
+            );
             for name in WINDOWS_RUN_VALUE_NAMES {
-                eprintln!("[startup-reg] Testing disabled state for Run value '{}'.", name);
+                eprintln!(
+                    "[startup-reg] Testing disabled state for Run value '{}'.",
+                    name
+                );
                 if is_startup_approved_disabled_windows(name)? {
-                    eprintln!("[startup-reg] Run value '{}' is marked disabled in StartupApproved.", name);
+                    eprintln!(
+                        "[startup-reg] Run value '{}' is marked disabled in StartupApproved.",
+                        name
+                    );
                     return Ok(true);
                 }
             }
@@ -445,7 +527,12 @@ async fn is_run_on_startup_disabled() -> Result<bool, String> {
         }
     })
     .await
-    .map_err(|err| format!("Failed to query disabled startup state on blocking thread: {}", err))?
+    .map_err(|err| {
+        format!(
+            "Failed to query disabled startup state on blocking thread: {}",
+            err
+        )
+    })?
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -470,9 +557,13 @@ fn calculate_directory_size(path: &Path) -> Result<u64, String> {
 
     for entry in entries {
         let entry = entry.map_err(|err| format!("Failed to read directory entry: {}", err))?;
-        let metadata = entry
-            .metadata()
-            .map_err(|err| format!("Failed to read metadata for {}: {}", entry.path().display(), err))?;
+        let metadata = entry.metadata().map_err(|err| {
+            format!(
+                "Failed to read metadata for {}: {}",
+                entry.path().display(),
+                err
+            )
+        })?;
 
         if metadata.is_dir() {
             total_size += calculate_directory_size(&entry.path())?;
@@ -512,8 +603,13 @@ fn find_launch_file(game_path: &Path, configured_file: Option<String>) -> Result
         }
     }
 
-    let entries = fs::read_dir(game_path)
-        .map_err(|err| format!("Failed to read game directory {}: {}", game_path.display(), err))?;
+    let entries = fs::read_dir(game_path).map_err(|err| {
+        format!(
+            "Failed to read game directory {}: {}",
+            game_path.display(),
+            err
+        )
+    })?;
 
     for entry in entries {
         let entry = entry.map_err(|err| format!("Failed to read directory entry: {}", err))?;
@@ -533,7 +629,10 @@ fn find_launch_file(game_path: &Path, configured_file: Option<String>) -> Result
         }
     }
 
-    Err(format!("No launchable file found in {}", game_path.display()))
+    Err(format!(
+        "No launchable file found in {}",
+        game_path.display()
+    ))
 }
 
 #[cfg(target_os = "windows")]
@@ -542,14 +641,17 @@ fn quote_for_powershell(value: &str) -> String {
 }
 
 #[cfg(target_os = "windows")]
-fn launch_with_elevation(launch_file: &Path, args: &[String], game_path: &Path) -> Result<(), String> {
+fn launch_with_elevation(
+    launch_file: &Path,
+    args: &[String],
+    game_path: &Path,
+) -> Result<(), String> {
     let launch_file_escaped = quote_for_powershell(&launch_file.to_string_lossy());
     let working_dir_escaped = quote_for_powershell(&game_path.to_string_lossy());
     let command = if args.is_empty() {
         format!(
             "$exe='{}'; Start-Process -FilePath $exe -WorkingDirectory '{}' -Verb RunAs",
-            launch_file_escaped,
-            working_dir_escaped
+            launch_file_escaped, working_dir_escaped
         )
     } else {
         let args_list = args
@@ -624,14 +726,13 @@ fn open_game_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
-
 fn parse_custom_arguments(args_str: Option<String>) -> Vec<String> {
     let args = args_str
         .unwrap_or_default()
         .split_whitespace()
         .map(|s| s.to_string())
         .collect();
-    
+
     eprintln!("[parse_custom_arguments] Parsed arguments: {:?}", args);
 
     return args;
@@ -745,11 +846,10 @@ async fn wait_for_process_exit(pid: u32, poll_interval_ms: Option<u64>) -> Resul
             let original_running = system.process(target_pid).is_some();
 
             let same_exe_running = target_exe.as_ref().is_some_and(|exe_path| {
-                system.processes().values().any(|process| {
-                    process
-                        .exe()
-                        .is_some_and(|path| path == exe_path.as_path())
-                })
+                system
+                    .processes()
+                    .values()
+                    .any(|process| process.exe().is_some_and(|path| path == exe_path.as_path()))
             });
 
             if original_running || same_exe_running {
@@ -776,7 +876,10 @@ async fn wait_for_process_exit(pid: u32, poll_interval_ms: Option<u64>) -> Resul
 }
 
 #[tauri::command]
-async fn download_and_launch_installer(app: tauri::AppHandle, version: String) -> Result<String, String> {
+async fn download_and_launch_installer(
+    app: tauri::AppHandle,
+    version: String,
+) -> Result<String, String> {
     let normalized_version = version.trim().trim_start_matches('v').to_string();
     if normalized_version.is_empty()
         || !normalized_version
@@ -798,8 +901,13 @@ async fn download_and_launch_installer(app: tauri::AppHandle, version: String) -
         .map_err(|err| format!("Failed to resolve LocalAppData directory: {}", err))?;
     let updates_dir = base_local_dir.join("gamelibrary").join("updates");
 
-    fs::create_dir_all(&updates_dir)
-        .map_err(|err| format!("Failed to create updates directory {}: {}", updates_dir.display(), err))?;
+    fs::create_dir_all(&updates_dir).map_err(|err| {
+        format!(
+            "Failed to create updates directory {}: {}",
+            updates_dir.display(),
+            err
+        )
+    })?;
 
     let installer_path = updates_dir.join(&file_name);
 
@@ -829,12 +937,21 @@ async fn download_and_launch_installer(app: tauri::AppHandle, version: String) -
         ));
     }
 
-    fs::write(&installer_path, &bytes)
-        .map_err(|err| format!("Failed to write installer to {}: {}", installer_path.display(), err))?;
+    fs::write(&installer_path, &bytes).map_err(|err| {
+        format!(
+            "Failed to write installer to {}: {}",
+            installer_path.display(),
+            err
+        )
+    })?;
 
-    let mut child = Command::new(&installer_path)
-        .spawn()
-        .map_err(|err| format!("Failed to launch installer {}: {}", installer_path.display(), err))?;
+    let mut child = Command::new(&installer_path).spawn().map_err(|err| {
+        format!(
+            "Failed to launch installer {}: {}",
+            installer_path.display(),
+            err
+        )
+    })?;
 
     std::thread::sleep(Duration::from_millis(800));
     if let Some(status) = child
@@ -886,7 +1003,12 @@ async fn igdb_get_access_token(client_id: String, client_secret: String) -> Resu
 }
 
 #[tauri::command]
-async fn igdb_post(endpoint: String, body: String, client_id: String, access_token: String) -> Result<String, String> {
+async fn igdb_post(
+    endpoint: String,
+    body: String,
+    client_id: String,
+    access_token: String,
+) -> Result<String, String> {
     let url = format!("https://api.igdb.com/v4/{}", endpoint);
 
     let response = reqwest::Client::new()
@@ -916,7 +1038,10 @@ fn cleanup_updates_dir_on_startup(app: &tauri::AppHandle) {
     let local_data_dir = match app.path().local_data_dir() {
         Ok(path) => path,
         Err(err) => {
-            eprintln!("[startup-cleanup] Failed to resolve LocalAppData directory: {}", err);
+            eprintln!(
+                "[startup-cleanup] Failed to resolve LocalAppData directory: {}",
+                err
+            );
             return;
         }
     };
@@ -935,16 +1060,98 @@ fn cleanup_updates_dir_on_startup(app: &tauri::AppHandle) {
     }
 }
 
+async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
+    if let Some(update) = app.updater()?.check().await? {
+        let mut downloaded: u64 = 0;
+
+        update
+            .download_and_install(
+                |chunk_length, content_length| {
+                    downloaded += chunk_length as u64;
+                    println!("downloaded {} from {:?}", downloaded, content_length);
+                },
+                || {
+                    println!("download finished");
+                },
+            )
+            .await?;
+
+        println!("update installed");
+        app.restart();
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[tauri::command]
 fn copy_file(source: String, destination: String) -> Result<(), String> {
-    fs::copy(&source, &destination)
-        .map_err(|e| format!("Failed to copy file from {} to {}: {}", source, destination, e))?;
+    fs::copy(&source, &destination).map_err(|e| {
+        format!(
+            "Failed to copy file from {} to {}: {}",
+            source, destination, e
+        )
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn check_for_updates_cmd(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let updater = app
+        .updater()
+        .map_err(|e| format!("Updater initialization failed: {}", e))?;
+
+    let result = updater
+        .check()
+        .await
+        .map_err(|e| format!("Updater check failed: {}", e))?;
+
+    if let Some(update) = result {
+        Ok(Some(format!("{}", update.version)))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+async fn install_update_cmd(app: tauri::AppHandle) -> Result<(), String> {
+    let updater = app
+        .updater()
+        .map_err(|e| format!("Updater initialization failed: {}", e))?;
+
+    if let Some(update) = updater
+        .check()
+        .await
+        .map_err(|e| format!("Updater check failed: {}", e))?
+    {
+        let app_handle = app.clone();
+        let progress_handle = app_handle.clone();
+        let finish_handle = app_handle.clone();
+        update
+            .download_and_install(
+                move |chunk_length, content_length| {
+                    let _ = progress_handle.emit(
+                        "updater:progress",
+                        serde_json::json!({ "downloaded": chunk_length, "content_length": content_length }),
+                    );
+                },
+                move || {
+                    let _ = finish_handle.emit("updater:finished", ());
+                },
+            )
+            .await
+            .map_err(|e| format!("Failed to download/install update: {}", e))?;
+
+        // restart after install
+        app.restart();
+    }
+
     Ok(())
 }
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             let _ = app.emit("restore-app-window", ());
         }))
@@ -986,6 +1193,15 @@ pub fn run() {
                     app.emit("custom-uri", arg.clone()).ok();
                 }
             }
+            // Spawn background updater task
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(err) = update(handle).await {
+                        eprintln!("[updater] error: {:?}", err);
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1000,6 +1216,8 @@ pub fn run() {
             is_run_on_startup_disabled,
             wait_for_process_exit,
             download_and_launch_installer,
+            check_for_updates_cmd,
+            install_update_cmd,
             download_file_with_progress,
             unzip_file,
             copy_file

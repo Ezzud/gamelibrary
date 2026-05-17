@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { appDataDir, appLocalDataDir } from '@tauri-apps/api/path'
 import {
   Check,
@@ -52,7 +53,6 @@ import { getVersion } from '@tauri-apps/api/app'
 import type { AppConfigProps, ConfigCategory, UpdateCheckStatus } from '../types/appTypes'
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
-const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
 const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
 const REPO_BRANCH = 'master'
 const APP_NAME = 'gamelibrary'
@@ -154,6 +154,7 @@ const AppConfig = ({
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const [currentReleaseNotes, setCurrentReleaseNotes] = useState<string | null>(null)
   const [isLoadingReleaseNotes, setIsLoadingReleaseNotes] = useState(false)
+  const [updateDownloadProgress, setUpdateDownloadProgress] = useState<number | null>(null)
   const [aboutAppLocation, setAboutAppLocation] = useState<string>('Loading...')
   const [aboutDataLocation, setAboutDataLocation] = useState<string>('Loading...')
   const isAnyMaintenanceActionRunning = isClearingCache || isClearingPlayHistory || isRemovingLibrary || isRemovingDuplicates
@@ -171,39 +172,23 @@ const AppConfig = ({
 
   const checkForUpdates = async () => {
     setUpdateStatus('checking')
-    const checkStartedAt = Date.now()
-
     try {
       const localVersion = await getVersion()
       setCurrentVersion(localVersion)
 
-      const response = await fetch(`${GITHUB_REPO_LATEST_RELEASE_API_URL}?t=${Date.now()}`)
-      if (!response.ok) {
-        throw new Error(`GitHub latest release fetch failed with status ${response.status}`)
+      const result = await invoke<string | null>('check_for_updates_cmd')
+      if (result) {
+        const repoVersion = result.trim().replace(/^v/i, '')
+        setLatestVersion(repoVersion)
+        const comparison = compareSemver(localVersion, repoVersion)
+        setUpdateStatus(comparison < 1 ? 'up-to-date' : 'update-available')
+      } else {
+        setLatestVersion(null)
+        setUpdateStatus('up-to-date')
       }
-
-      const data = await response.json() as { tag_name?: string }
-      const repoVersion = (data.tag_name || '').trim().replace(/^v/i, '')
-
-      if (!repoVersion) {
-        throw new Error('GitHub latest release tag is missing')
-      }
-
-      setLatestVersion(repoVersion)
-
-      const comparison = compareSemver(localVersion, repoVersion)
-      const elapsed = Date.now() - checkStartedAt
-      if (elapsed < 1000) {
-        await delay(1000 - elapsed)
-      }
-      setUpdateStatus(comparison < 1 ? 'up-to-date' : 'update-available')
     } catch (error) {
       Logger.error('Failed to check for updates:', error)
       setLatestVersion(null)
-      const elapsed = Date.now() - checkStartedAt
-      if (elapsed < 1000) {
-        await delay(1000 - elapsed)
-      }
       setUpdateStatus('error')
     }
   }
@@ -303,6 +288,48 @@ const AppConfig = ({
       void checkForUpdates()
     }
   }, [activeCategory, updateStatus])
+
+  useEffect(() => {
+    // Listen for updater events emitted by the backend commands
+    let unlistenProgress: any | null = null
+    let unlistenFinished: any | null = null
+
+    const startListeners = async () => {
+      try {
+        unlistenProgress = await listen('updater:progress', (event) => {
+          // payload: { downloaded, content_length }
+          const payload: any = (event as any).payload || {}
+          const downloaded = Number(payload.downloaded || 0)
+          const contentLength = Number(payload.content_length || 0)
+          if (contentLength > 0) {
+            setUpdateDownloadProgress(Math.round((downloaded / contentLength) * 100))
+          } else {
+            setUpdateDownloadProgress(null)
+          }
+          setIsInstallingUpdate(true)
+        })
+
+        unlistenFinished = await listen('updater:finished', () => {
+          setIsInstallingUpdate(false)
+          setUpdateDownloadProgress(null)
+          setUpdateStatus('up-to-date')
+        })
+      } catch (err) {
+        // ignore if event registration fails in non-tauri environments
+      }
+    }
+
+    void startListeners()
+
+    return () => {
+      if (unlistenProgress) {
+        unlistenProgress.then((f: any) => f())
+      }
+      if (unlistenFinished) {
+        unlistenFinished.then((f: any) => f())
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (activeCategory !== 'Update') {
@@ -639,9 +666,9 @@ const AppConfig = ({
 
     setIsInstallingUpdate(true)
     try {
-      const installerPath = await invoke<string>('download_and_launch_installer', { version: latestVersion })
-      Logger.success(`Update installer downloaded and launched: ${installerPath}`)
-      onShowToast?.(`Installer launched for v${latestVersion}. Close GameLibrary to continue update if prompted.`, { durationMs: 5000, style: 'success' })
+      await invoke('install_update_cmd')
+      Logger.success(`Update install started for v${latestVersion}`)
+      onShowToast?.(`Update started for v${latestVersion}. Download progress will be shown in Settings.`, { durationMs: 5000, style: 'success' })
     } catch (error) {
       Logger.error('Failed to download or launch update installer:', error)
       const rawErrorMessage = error instanceof Error ? error.message : String(error)
@@ -1252,7 +1279,7 @@ const AppConfig = ({
                       className="px-4 py-2 rounded-lg bg-[#8a4f16] hover:bg-[#9f5d1e] disabled:opacity-50 disabled:cursor-not-allowed text-[#fff1dc] transition-colors inline-flex items-center gap-2"
                     >
                       {isInstallingUpdate ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                      {isInstallingUpdate ? 'Downloading...' : 'Update now'}
+                      {isInstallingUpdate ? 'Installing...' : 'Update now'}
                     </button>
                   )}
                   <button
@@ -1279,6 +1306,14 @@ const AppConfig = ({
                   </pre>
                 ) : (
                   <div className="mt-2 text-sm text-steam-400">No release notes found for this version.</div>
+                )}
+                {isInstallingUpdate && updateDownloadProgress !== null && (
+                  <div className="mt-3 w-full">
+                    <div className="text-xs text-steam-400 mb-1">Download progress: {updateDownloadProgress}%</div>
+                    <div className="w-full bg-steam-700 rounded-md h-2 overflow-hidden">
+                      <div className="bg-steam-500 h-2" style={{ width: `${updateDownloadProgress}%` }} />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
