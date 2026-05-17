@@ -1,6 +1,12 @@
 {
+  "productName": "GameLibrary",
+  "identifier": "Ezzud",
   "bundle": {
+    "publisher": "Ezzud",
     "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      },
       "webviewInstallMode": {
         "type": "offlineInstaller"
       }
