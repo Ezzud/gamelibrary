@@ -1061,23 +1061,24 @@ fn cleanup_updates_dir_on_startup(app: &tauri::AppHandle) {
 }
 
 async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
+    eprintln!("[updater] Checking for updates...");
     if let Some(update) = app.updater()?.check().await? {
         let mut downloaded: u64 = 0;
 
-        eprintln!("update available: version {}", update.version);
+        eprintln!("[updater] update available: version {}", update.version);
         update
             .download_and_install(
                 |chunk_length, content_length| {
                     downloaded += chunk_length as u64;
-                    println!("downloaded {} from {:?}", downloaded, content_length);
+                    eprintln!("[updater] downloaded {} from {:?}", downloaded, content_length);
                 },
                 || {
-                    println!("download finished");
+                    eprintln!("[updater] download finished");
                 },
             )
             .await?;
 
-        println!("update installed");
+        eprintln!("[updater] update installed");
         app.restart();
     }
 
