@@ -1064,6 +1064,7 @@ async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
     if let Some(update) = app.updater()?.check().await? {
         let mut downloaded: u64 = 0;
 
+        eprintln!("update available: version {}", update.version);
         update
             .download_and_install(
                 |chunk_length, content_length| {

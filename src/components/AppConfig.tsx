@@ -291,8 +291,8 @@ const AppConfig = ({
 
   useEffect(() => {
     // Listen for updater events emitted by the backend commands
-    let unlistenProgress: any | null = null
-    let unlistenFinished: any | null = null
+    let unlistenProgress: (() => void) | null = null
+    let unlistenFinished: (() => void) | null = null
 
     const startListeners = async () => {
       try {
@@ -323,10 +323,10 @@ const AppConfig = ({
 
     return () => {
       if (unlistenProgress) {
-        unlistenProgress.then((f: any) => f())
+        unlistenProgress()
       }
       if (unlistenFinished) {
-        unlistenFinished.then((f: any) => f())
+        unlistenFinished()
       }
     }
   }, [])
