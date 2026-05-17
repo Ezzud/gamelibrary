@@ -1,7 +1,7 @@
 {
   "name": "gamelibrary",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "scripts": {
     "sync:version": "node scripts/sync-version.mjs",
@@ -11,7 +11,9 @@
     "pretauri": "pnpm run sync:version",
     "preview": "vite preview",
     "tauri": "tauri",
-    "version": "pnpm run sync:version"
+    "version": "pnpm run sync:version",
+    "tauri:dev": "pnpm run tauri dev",
+    "tauri:build": "pnpm run tauri build --no-bundle && pnpm run tauri bundle --config src-tauri/tauri.microsoftstore.conf.json"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.2",
