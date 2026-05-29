@@ -662,6 +662,17 @@ export async function getAllLaunchFiles(gamePath: string) {
             }
         }
 
+        const retailSubFolderPath = `${gamePath}/_retail_`;
+        const retailSubFolderExists = await exists(retailSubFolderPath);
+        if (retailSubFolderExists) {
+            try {
+                const retailEntries = await readDir(retailSubFolderPath);
+                processEntries(retailEntries, '_retail_/');
+            } catch (retailErr) {
+                Logger.warn(`Could not read _retail_ sub-folder in ${gamePath}:`, retailErr);
+            }
+        }
+
 
         // Sort launch files with these rules:
         // 1) prefer .exe over .bat
