@@ -6,7 +6,6 @@ import { FaGamepad, FaLockOpen, FaMicrochip, FaUsers, FaVrCardboard, FaXbox } fr
 import { SiBattledotnet, SiEa, SiEpicgames, SiGogdotcom, SiSteam } from 'react-icons/si'
 import { getGameCoverPath, loadGameConfig } from '../services/ConfigManager'
 import type { Game, GameCardProps } from '../types/appTypes'
-import { readFile } from '@tauri-apps/plugin-fs';
 
 const specialTagsCache = new Map<string, string[]>()
 const pendingTagSubscribers = new Map<string, Set<(tags: string[]) => void>>()

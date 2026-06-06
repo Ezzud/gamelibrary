@@ -24,7 +24,6 @@ import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, sav
 import { chooseFolder, getAllLaunchFiles } from '../services/GameScanner'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 import type { Game, GameDetailViewProps } from '../types/appTypes'
-import { readFile } from '@tauri-apps/plugin-fs';
 
 const MIN_LAUNCH_LOADING_MS = 5000
 
