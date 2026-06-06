@@ -24,6 +24,7 @@ import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, sav
 import { chooseFolder, getAllLaunchFiles } from '../services/GameScanner'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 import type { Game, GameDetailViewProps } from '../types/appTypes'
+import { readFile } from '@tauri-apps/plugin-fs';
 
 const MIN_LAUNCH_LOADING_MS = 5000
 
@@ -211,12 +212,24 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 
 			const coverPath = await getGameCoverPath(game.id)
 			if (coverPath) {
-				coverUrl = coverPath;
+				const bytes = await readFile(coverPath);
+
+				const blob = new Blob([new Uint8Array(bytes)], {
+					type: 'image/jpeg',
+				});
+				const url = URL.createObjectURL(blob);
+				coverUrl = url
 			}
 
 			const thumbnailPath = await getGameThumbnailPath(game.id)
 			if (thumbnailPath) {
-				thumbnailUrl = thumbnailPath;
+				const bytes = await readFile(thumbnailPath);
+
+				const blob = new Blob([new Uint8Array(bytes)], {
+					type: 'image/jpeg',
+				});
+				const url = URL.createObjectURL(blob);
+				thumbnailUrl = url
 			}
 
 			setDisplayCoverUrl(coverUrl)
