@@ -1,7 +1,7 @@
 {
   "name": "gamelibrary",
   "private": true,
-  "version": "0.3.5",
+  "version": "0.3.6",
   "type": "module",
   "scripts": {
     "sync:version": "node scripts/sync-version.mjs",

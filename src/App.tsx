@@ -36,6 +36,8 @@ import {
     removeFavorite,
     setTwitchCredentials,
     updateLatestPlayHistoryEntry,
+    setConfigSortField,
+    setConfigSortOrder,
 } from './services/ConfigManager'
 import { initIGDB, searchGame, getGameDetails } from './services/GameDataManager'
 import { launchGame } from './services/GameLauncher'
@@ -67,13 +69,13 @@ const reduceAppWindow = async () => {
 const restoreAppWindow = async () => {
     try {
         const currentWindow = getCurrentWindow()
-        if(!(await currentWindow.isVisible())) {
+        if (!(await currentWindow.isVisible())) {
             await currentWindow.show()
         }
-        if(await currentWindow.isMinimized()) {
+        if (await currentWindow.isMinimized()) {
             await currentWindow.unminimize()
         }
-        if(!(await currentWindow.isFocused())) {
+        if (!(await currentWindow.isFocused())) {
             await currentWindow.setFocus()
         }
     } catch (error) {
@@ -114,6 +116,17 @@ function App() {
     const [tagFilter, setTagFilter] = useState('All')
     const [sortField, setSortField] = useState<SortField>('name')
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+    const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+    const handleSetSortField = async (value: SortField) => {
+        setSortField(value)
+        await setConfigSortField(value)
+    }
+
+    const handleSetSortDirection = async (value: 'asc' | 'desc') => {
+        setSortDirection(value)
+        await setConfigSortOrder(value)
+    }
 
     const compareSemver = (currentVersion: string, latestVersion: string) => {
         const normalize = (version: string) =>
@@ -263,14 +276,14 @@ function App() {
             } else {
                 next.delete(gameId)
                 updateLatestPlayHistoryEntry(gameId)
-                .catch((error) => {
-                    Logger.error(`Failed to update play history for game ID ${gameId}:`, error)
-                })
-                .then(() => {
-                    refreshLastPlayedCards().catch((error) => {
-                        Logger.error('Failed to refresh last played cards after play history update:', error)
+                    .catch((error) => {
+                        Logger.error(`Failed to update play history for game ID ${gameId}:`, error)
                     })
-                })
+                    .then(() => {
+                        refreshLastPlayedCards().catch((error) => {
+                            Logger.error('Failed to refresh last played cards after play history update:', error)
+                        })
+                    })
             }
             nextRunningCount = next.size
             return next
@@ -482,7 +495,7 @@ function App() {
                 Logger.error('Failed to sync run-on-startup on launch:', err)
             })
             void (async () => {
-                
+
                 setIsScanning(true)
                 setScanProgress(0)
                 setScanStatusMessage('Scanning all custom folders...')
@@ -586,6 +599,22 @@ function App() {
         void bootstrap()
     }, [])
 
+    useEffect(() => {
+        const loadSortSettings = async () => {
+            try {
+                const config = await getAppConfig()
+
+                await setSortField(config.sortField ?? 'name')
+                await setSortDirection(config.sortOrder ?? 'asc')
+                setSettingsLoaded(true)
+            } catch (error) {
+                Logger.warn('Failed to load sort settings:', error)
+            }
+        }
+
+        void loadSortSettings()
+    }, [setSortField, setSortDirection])
+
     /**
      * Loads games from the database with cache enrichment
      * First loads from cache, then fetches missing data from IGDB
@@ -636,7 +665,7 @@ function App() {
                                     const config = await loadGameConfig(game.id)
                                     const forcedIGDBId = (config as any)?.forced_igdb_id
                                     let igdbData: any = null
-                                    
+
                                     if (forcedIGDBId && typeof forcedIGDBId === 'number') {
                                         const gameDetails = await getGameDetails(forcedIGDBId)
                                         if (gameDetails) {
@@ -646,7 +675,7 @@ function App() {
                                         const searchName = await resolveSearchName(game.id, game.name, game.path)
                                         igdbData = await searchGame(searchName)
                                     }
-                                    
+
                                     if (igdbData.success && igdbData.data) {
                                         game.coverUrl = igdbData.data.cover_url || undefined
                                         game.thumbnailUrl = igdbData.data.thumbnail_url || undefined
@@ -672,7 +701,7 @@ function App() {
                         }
 
                         const config = await loadGameConfig(game.id)
-                        if(!config.dateAdded) {
+                        if (!config.dateAdded) {
                             config.dateAdded = Date.now()
                             await saveGameConfig(game.id, config)
                         }
@@ -682,11 +711,11 @@ function App() {
                             const forcedIGDBId = (config as any)?.forced_igdb_id
                             let igdbData: any = null
 
-                            if(!config.dateAdded) {
+                            if (!config.dateAdded) {
                                 config.dateAdded = Date.now()
                                 await saveGameConfig(game.id, config)
                             }
-                            
+
                             if (forcedIGDBId && typeof forcedIGDBId === 'number') {
                                 const gameDetails = await getGameDetails(forcedIGDBId)
                                 if (gameDetails) {
@@ -696,7 +725,7 @@ function App() {
                                 const searchName = await resolveSearchName(game.id, game.name, game.path)
                                 igdbData = await searchGame(searchName)
                             }
-                            
+
                             if (igdbData.success && igdbData.data) {
                                 game.coverUrl = igdbData.data.cover_url || undefined
                                 game.name = igdbData.data.title || game.name
@@ -1087,7 +1116,7 @@ function App() {
                         isFavorite={favoriteGameIds.has(selectedGame.id)}
                         onToggleFavorite={() => handleToggleFavorite(selectedGame)}
                     />
-                ) : (
+                ) : settingsLoaded ? (
                     <GameLibrary
                         games={games}
                         favoriteGameIds={favoriteGameIds}
@@ -1116,11 +1145,12 @@ function App() {
                         tagFilter={tagFilter}
                         onTagFilterChange={setTagFilter}
                         sortField={sortField}
-                        onSortFieldChange={setSortField}
+                        onSortFieldChange={handleSetSortField}
                         sortDirection={sortDirection}
-                        onSortDirectionChange={setSortDirection}
+                        onSortDirectionChange={handleSetSortDirection}
+                        settingsLoaded={settingsLoaded}
                     />
-                )}
+                ): null}
             </div>
         </div>
     )

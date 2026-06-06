@@ -109,6 +109,7 @@ export interface GameLibraryProps {
   onSortFieldChange: (value: SortField) => void
   sortDirection: 'asc' | 'desc'
   onSortDirectionChange: (value: 'asc' | 'desc') => void
+  settingsLoaded: boolean
 }
 
 export interface GameDetailViewProps {
@@ -167,6 +168,8 @@ export interface Config {
   cardHoverEffect: string
   runOnStartup?: boolean
   reduceWhilePlaying?: boolean
+  sortField?: SortField
+  sortOrder?: 'asc' | 'desc'
 }
 
 export interface GameConfig {

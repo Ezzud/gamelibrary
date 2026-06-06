@@ -15,6 +15,8 @@ const defaultConfig: Config = {
     cardHoverEffect: 'zoom',
     runOnStartup: true,
     reduceWhilePlaying: false,
+    sortField: 'name',
+    sortOrder: 'asc'
 };
 const defaultGameConfig: GameConfig = {
     customArguments: '',
@@ -814,6 +816,26 @@ export async function copyFileToGameCache(gameId: string, sourceFilePath: string
         Logger.error(`Failed to copy file to game cache: ${err}`);
         throw new Error(`Failed to copy ${fileName} file: ${err}`);
     }
+}
+
+export async function setConfigSortField(field: string) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        sortField: field as any,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`Sort field set to ${field}`);
+}
+
+export async function setConfigSortOrder(order: 'asc' | 'desc') {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        sortOrder: order,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`Sort order set to ${order}`);
 }
 
 export type { GameListEntry, GameCacheConfig, GameConfig, Config, PlayHistoryEntry, PlayHistory } from '../types/appTypes';
