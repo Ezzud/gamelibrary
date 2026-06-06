@@ -135,13 +135,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
 				const coverPath = await getGameCoverPath(game.id)
 				if (!cancelled) {
 					if (coverPath) {
-						const bytes = await readFile(coverPath);
-
-						const blob = new Blob([new Uint8Array(bytes)], {
-							type: 'image/jpeg',
-						});
-						const url = URL.createObjectURL(blob);
-						setDisplayCoverUrl(url);
+						setDisplayCoverUrl(coverPath);
 					} else {
 						setDisplayCoverUrl(game.coverUrl)
 					}

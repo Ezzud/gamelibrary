@@ -212,24 +212,12 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 
 			const coverPath = await getGameCoverPath(game.id)
 			if (coverPath) {
-				const bytes = await readFile(coverPath);
-
-				const blob = new Blob([new Uint8Array(bytes)], {
-					type: 'image/jpeg',
-				});
-				const url = URL.createObjectURL(blob);
-				coverUrl = url
+				coverUrl = coverPath;
 			}
 
 			const thumbnailPath = await getGameThumbnailPath(game.id)
 			if (thumbnailPath) {
-				const bytes = await readFile(thumbnailPath);
-
-				const blob = new Blob([new Uint8Array(bytes)], {
-					type: 'image/jpeg',
-				});
-				const url = URL.createObjectURL(blob);
-				thumbnailUrl = url
+				thumbnailUrl = thumbnailPath;
 			}
 
 			setDisplayCoverUrl(coverUrl)
