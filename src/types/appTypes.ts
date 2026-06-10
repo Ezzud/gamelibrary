@@ -76,6 +76,7 @@ export interface GameCardProps {
   onToggleFavorite?: (game: Game) => Promise<void> | void
   onSpecialTagsLoaded?: (gameId: string, tags: string[]) => void
   cardHoverEffect?: string
+  displayCover?: string | null
 }
 
 export interface GameLibraryProps {

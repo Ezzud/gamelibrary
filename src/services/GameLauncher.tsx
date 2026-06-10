@@ -3,19 +3,20 @@ import { Logger } from '../utils/Logger'
 
 export const launchGame = async (gamePath: string, gameId: string) => {
 	try {
-		const pid = await invoke<number>('launch_game', { gamePath, gameId })
-		return pid
+		const launchPath = await invoke<string>('launch_game', { gamePath, gameId })
+		return launchPath
 	} catch (err) {
 		Logger.error(`Error occurred while launching game at ${gamePath}:`, err)
 		throw err
 	}
 }
 
-export const waitForProcessExit = async (pid: number, pollIntervalMs?: number) => {
+export const waitForProcessExit = async (exePath: string, pollIntervalMs?: number) => {
 	try {
-		await invoke('wait_for_process_exit', { pid, poll_interval_ms: pollIntervalMs })
+		Logger.info(`Waiting for process with executable path ${exePath} to exit...`)
+		await invoke('wait_for_process_exit', { exePath: exePath, poll_interval_ms: pollIntervalMs })
 	} catch (err) {
-		Logger.error(`Error occurred while waiting for process ${pid} to exit:`, err)
+		Logger.error(`Error occurred while waiting for process ${exePath} to exit:`, err)
 		throw err
 	}
 }

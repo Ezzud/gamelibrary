@@ -92,11 +92,11 @@ const subscribeToSpecialTags = (gameId: string, listener: (tags: string[]) => vo
  * Params: game, onClick - game data and click handler
  * Returns: JSX.Element - card UI
  */
-const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = false, isFavorite = false, onOpenFolder, onGameSettings, onDelete, onToggleFavorite, onSpecialTagsLoaded, cardHoverEffect = 'zoom' }: GameCardProps) => {
+const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = false, isFavorite = false, onOpenFolder, onGameSettings, onDelete, onToggleFavorite, onSpecialTagsLoaded, cardHoverEffect = 'zoom', displayCover }: GameCardProps) => {
 	const [isContextOpen, setIsContextOpen] = useState(false)
 	const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 })
 	const [specialTags, setSpecialTags] = useState<string[]>([])
-	const [displayCoverUrl, setDisplayCoverUrl] = useState<string | undefined>(game.coverUrl)
+	const [displayCoverUrl, setDisplayCoverUrl] = useState<string | undefined>(displayCover || game.coverUrl)
 	const menuRef = useRef<HTMLDivElement | null>(null)
 	const [isMissing, setIsMissing] = useState<boolean>(false)
 
@@ -132,6 +132,9 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
 		let cancelled = false
 		async function loadConfigAndResolveCover() {
 			try {
+				if(displayCover) {
+					return;
+				}
 				const coverPath = await getGameCoverPath(game.id)
 				if (!cancelled) {
 					if (coverPath) {

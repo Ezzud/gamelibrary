@@ -77,7 +77,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
-use sysinfo::{Pid, System};
+use sysinfo::{System};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Emitter;
 use tauri::Manager;
@@ -640,45 +640,6 @@ fn quote_for_powershell(value: &str) -> String {
     value.replace('\'', "''")
 }
 
-#[cfg(target_os = "windows")]
-fn launch_with_elevation(
-    launch_file: &Path,
-    args: &[String],
-    game_path: &Path,
-) -> Result<(), String> {
-    let launch_file_escaped = quote_for_powershell(&launch_file.to_string_lossy());
-    let working_dir_escaped = quote_for_powershell(&game_path.to_string_lossy());
-    let command = if args.is_empty() {
-        format!(
-            "$exe='{}'; Start-Process -FilePath $exe -WorkingDirectory '{}' -Verb RunAs",
-            launch_file_escaped, working_dir_escaped
-        )
-    } else {
-        let args_list = args
-            .iter()
-            .map(|arg| format!("'{}'", quote_for_powershell(arg)))
-            .collect::<Vec<String>>()
-            .join(", ");
-
-        format!(
-            "$exe='{}'; $argList=@({}); Start-Process -FilePath $exe -ArgumentList $argList -WorkingDirectory '{}' -Verb RunAs",
-            launch_file_escaped,
-            args_list,
-            working_dir_escaped
-        )
-    };
-
-    Command::new("powershell")
-        .arg("-NoProfile")
-        .arg("-NonInteractive")
-        .arg("-Command")
-        .arg(command)
-        .spawn()
-        .map_err(|err| format!("Failed to relaunch game with elevation: {}", err))?;
-
-    Ok(())
-}
-
 #[tauri::command]
 async fn get_directory_size(path: String) -> Result<u64, String> {
     tauri::async_runtime::spawn_blocking(move || calculate_directory_size(Path::new(&path)))
@@ -766,15 +727,62 @@ fn normalize_launch_argument(arg: String) -> String {
     normalized
 }
 
+#[cfg(target_os = "windows")]
+fn launch_with_elevation(
+    launch_file: &Path,
+    args: &[String],
+    game_path: &Path,
+) -> Result<(), String> {
+    let launch_file_escaped = quote_for_powershell(&launch_file.to_string_lossy());
+    let working_dir_escaped = quote_for_powershell(&game_path.to_string_lossy());
+    let command = if args.is_empty() {
+        format!(
+            "$exe='{}'; Start-Process -FilePath $exe -WorkingDirectory '{}' -Verb RunAs",
+            launch_file_escaped, working_dir_escaped
+        )
+    } else {
+        let args_list = args
+            .iter()
+            .map(|arg| format!("'{}'", quote_for_powershell(arg)))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        format!(
+            "$exe='{}'; $argList=@({}); Start-Process -FilePath $exe -ArgumentList $argList -WorkingDirectory '{}' -Verb RunAs",
+            launch_file_escaped,
+            args_list,
+            working_dir_escaped
+        )
+    };
+
+    Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-NonInteractive")
+        .arg("-Command")
+        .arg(command)
+        .spawn()
+        .map_err(|err| format!("Failed to relaunch game with elevation: {}", err))?;
+
+    Ok(())
+}
+
 #[tauri::command]
-fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Result<u32, String> {
+fn launch_game(
+    app: tauri::AppHandle,
+    game_path: String,
+    game_id: String,
+) -> Result<String, String> {
     let game_path = PathBuf::from(&game_path);
+
     if !game_path.exists() {
         return Err(format!("Game path does not exist: {}", game_path.display()));
     }
 
     let game_config = read_game_config(&app, &game_id);
-    let launch_file = find_launch_file(&game_path, game_config.default_launch_file)?;
+
+    let launch_file =
+        find_launch_file(&game_path, game_config.default_launch_file)?;
+
     let args: Vec<String> = parse_custom_arguments(game_config.custom_arguments)
         .into_iter()
         .map(normalize_launch_argument)
@@ -801,13 +809,21 @@ fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Res
     };
 
     match launch_result {
-        Ok(child) => Ok(child.id()),
+        Ok(_) => Ok(launch_file.to_string_lossy().to_string()),
+
         Err(err) => {
             #[cfg(target_os = "windows")]
             {
                 if err.raw_os_error() == Some(740) {
-                    launch_with_elevation(&launch_file, &args, &game_path)?;
-                    return Ok(0);
+                    launch_with_elevation(
+                        &launch_file,
+                        &args,
+                        &game_path,
+                    )?;
+
+                    return Ok(
+                        launch_file.to_string_lossy().to_string()
+                    );
                 }
             }
 
@@ -817,62 +833,135 @@ fn launch_game(app: tauri::AppHandle, game_path: String, game_id: String) -> Res
                 "executable"
             };
 
-            Err(format!("Failed to launch game {}: {}", label, err))
+            Err(format!(
+                "Failed to launch game {}: {}",
+                label,
+                err
+            ))
         }
     }
 }
 
 #[tauri::command]
-async fn wait_for_process_exit(pid: u32, poll_interval_ms: Option<u64>) -> Result<(), String> {
+async fn wait_for_process_exit(
+    exe_path: String,
+    poll_interval_ms: Option<u64>,
+) -> Result<(), String> {
     let poll_interval_ms = poll_interval_ms.unwrap_or(4000);
+
+    let exe_path_for_error = exe_path.clone();
     let relaunch_grace = Duration::from_secs(10);
-    if pid == 0 {
-        return Ok(());
-    }
+    let firstlaunch_grace = Duration::from_secs(10);
 
     tauri::async_runtime::spawn_blocking(move || {
         let mut system = System::new();
-        let target_pid = Pid::from_u32(pid);
+
+        let target_exe = PathBuf::from(exe_path);
+
+        eprintln!(
+            "[wait_for_process_exit] Monitoring executable {:?}",
+            target_exe
+        );
+
+        let mut firstlaunch_deadline: Option<Instant> = None;
         let mut relaunch_deadline: Option<Instant> = None;
 
-        system.refresh_processes();
-        let target_exe = system
-            .process(target_pid)
-            .and_then(|process| process.exe().map(|path| path.to_path_buf()));
-
+        //
+        // Wait for first appearance
+        //
         loop {
             system.refresh_processes();
 
-            let original_running = system.process(target_pid).is_some();
-
-            let same_exe_running = target_exe.as_ref().is_some_and(|exe_path| {
-                system
-                    .processes()
-                    .values()
-                    .any(|process| process.exe().is_some_and(|path| path == exe_path.as_path()))
+            let running = system.processes().values().any(|process| {
+                process.exe().is_some_and(|path| {
+                    path.to_string_lossy().eq_ignore_ascii_case(
+                        &target_exe.to_string_lossy(),
+                    )
+                })
             });
 
-            if original_running || same_exe_running {
-                relaunch_deadline = None;
-            } else if target_exe.is_some() {
-                if let Some(deadline) = relaunch_deadline {
-                    if Instant::now() >= deadline {
-                        break;
-                    }
-                } else {
-                    relaunch_deadline = Some(Instant::now() + relaunch_grace);
-                }
-            } else {
+            if running {
+                eprintln!(
+                    "[wait_for_process_exit] Initial process detected."
+                );
                 break;
             }
 
-            std::thread::sleep(Duration::from_millis(poll_interval_ms));
+            if firstlaunch_deadline.is_none() {
+                firstlaunch_deadline =
+                    Some(Instant::now() + firstlaunch_grace);
+            } else if Instant::now()
+                >= firstlaunch_deadline.unwrap()
+            {
+                eprintln!(
+                    "[wait_for_process_exit] Executable never appeared within startup grace period."
+                );
+
+                return Ok(());
+            }
+
+            std::thread::sleep(
+                Duration::from_millis(poll_interval_ms),
+            );
+        }
+
+        //
+        // Monitor
+        //
+        loop {
+            system.refresh_processes();
+
+            let target = normalize_path(&target_exe);
+
+            let running = system.processes().values().any(|process| {
+                process.exe().is_some_and(|path| {
+                    normalize_path(path) == target
+                })
+            });
+
+            if running {
+                relaunch_deadline = None;
+            } else {
+                if let Some(deadline) = relaunch_deadline {
+                    if Instant::now() >= deadline {
+                        eprintln!(
+                            "[wait_for_process_exit] Executable disappeared and did not return within grace period."
+                        );
+
+                        break;
+                    }
+                } else {
+                    eprintln!(
+                        "[wait_for_process_exit] Executable disappeared, waiting for possible restart..."
+                    );
+
+                    relaunch_deadline =
+                        Some(Instant::now() + relaunch_grace);
+                }
+            }
+
+            std::thread::sleep(
+                Duration::from_millis(poll_interval_ms),
+            );
         }
 
         Ok(())
     })
     .await
-    .map_err(|err| format!("Failed to monitor process {}: {}", pid, err))?
+    .map_err(|err| {
+        format!(
+            "Failed to monitor executable {}: {}",
+            exe_path_for_error,
+            err
+        )
+    })?
+}
+
+fn normalize_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace('/', "\\")
+        .trim_start_matches(r"\\?\")
+        .to_ascii_lowercase()
 }
 
 #[tauri::command]

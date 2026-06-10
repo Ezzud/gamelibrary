@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Clock3, Gamepad2, Loader2, Play, Home, Settings } from 'lucide-react'
 import { getGameCoverPath } from '../services/ConfigManager'
 import type { SidebarProps } from '../types/appTypes'
+import { readFile } from '@tauri-apps/plugin-fs'
 
 const formatLastPlayed = (playedAt: string) => {
 	const playedAtMs = new Date(playedAt).getTime()
@@ -49,11 +50,13 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 				try {
 					const coverPath = await getGameCoverPath(card.gameId)
 					if (coverPath) {
-						let filePath = coverPath.trim().replace(/\\/g, '/')
-						if (!filePath.startsWith('file://')) {
-							filePath = filePath[1] === ':' ? 'file:///' + filePath : 'file://' + filePath
-						}
-						resolved[card.gameId] = filePath
+						const bytes = await readFile(coverPath);
+
+						const blob = new Blob([new Uint8Array(bytes)], {
+							type: 'image/jpeg',
+						});
+						const url = URL.createObjectURL(blob);
+						resolved[card.gameId] = url
 					} else if (card.coverUrl) {
 						resolved[card.gameId] = card.coverUrl
 					}

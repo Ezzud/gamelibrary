@@ -5,11 +5,12 @@ import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCar
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
 import { trackPlaytimeForProcess } from '../services/PlaytimeManager'
-import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, loadGameCache, removeCustomScanFolder, removeGameFromList, saveGameConfig, getAppConfig } from '../services/ConfigManager'
+import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, loadGameCache, removeCustomScanFolder, removeGameFromList, saveGameConfig, getAppConfig, getGameCoverPath } from '../services/ConfigManager'
 import { chooseFolder, fetchCustomGame, registerGames } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 import type { Game, GameLibraryProps, SortField } from '../types/appTypes'
+import { readFile } from '@tauri-apps/plugin-fs'
 
 const SCAN_PLATFORMS = ['Steam', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const MIN_LAUNCH_LOADING_MS = 5000
@@ -154,11 +155,13 @@ const GameLibrary = (props: GameLibraryProps) => {
 	const [removingCustomFolderPath, setRemovingCustomFolderPath] = useState<string | null>(null)
 	const [gameTagsById, setGameTagsById] = useState<Record<string, string[]>>({})
 	const [gameDateAddedById, setGameDateAddedById] = useState<Record<string, number | null>>({})
+	const [gameCoversById, setGameCoversById] = useState<Record<string, string | null>>({})
 	const [isAddingManualGame, setIsAddingManualGame] = useState(false)
 	const [cardHoverEffect, setCardHoverEffect] = useState('zoom')
 	const [showSkipIGDBConfirmation, setShowSkipIGDBConfirmation] = useState(false)
 	const [skipIGDBSetup, setSkipIGDBSetup] = useState(false)
 	const [dateLoading, setDateLoading] = useState(true)
+	const [displayCoverLoading, setDisplayCoverLoading] = useState(true)
 	const platformMenuRef = useRef<HTMLDivElement | null>(null)
 	const tagMenuRef = useRef<HTMLDivElement | null>(null)
 	const sortMenuRef = useRef<HTMLDivElement | null>(null)
@@ -254,6 +257,45 @@ const GameLibrary = (props: GameLibraryProps) => {
 		}
 
 		void loadDateAddedData()
+	}, [games])
+
+	useEffect(() => {
+		const loadDisplayCoverData = async () => {
+			if (games.length < 1) {
+				setGameTagsById({})
+				setGameDateAddedById({})
+				return
+			}
+
+			const pairs = await Promise.all(
+				games.map(async (game) => {
+					try {
+						const coverPath = await getGameCoverPath(game.id)
+						if (coverPath) {
+							const bytes = await readFile(coverPath);
+							const blob = new Blob([new Uint8Array(bytes)], {
+								type: 'image/jpeg',
+							});
+							const url = URL.createObjectURL(blob);
+							return [game.id, url] as const
+						}
+						return [game.id, null] as const
+					} catch {
+						return [game.id, null] as const
+					}
+				})
+			)
+
+			setGameCoversById(Object.fromEntries(pairs))
+			setGameTagsById((prev) => {
+				const validIds = new Set(games.map((game) => game.id))
+				const next = Object.fromEntries(Object.entries(prev).filter(([gameId]) => validIds.has(gameId)))
+				return Object.keys(next).length === Object.keys(prev).length ? prev : next
+			})
+			setDisplayCoverLoading(false)
+		}
+
+		void loadDisplayCoverData()
 	}, [games])
 
 	const availablePlatforms = Array.from(new Set([...SCAN_PLATFORMS, ...games.map((game) => game.platform)])).filter(Boolean).sort((a, b) => a.localeCompare(b))
@@ -408,6 +450,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 								onToggleFavorite={onToggleFavorite}
 								onSpecialTagsLoaded={handleCardSpecialTagsLoaded}
 								cardHoverEffect={cardHoverEffect}
+								displayCover={gameCoversById[game.id] || undefined}
 							/>
 						</div>
 					</div>
@@ -507,14 +550,14 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 			setLaunchingGameId(game.id)
 			const launchStartedAt = Date.now()
-			const pid = await launchGame(game.path, game.id)
+			const launchPath = await launchGame(game.path, game.id)
 			try {
 				await addPlayHistoryEntry(game.id)
 				await onLaunchSuccess()
 			} catch (historyError) {
 				Logger.warn(`Game launched but failed to update play history for ${game.name}:`, historyError)
 			}
-			void trackPlaytimeForProcess(game.id, pid, (isRunning) => onGameRunningChange?.(game.id, isRunning))
+			void trackPlaytimeForProcess(game.id, launchPath, (isRunning) => onGameRunningChange?.(game.id, isRunning))
 			await waitForMinimumLaunchLoading(launchStartedAt)
 		} catch (error) {
 			Logger.error(`Failed to launch game ${game.name}:`, error)
@@ -544,14 +587,14 @@ const GameLibrary = (props: GameLibraryProps) => {
 				allLaunchFiles: pickerPendingConfig?.allLaunchFiles || pickerLaunchFiles,
 			})
 
-			const pid = await launchGame(pickerGame.path, pickerGame.id)
+			const launchPath = await launchGame(pickerGame.path, pickerGame.id)
 			try {
 				await addPlayHistoryEntry(pickerGame.id)
 				await onLaunchSuccess()
 			} catch (historyError) {
 				Logger.warn(`Game launched but failed to update play history for ${pickerGame.name}:`, historyError)
 			}
-			void trackPlaytimeForProcess(pickerGame.id, pid, (isRunning) => onGameRunningChange?.(pickerGame.id, isRunning))
+			void trackPlaytimeForProcess(pickerGame.id, launchPath, (isRunning) => onGameRunningChange?.(pickerGame.id, isRunning))
 			await waitForMinimumLaunchLoading(launchStartedAt)
 		} catch (error) {
 			Logger.error(`Failed to persist launch file selection for ${pickerGame.name}:`, error)
@@ -1115,7 +1158,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 			{/* Games Grid */}
 			<div className="p-6">
-				{(isLoadingGames || dateLoading) ? (
+				{(isLoadingGames || dateLoading || displayCoverLoading) ? (
 					<div className="flex flex-col items-center justify-center h-96 text-center gap-3">
 						<Loader className="w-10 h-10 animate-spin text-steam-400" />
 						<p className="text-steam-300">Loading games...</p>

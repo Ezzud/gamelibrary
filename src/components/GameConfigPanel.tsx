@@ -7,7 +7,7 @@ import { openGameFolder } from '../services/GameLauncher'
 import { resetAndRefetchGameIGDBData } from '../services/GameDataManager'
 import { getAllLaunchFiles } from '../services/GameScanner'
 import type { GameConfigPanelProps } from '../types/appTypes'
-import { remove } from '@tauri-apps/plugin-fs'
+import { readFile, remove } from '@tauri-apps/plugin-fs'
 
 /**
  * GameConfigPanel component - allows configuration of game launch settings
@@ -53,8 +53,22 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 			// Load local image paths
 			const coverPath = await getGameCoverPath(game.id)
 			const thumbnailPath = await getGameThumbnailPath(game.id)
-			setLocalCoverPath(coverPath)
-			setLocalBannerPath(thumbnailPath)
+			if (coverPath) {
+				const bytes = await readFile(coverPath);
+				const blob = new Blob([new Uint8Array(bytes)], {
+					type: 'image/jpeg',
+				});
+				const url = URL.createObjectURL(blob);
+				setLocalCoverPath(url);
+			}
+			if (thumbnailPath) {
+				const bytes = await readFile(thumbnailPath);
+				const blob = new Blob([new Uint8Array(bytes)], {
+					type: 'image/jpeg',
+				});
+				const url = URL.createObjectURL(blob);
+				setLocalBannerPath(url);
+			}
 
 			if (config) {
 				setLaunchArgs(config.customArguments || '')
@@ -582,7 +596,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 												{localCoverPath || game.coverUrl ? (
 													<>
 														<img
-															src={localCoverPath ? 'file:///' + localCoverPath.replace(/\\/g, '/').replace(/^([a-zA-Z]:)/, '$1') : game.coverUrl}
+															src={localCoverPath ? localCoverPath : game.coverUrl}
 															alt={game.name}
 															className="w-full h-full object-cover"
 														/>
@@ -625,7 +639,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 												{localBannerPath || game.thumbnailUrl ? (
 													<>
 														<img
-															src={localBannerPath ? 'file:///' + localBannerPath.replace(/\\/g, '/').replace(/^([a-zA-Z]:)/, '$1') : game.thumbnailUrl}
+															src={localBannerPath ? localBannerPath : game.thumbnailUrl}
 															alt={`${game.name} banner`}
 															className="w-full h-full object-cover"
 														/>

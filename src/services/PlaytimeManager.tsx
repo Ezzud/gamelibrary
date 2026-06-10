@@ -5,7 +5,7 @@ import { waitForProcessExit } from './GameLauncher'
 import type { PlaytimeEntry, PlaytimeStore } from '../types/appTypes'
 
 const defaultStore: PlaytimeStore = { games: {} }
-const activeSessions = new Map<string, { pid: number; startedAtMs: number }>()
+const activeSessions = new Map<string, { exePath: string; startedAtMs: number }>()
 
 const getPlaytimePath = async () => {
 	const appDataPath = await appDataDir()
@@ -90,12 +90,12 @@ export const addPlaytime = async (gameId: string, durationMs: number, endedAtMs:
 
 export const isPlaySessionActive = (gameId: string) => activeSessions.has(gameId)
 
-export const startPlaySession = (gameId: string, pid: number, startedAtMs: number) => {
+export const startPlaySession = (gameId: string, exePath: string, startedAtMs: number) => {
 	if (activeSessions.has(gameId)) {
 		return false
 	}
 
-	activeSessions.set(gameId, { pid, startedAtMs })
+	activeSessions.set(gameId, { exePath, startedAtMs })
 	return true
 }
 
@@ -113,24 +113,26 @@ export const finishPlaySession = async (gameId: string, endedAtMs: number) => {
 
 export const trackPlaytimeForProcess = async (
 	gameId: string,
-	pid: number,
+	exePath: string,
 	onRunningChange?: (isRunning: boolean) => void
 ) => {
-	if (!pid || pid <= 0) {
+	if (!exePath) {
+		Logger.warn(`Cannot track playtime for game ${gameId} because exePath is empty`)
 		return
 	}
 
 	const startedAtMs = Date.now()
-	if (!startPlaySession(gameId, pid, startedAtMs)) {
+	if (!startPlaySession(gameId, exePath, startedAtMs)) {
+		Logger.warn(`Play session for game ${gameId} is already active, skipping start`)
 		return
 	}
 
 	onRunningChange?.(true)
 
 	try {
-		await waitForProcessExit(pid)
+		await waitForProcessExit(exePath)
 	} catch (error) {
-		Logger.warn(`Failed to wait for game process ${pid}:`, error)
+		Logger.warn(`Failed to wait for game process ${exePath}:`, error)
 	} finally {
 		const endedAtMs = Date.now()
 		await finishPlaySession(gameId, endedAtMs)
