@@ -250,6 +250,11 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 
 			// Copy file to game cache style folder
 			const cachedFilePath = await copyFileToGameCache(game.id, selectedFile, imageType === 'cover' ? 'cover' : 'thumbnail')
+			const bytes = await readFile(cachedFilePath);
+			const blob = new Blob([new Uint8Array(bytes)], {
+				type: 'image/jpeg',
+			});
+			const url = URL.createObjectURL(blob);
 
 			// Save cached file path to config
 			const currentConfig = await loadGameConfig(game.id)
@@ -262,9 +267,9 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 
 			// Update local state
 			if (imageType === 'cover') {
-				setLocalCoverPath(cachedFilePath)
+				setLocalCoverPath(url)
 			} else {
-				setLocalBannerPath(cachedFilePath)
+				setLocalBannerPath(url)
 			}
 
 			const imageName = imageType === 'cover' ? 'Cover' : 'Banner'
@@ -286,21 +291,29 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 				[configKey]: undefined,
 			})
 
-			// Update local state
-			if (imageType === 'cover') {
-				setLocalCoverPath(null)
-			} else {
-				setLocalBannerPath(null)
+			let imgPath = currentConfig[configKey];
+			if(!imgPath) {
+				imgPath = imageType === 'cover' ? localCoverPath : localBannerPath
+				if(!imgPath) {
+					imgPath = imageType === 'cover' ? await getGameCoverPath(game.id) : await getGameThumbnailPath(game.id)
+				}
 			}
 
 			// Delete cached image file
-			const cachedFilePath = imageType === 'cover' ? localCoverPath : localBannerPath
+			const cachedFilePath = imgPath || (imageType === 'cover' ? localCoverPath : localBannerPath);
 			if (cachedFilePath) {
 				try {
 					await remove(cachedFilePath)
 				} catch (error) {
 					console.error(`Failed to delete cached ${imageType} image:`, error)
 				}
+			}
+
+			// Update local state
+			if (imageType === 'cover') {
+				setLocalCoverPath(null)
+			} else {
+				setLocalBannerPath(null)
 			}
 
 			const imageName = imageType === 'cover' ? 'Cover' : 'Banner'
