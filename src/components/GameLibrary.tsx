@@ -557,7 +557,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 			} catch (historyError) {
 				Logger.warn(`Game launched but failed to update play history for ${game.name}:`, historyError)
 			}
-			void trackPlaytimeForProcess(game.id, launchPath, (isRunning) => onGameRunningChange?.(game.id, isRunning))
+			void trackPlaytimeForProcess(game.id, game.path, launchPath, (isRunning) => onGameRunningChange?.(game.id, isRunning))
 			await waitForMinimumLaunchLoading(launchStartedAt)
 		} catch (error) {
 			Logger.error(`Failed to launch game ${game.name}:`, error)
@@ -594,7 +594,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 			} catch (historyError) {
 				Logger.warn(`Game launched but failed to update play history for ${pickerGame.name}:`, historyError)
 			}
-			void trackPlaytimeForProcess(pickerGame.id, launchPath, (isRunning) => onGameRunningChange?.(pickerGame.id, isRunning))
+			void trackPlaytimeForProcess(pickerGame.id, pickerGame.path, launchPath, (isRunning) => onGameRunningChange?.(pickerGame.id, isRunning))
 			await waitForMinimumLaunchLoading(launchStartedAt)
 		} catch (error) {
 			Logger.error(`Failed to persist launch file selection for ${pickerGame.name}:`, error)

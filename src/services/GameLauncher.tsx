@@ -11,10 +11,10 @@ export const launchGame = async (gamePath: string, gameId: string) => {
 	}
 }
 
-export const waitForProcessExit = async (exePath: string, pollIntervalMs?: number) => {
+export const waitForProcessExit = async (exePath: string, gamePath: string, pollIntervalMs?: number) => {
 	try {
 		Logger.info(`Waiting for process with executable path ${exePath} to exit...`)
-		await invoke('wait_for_process_exit', { exePath: exePath, poll_interval_ms: pollIntervalMs })
+		await invoke('wait_for_process_exit', { exePath: exePath, gamePath: gamePath, poll_interval_ms: pollIntervalMs })
 	} catch (err) {
 		Logger.error(`Error occurred while waiting for process ${exePath} to exit:`, err)
 		throw err

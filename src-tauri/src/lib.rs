@@ -845,6 +845,7 @@ fn launch_game(
 #[tauri::command]
 async fn wait_for_process_exit(
     exe_path: String,
+    game_path: String,
     poll_interval_ms: Option<u64>,
 ) -> Result<(), String> {
     let poll_interval_ms = poll_interval_ms.unwrap_or(4000);
@@ -857,6 +858,7 @@ async fn wait_for_process_exit(
         let mut system = System::new();
 
         let target_exe = PathBuf::from(exe_path);
+        let game_root = PathBuf::from(game_path);
 
         eprintln!(
             "[wait_for_process_exit] Monitoring executable {:?}",
@@ -872,11 +874,18 @@ async fn wait_for_process_exit(
         loop {
             system.refresh_processes();
 
+            let target = normalize_path(&target_exe);
+            let game_root_norm = normalize_path(&game_root);
+
             let running = system.processes().values().any(|process| {
                 process.exe().is_some_and(|path| {
-                    path.to_string_lossy().eq_ignore_ascii_case(
-                        &target_exe.to_string_lossy(),
-                    )
+                    let path = normalize_path(path);
+
+                    path == target
+                        || is_process_in_game_folder(
+                            Path::new(&path),
+                            Path::new(&game_root_norm),
+                        )
                 })
             });
 
@@ -912,10 +921,17 @@ async fn wait_for_process_exit(
             system.refresh_processes();
 
             let target = normalize_path(&target_exe);
+            let game_root_norm = normalize_path(&game_root);
 
             let running = system.processes().values().any(|process| {
                 process.exe().is_some_and(|path| {
-                    normalize_path(path) == target
+                    let proc_path = normalize_path(path);
+
+                    proc_path == target
+                        || is_process_in_game_folder(
+                            Path::new(&proc_path),
+                            Path::new(&game_root_norm),
+                        )
                 })
             });
 
@@ -955,6 +971,16 @@ async fn wait_for_process_exit(
             err
         )
     })?
+}
+
+fn is_process_in_game_folder(
+    process_path: &Path,
+    game_root: &Path,
+) -> bool {
+    process_path.starts_with(game_root)
+        && process_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
 }
 
 fn normalize_path(path: &Path) -> String {

@@ -113,6 +113,7 @@ export const finishPlaySession = async (gameId: string, endedAtMs: number) => {
 
 export const trackPlaytimeForProcess = async (
 	gameId: string,
+	gamePath: string,
 	exePath: string,
 	onRunningChange?: (isRunning: boolean) => void
 ) => {
@@ -130,7 +131,7 @@ export const trackPlaytimeForProcess = async (
 	onRunningChange?.(true)
 
 	try {
-		await waitForProcessExit(exePath)
+		await waitForProcessExit(exePath, gamePath)
 	} catch (error) {
 		Logger.warn(`Failed to wait for game process ${exePath}:`, error)
 	} finally {

@@ -291,7 +291,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 			} catch (historyError) {
 				console.warn('Game launched but failed to update play history:', historyError)
 			}
-			void trackPlaytimeForProcess(game.id, launchPath, (running) => onGameRunningChange?.(game.id, running))
+			void trackPlaytimeForProcess(game.id, game.path, launchPath, (running) => onGameRunningChange?.(game.id, running))
 		} catch (error) {
 			console.error('Failed to launch game:', error)
 			const message = error instanceof Error ? error.message : String(error)
@@ -331,7 +331,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 			} catch (historyError) {
 				console.warn('Game launched but failed to update play history:', historyError)
 			}
-			void trackPlaytimeForProcess(game.id, launchPath, (running) => onGameRunningChange?.(game.id, running))
+			void trackPlaytimeForProcess(game.id, game.path, launchPath, (running) => onGameRunningChange?.(game.id, running))
 		} catch (error) {
 			console.error('Failed to save launch file preference or launch game:', error)
 			const message = error instanceof Error ? error.message : String(error)
