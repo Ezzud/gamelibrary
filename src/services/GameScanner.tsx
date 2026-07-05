@@ -673,6 +673,17 @@ export async function getAllLaunchFiles(gamePath: string) {
 			}
 		}
 
+		const GameBinariesSubfolderPath = `${gamePath}/Game/Bin`;
+		const gameBinariesSubfolderExists = await exists(GameBinariesSubfolderPath);
+		if (gameBinariesSubfolderExists) {
+			try {
+				const gameBinariesEntries = await readDir(GameBinariesSubfolderPath);
+				processEntries(gameBinariesEntries, 'Game/Bin/');
+			} catch (gameBinariesErr) {
+				Logger.warn(`Could not read Game/Bin sub-folder in ${gamePath}:`, gameBinariesErr);
+			}
+		}
+
 
 		// Sort launch files with these rules:
 		// 1) prefer .exe over .bat
