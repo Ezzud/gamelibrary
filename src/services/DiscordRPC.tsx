@@ -3,6 +3,7 @@ import { Logger } from '../utils/Logger'
 import type { DiscordRpcConfig, Game } from '../types/appTypes'
 import { getAppConfig } from './ConfigManager'
 import { getVersion } from '@tauri-apps/api/app'
+import { formatPlaytime, getPlaytime } from './PlaytimeManager'
 
 const DISCORD_APP_ID = import.meta.env.VITE_DISCORD_RPC_APP_ID || "1525914336793596075";
 const APP_NAME = 'Game Library'
@@ -77,14 +78,19 @@ export const syncDiscordPresence = async (context: {
             return
         }
 
-        const activeGame = context.activeGame || null
-        const state = activeGame
-            ? ``
-            : context.isSettingsOpen
-                ? 'Browsing settings'
-                : context.isHomeActive || rpc.showWhenNoGamePlayed
-                    ? 'Browsing the library'
-                    : ''
+        const activeGame = context.activeGame || null;
+        let state = '';
+        if(activeGame) {
+            const playtimeMs = await getPlaytime(activeGame.id);
+            const playtime = formatPlaytime(playtimeMs);
+            state = `Played for ${playtime}`;
+        } else {
+            if(context.isSettingsOpen) { 
+                state = 'Browsing settings'
+            } else if(context.isHomeActive || rpc.showWhenNoGamePlayed) {
+                state = 'Browsing the library'
+            }
+        }
 
         const version = await getVersion().catch(() => 'Unknown')
         const largeImage = buildImageKey(rpc.largeImage, "large") || buildImageSource(rpc.largeImage, activeGame)
