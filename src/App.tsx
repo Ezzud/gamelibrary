@@ -724,6 +724,8 @@ function App() {
             const currentWindow = getCurrentWindow()
             unlistenCloseRequested = await currentWindow.onCloseRequested(async (event) => {
                 if (!reduceWhenClosing) {
+                    event.preventDefault()
+                    void invoke('exit_app')
                     return
                 }
 

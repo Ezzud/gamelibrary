@@ -66,6 +66,8 @@ const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
 const REPO_BRANCH = 'master'
 const APP_NAME = 'gamelibrary'
 const APP_AUTHOR = 'Ezzud'
+const DEFAULT_GAME_LIBRARY_API_URL = 'https://gamelibrary.ezzud.fr/api'
+const normalizeApiBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
 
 const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 
@@ -635,6 +637,20 @@ const AppConfig = ({
 		}
 	}
 
+	const handleResetGameLibraryApiBaseUrl = async () => {
+		if (isConnectingCredentials) {
+			return
+		}
+
+		setGameLibraryApiBaseUrlState(DEFAULT_GAME_LIBRARY_API_URL)
+		try {
+			await setIGDBApiBaseUrl(DEFAULT_GAME_LIBRARY_API_URL)
+			await onConfigChanged?.()
+		} catch (error) {
+			Logger.error('Failed to reset GameLibrary API base URL:', error)
+		}
+	}
+
 	const handleTestGameLibraryApi = async () => {
 		if (isConnectingCredentials) {
 			return
@@ -936,19 +952,33 @@ const AppConfig = ({
 											onChange={(event) => void handleGameLibraryApiBaseUrlChange(event.target.value)}
 											disabled={isConnectingCredentials}
 											placeholder="https://gamelibrary.ezzud.fr/api"
-											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-20 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
+											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-48 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
 										/>
-										<button
-											type="button"
-											onClick={() => void handleTestGameLibraryApi()}
-											disabled={isConnectingCredentials || !gameLibraryApiBaseUrl.trim()}
-											className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded-md bg-[#2a4f75] px-2 py-1 text-xs text-white transition-colors hover:bg-[#36648f] disabled:opacity-50"
-											aria-label="Test GameLibrary API"
-											title="Test GameLibrary API"
-										>
-											<Link2 className="w-4 h-4" />
-											{isConnectingCredentials ? 'Testing...' : 'Test'}
-										</button>
+										<div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+											{normalizeApiBaseUrl(gameLibraryApiBaseUrl) !== normalizeApiBaseUrl(DEFAULT_GAME_LIBRARY_API_URL) && (
+												<button
+													type="button"
+													onClick={() => void handleResetGameLibraryApiBaseUrl()}
+													disabled={isConnectingCredentials}
+													className="inline-flex items-center rounded-md bg-red-950/35 px-2 py-1 text-xs text-red-100 transition-colors hover:bg-red-900/45 disabled:opacity-50"
+													aria-label="Reset GameLibrary API base URL"
+													title="Reset to default GameLibrary API"
+												>
+													Reset
+												</button>
+											)}
+											<button
+												type="button"
+												onClick={() => void handleTestGameLibraryApi()}
+												disabled={isConnectingCredentials || !gameLibraryApiBaseUrl.trim()}
+												className="inline-flex items-center gap-1 rounded-md bg-[#2a4f75] px-2 py-1 text-xs text-white transition-colors hover:bg-[#36648f] disabled:opacity-50"
+												aria-label="Test GameLibrary API"
+												title="Test GameLibrary API"
+											>
+												<Link2 className="w-4 h-4" />
+												{isConnectingCredentials ? 'Testing...' : 'Test'}
+											</button>
+										</div>
 									</div>
 									<p className="text-xs text-steam-400">The API host can be changed if you want to point to your own deployment.</p>
 								</div>

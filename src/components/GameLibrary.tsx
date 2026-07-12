@@ -16,6 +16,7 @@ import { readFile } from '@tauri-apps/plugin-fs'
 const SCAN_PLATFORMS = ['Steam', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const MIN_LAUNCH_LOADING_MS = 5000
 const DEFAULT_METADATA_API_URL = 'https://gamelibrary.ezzud.fr/api'
+const normalizeApiBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
 	const elapsed = Date.now() - startedAt
@@ -585,6 +586,29 @@ const GameLibrary = (props: GameLibraryProps) => {
 		} catch (error) {
 			Logger.error('Failed to test GameLibrary API metadata source:', error)
 			setMetadataSourceStatusMessage('Unable to reach the GameLibrary API. Please try again.')
+			setMetadataSourceStatusTone('error')
+		} finally {
+			setIsSavingMetadataSource(false)
+		}
+	}
+
+	const handleResetApiSourceUrl = async () => {
+		if (isSavingMetadataSource) {
+			return
+		}
+
+		setMetadataSourceError(null)
+		setMetadataSourceStatusMessage(null)
+		setMetadataSourceStatusTone(null)
+		setIsSavingMetadataSource(true)
+		try {
+			await setIGDBApiBaseUrl(DEFAULT_METADATA_API_URL)
+			setGameLibraryApiBaseUrl(DEFAULT_METADATA_API_URL)
+			setMetadataSourceStatusMessage('GameLibrary API URL reset to the default value.')
+			setMetadataSourceStatusTone('success')
+		} catch (error) {
+			Logger.error('Failed to reset GameLibrary API URL in the empty state tutorial:', error)
+			setMetadataSourceStatusMessage('Unable to reset the API URL. Please try again.')
 			setMetadataSourceStatusTone('error')
 		} finally {
 			setIsSavingMetadataSource(false)
@@ -1314,19 +1338,33 @@ const GameLibrary = (props: GameLibraryProps) => {
 													onChange={(event) => setGameLibraryApiBaseUrl(event.target.value)}
 													disabled={isSavingMetadataSource}
 													placeholder="https://gamelibrary.ezzud.fr/api"
-													className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-20 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
+													className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-48 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
 												/>
-												<button
-													type="button"
-													onClick={() => void handleUseApiSource()}
-													disabled={isSavingMetadataSource || !gameLibraryApiBaseUrl.trim()}
-													className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded-md bg-[#2a4f75] px-2 py-1 text-xs text-white transition-colors hover:bg-[#36648f] disabled:opacity-50"
-													aria-label="Use GameLibrary API"
-													title="Use GameLibrary API"
-												>
-													<Link2 className="w-4 h-4" />
-													{isSavingMetadataSource ? 'Testing...' : 'Test'}
-												</button>
+												<div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+													{normalizeApiBaseUrl(gameLibraryApiBaseUrl) !== normalizeApiBaseUrl(DEFAULT_METADATA_API_URL) && (
+														<button
+															type="button"
+															onClick={() => void handleResetApiSourceUrl()}
+															disabled={isSavingMetadataSource}
+															className="inline-flex items-center rounded-md bg-red-950/35 px-2 py-1 text-xs text-red-100 transition-colors hover:bg-red-900/45 disabled:opacity-50"
+															aria-label="Reset GameLibrary API URL"
+															title="Reset to default GameLibrary API"
+														>
+															Reset
+														</button>
+													)}
+													<button
+														type="button"
+														onClick={() => void handleUseApiSource()}
+														disabled={isSavingMetadataSource || !gameLibraryApiBaseUrl.trim()}
+														className="inline-flex items-center gap-1 rounded-md bg-[#2a4f75] px-2 py-1 text-xs text-white transition-colors hover:bg-[#36648f] disabled:opacity-50"
+														aria-label="Use GameLibrary API"
+														title="Use GameLibrary API"
+													>
+														<Link2 className="w-4 h-4" />
+														{isSavingMetadataSource ? 'Testing...' : 'Test'}
+													</button>
+												</div>
 											</div>
 											<p className="text-xs text-steam-400">Selecting the API source will save it to your settings immediately.</p>
 										</div>

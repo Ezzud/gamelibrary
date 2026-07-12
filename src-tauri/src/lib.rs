@@ -78,6 +78,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 use sysinfo::{System};
+use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Emitter;
 use tauri::Manager;
@@ -1310,6 +1311,11 @@ async fn install_update_cmd(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -1329,9 +1335,27 @@ pub fn run() {
                 .or_else(|| app.app_handle().default_window_icon().cloned());
 
             if let Some(icon) = tray_icon {
+                let open_item = MenuItem::with_id(app, "open_game_library", "Open GameLibrary", true, None::<&str>)?;
+                let exit_item = MenuItem::with_id(app, "exit_game_library", "Exit", true, None::<&str>)?;
+                let tray_menu = MenuBuilder::new(app)
+                    .item(&open_item)
+                    .separator()
+                    .item(&exit_item)
+                    .build()?;
+
+                let tray_app_handle = app.app_handle().clone();
+                app.on_menu_event(move |_, event| {
+                    if event.id == open_item.id() {
+                        let _ = tray_app_handle.emit("restore-app-window", ());
+                    } else if event.id == exit_item.id() {
+                        tray_app_handle.exit(0);
+                    }
+                });
+
                 let _ = TrayIconBuilder::with_id("main")
                     .tooltip("Game Library")
                     .icon(icon)
+                    .menu(&tray_menu)
                     .show_menu_on_left_click(false)
                     .on_tray_icon_event(|tray, event| {
                         if let TrayIconEvent::Click {
@@ -1384,7 +1408,8 @@ pub fn run() {
             install_update_cmd,
             download_file_with_progress,
             unzip_file,
-            copy_file
+            copy_file,
+            exit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

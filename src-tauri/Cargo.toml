@@ -1,6 +1,6 @@
 [package]
 name = "GameLibrary"
-version = "0.4.0"
+version = "0.4.1"
 description = "A Game Library Manager built with Tauri and React"
 authors = ["Ezzud"]
 edition = "2021"
