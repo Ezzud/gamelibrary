@@ -4,7 +4,7 @@ import type { DiscordRpcConfig, Game } from '../types/appTypes'
 import { getAppConfig } from './ConfigManager'
 import { getVersion } from '@tauri-apps/api/app'
 
-const DISCORD_APP_ID = import.meta.env.VITE_DISCORD_RPC_APP_ID;
+const DISCORD_APP_ID = import.meta.env.VITE_DISCORD_RPC_APP_ID || "1525914336793596075";
 const APP_NAME = 'Game Library'
 const APP_URL = 'https://gamelibrary.ezzud.fr'
 const APP_ICON_ASSET = 'icons'
