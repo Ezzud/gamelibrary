@@ -84,6 +84,18 @@ const app = express()
 app.use(cors())
 app.use(express.json({ limit: '1mb' }))
 app.use((req, res, next) => {
+	if (req.url === '/api') {
+		req.url = '/'
+		return next()
+	}
+
+	if (req.url.startsWith('/api/')) {
+		req.url = req.url.slice(4)
+	}
+
+	next()
+})
+app.use((req, res, next) => {
 	req.startTime = Date.now()
 	const requestPath = `${req.originalUrl || req.url}`
 
