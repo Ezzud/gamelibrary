@@ -47,6 +47,7 @@ import {
 	removeIgnoredFolder,
 	removeCustomScanFolder,
 	setCardHoverEffect,
+	setDiscordRpcConfig,
 	setRunOnStartup,
 	setRunReduced,
 	setReduceWhilePlaying,
@@ -59,7 +60,7 @@ import { chooseFolder } from '../services/GameScanner'
 import { testGameLibraryApi } from '../services/GameDataManager'
 import { Logger } from '../utils/Logger'
 import { getVersion } from '@tauri-apps/api/app'
-import type { AppConfigProps, ConfigCategory, IGDBConnectionMode, UpdateCheckStatus } from '../types/appTypes'
+import type { AppConfigProps, ConfigCategory, DiscordRpcImageMode, IGDBConnectionMode, UpdateCheckStatus } from '../types/appTypes'
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
@@ -162,6 +163,12 @@ const AppConfig = ({
 	const [reduceWhilePlaying, setReduceWhilePlayingState] = useState(true)
 	const [reduceWhenClosing, setReduceWhenClosingState] = useState(true)
 	const [autoDetectGames, setAutoDetectGamesState] = useState(false)
+	const [discordRpcEnabled, setDiscordRpcEnabledState] = useState(true)
+	const [discordRpcShowWhenNoGamePlayed, setDiscordRpcShowWhenNoGamePlayedState] = useState(false)
+	const [discordRpcLargeImage, setDiscordRpcLargeImageState] = useState<DiscordRpcImageMode>('game-icon')
+	const [discordRpcSmallImage, setDiscordRpcSmallImageState] = useState<DiscordRpcImageMode>('app-icon')
+	const [discordRpcDisplayTimeElapsed, setDiscordRpcDisplayTimeElapsedState] = useState(true)
+	const [discordRpcShowButton, setDiscordRpcShowButtonState] = useState(true)
 	const [isUpdatingRunOnStartup, setIsUpdatingRunOnStartup] = useState(false)
 	const [isUpdatingRunReduced, setIsUpdatingRunReduced] = useState(false)
 	const [isUpdatingReduceWhilePlaying, setIsUpdatingReduceWhilePlaying] = useState(false)
@@ -183,6 +190,7 @@ const AppConfig = ({
 			{ key: 'General' as const, label: 'General', icon: Settings2 },
 			{ key: 'Library' as const, label: 'Library', icon: Wrench },
 			{ key: 'Scanning' as const, label: 'Scanning', icon: ScanSearch },
+			{ key: 'DiscordRPC' as const, label: 'Discord RPC', icon: Link2 },
 			{ key: 'Update' as const, label: 'Update', icon: RefreshCw },
 			{ key: 'About' as const, label: 'About', icon: Info }
 		],
@@ -265,6 +273,12 @@ const AppConfig = ({
 			setReduceWhilePlayingState(config.reduceWhilePlaying !== false)
 			setReduceWhenClosingState(config.reduceWhenClosing !== false)
 			setAutoDetectGamesState(config.autoDetectGames === true)
+			setDiscordRpcEnabledState(config.discordRpc?.enabled !== false)
+			setDiscordRpcShowWhenNoGamePlayedState(config.discordRpc?.showWhenNoGamePlayed === true)
+			setDiscordRpcLargeImageState(config.discordRpc?.largeImage || 'game-icon')
+			setDiscordRpcSmallImageState(config.discordRpc?.smallImage || 'app-icon')
+			setDiscordRpcDisplayTimeElapsedState(config.discordRpc?.displayTimeElapsed !== false)
+			setDiscordRpcShowButtonState(config.discordRpc?.showButton !== false)
 		}
 
 		void loadCredentials()
@@ -788,6 +802,65 @@ const AppConfig = ({
 			onShowToast?.('Failed to change reduce-when-closing setting', { durationMs: 5000, style: 'error' })
 		} finally {
 			setIsUpdatingReduceWhenClosing(false)
+		}
+	}
+
+	const handleToggleDiscordRpcEnabled = async () => {
+		const next = !discordRpcEnabled
+		setDiscordRpcEnabledState(next)
+		try {
+			await setDiscordRpcConfig({ enabled: next })
+			await onConfigChanged?.()
+		} catch (err) {
+			Logger.error('Failed to toggle Discord RPC enabled:', err)
+		}
+	}
+
+	const handleToggleDiscordRpcShowWhenNoGamePlayed = async () => {
+		const next = !discordRpcShowWhenNoGamePlayed
+		setDiscordRpcShowWhenNoGamePlayedState(next)
+		try {
+			await setDiscordRpcConfig({ showWhenNoGamePlayed: next })
+			await onConfigChanged?.()
+		} catch (err) {
+			Logger.error('Failed to toggle Discord RPC visibility:', err)
+		}
+	}
+
+	const handleDiscordRpcImageChange = async (key: 'largeImage' | 'smallImage', value: DiscordRpcImageMode) => {
+		if (key === 'largeImage') {
+			setDiscordRpcLargeImageState(value)
+		} else {
+			setDiscordRpcSmallImageState(value)
+		}
+
+		try {
+			await setDiscordRpcConfig({ [key]: value })
+			await onConfigChanged?.()
+		} catch (err) {
+			Logger.error('Failed to update Discord RPC image mode:', err)
+		}
+	}
+
+	const handleToggleDiscordRpcDisplayTimeElapsed = async () => {
+		const next = !discordRpcDisplayTimeElapsed
+		setDiscordRpcDisplayTimeElapsedState(next)
+		try {
+			await setDiscordRpcConfig({ displayTimeElapsed: next })
+			await onConfigChanged?.()
+		} catch (err) {
+			Logger.error('Failed to toggle Discord RPC elapsed time:', err)
+		}
+	}
+
+	const handleToggleDiscordRpcShowButton = async () => {
+		const next = !discordRpcShowButton
+		setDiscordRpcShowButtonState(next)
+		try {
+			await setDiscordRpcConfig({ showButton: next })
+			await onConfigChanged?.()
+		} catch (err) {
+			Logger.error('Failed to toggle Discord RPC button:', err)
 		}
 	}
 
@@ -1549,6 +1622,139 @@ const AppConfig = ({
 							<Play className="w-4 h-4" />
 							{isScanning ? 'Scanning...' : 'Begin Scan'}
 						</button>
+					</div>
+				)}
+
+				{activeCategory === 'DiscordRPC' && (
+					<div className="rounded-xl bg-steam-800 p-5 space-y-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_14px_30px_rgba(0,0,0,0.2)]">
+						<div>
+							<h3 className="text-lg font-semibold flex items-center gap-2">
+								<Link2 className="w-4 h-4 text-steam-300" />
+								Discord RPC
+							</h3>
+							<p className="text-xs text-steam-400 mt-1">Configure Discord Rich Presence behavior.</p>
+						</div>
+
+						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+							<div className="flex items-center justify-between gap-4">
+								<div>
+									<p className="text-sm text-steam-100">Enable Discord Presence</p>
+									<p className="text-xs text-steam-400">Controls whether GameLibrary updates Discord Rich Presence.</p>
+								</div>
+								<div className="flex items-center mr-2">
+									<div
+										role="switch"
+										tabIndex={0}
+										aria-checked={discordRpcEnabled}
+										onKeyDown={async (e) => {
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault()
+												void handleToggleDiscordRpcEnabled()
+											}
+										}}
+										onClick={() => void handleToggleDiscordRpcEnabled()}
+										className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none cursor-pointer ${discordRpcEnabled ? 'bg-sky-400' : 'bg-zinc-700'}`}
+									>
+										<div className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${discordRpcEnabled ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'}`} />
+									</div>
+								</div>
+							</div>
+
+							<div className={`${discordRpcEnabled ? '' : 'pointer-events-none select-none opacity-45'}`}>
+								<div className="mt-4 flex items-center justify-between gap-4">
+									<div>
+										<p className="text-sm text-steam-100">Visible when no game is played</p>
+										<p className="text-xs text-steam-400">Shows Discord presence while browsing the app.</p>
+									</div>
+									<div className="flex items-center mr-2">
+										<div
+											role="switch"
+											tabIndex={0}
+											aria-checked={discordRpcShowWhenNoGamePlayed}
+											onKeyDown={async (e) => {
+												if (e.key === 'Enter' || e.key === ' ') {
+													e.preventDefault()
+													void handleToggleDiscordRpcShowWhenNoGamePlayed()
+												}
+											}}
+											onClick={() => void handleToggleDiscordRpcShowWhenNoGamePlayed()}
+											className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none cursor-pointer ${discordRpcShowWhenNoGamePlayed ? 'bg-sky-400' : 'bg-zinc-700'}`}
+										>
+											<div className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${discordRpcShowWhenNoGamePlayed ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'}`} />
+										</div>
+									</div>
+								</div>
+
+								<div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+									<label className="space-y-2">
+										<span className="text-xs uppercase tracking-wide text-steam-400">Large image</span>
+										<select value={discordRpcLargeImage} onChange={(event) => void handleDiscordRpcImageChange('largeImage', event.target.value as DiscordRpcImageMode)} className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-steam-400/50">
+											<option value="game-icon">Game icon</option>
+											<option value="app-icon">App icon</option>
+											<option value="none">Nothing</option>
+										</select>
+									</label>
+									<label className="space-y-2">
+										<span className="text-xs uppercase tracking-wide text-steam-400">Small image</span>
+										<select value={discordRpcSmallImage} onChange={(event) => void handleDiscordRpcImageChange('smallImage', event.target.value as DiscordRpcImageMode)} className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-steam-400/50">
+											<option value="game-icon">Game icon</option>
+											<option value="app-icon">App icon</option>
+											<option value="none">Nothing</option>
+										</select>
+									</label>
+								</div>
+
+								<div className="mt-4 space-y-3">
+									<div className="flex items-center justify-between gap-4">
+										<div>
+											<p className="text-sm text-steam-100">Display time elapsed</p>
+											<p className="text-xs text-steam-400">Show the elapsed timer on the Discord presence.</p>
+										</div>
+										<div className="flex items-center mr-2">
+											<div
+												role="switch"
+												tabIndex={0}
+												aria-checked={discordRpcDisplayTimeElapsed}
+												onKeyDown={async (e) => {
+													if (e.key === 'Enter' || e.key === ' ') {
+														e.preventDefault()
+														void handleToggleDiscordRpcDisplayTimeElapsed()
+													}
+												}}
+												onClick={() => void handleToggleDiscordRpcDisplayTimeElapsed()}
+												className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none cursor-pointer ${discordRpcDisplayTimeElapsed ? 'bg-sky-400' : 'bg-zinc-700'}`}
+											>
+												<div className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${discordRpcDisplayTimeElapsed ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'}`} />
+											</div>
+										</div>
+									</div>
+
+									<div className="flex items-center justify-between gap-4">
+										<div>
+											<p className="text-sm text-steam-100">Show GameLibrary button</p>
+											<p className="text-xs text-steam-400">Add a button in Discord presence that opens GameLibrary.</p>
+										</div>
+										<div className="flex items-center mr-2">
+											<div
+												role="switch"
+												tabIndex={0}
+												aria-checked={discordRpcShowButton}
+												onKeyDown={async (e) => {
+													if (e.key === 'Enter' || e.key === ' ') {
+														e.preventDefault()
+														void handleToggleDiscordRpcShowButton()
+													}
+												}}
+												onClick={() => void handleToggleDiscordRpcShowButton()}
+												className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none cursor-pointer ${discordRpcShowButton ? 'bg-sky-400' : 'bg-zinc-700'}`}
+											>
+												<div className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${discordRpcShowButton ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'}`} />
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
 					</div>
 				)}
 

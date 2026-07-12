@@ -18,9 +18,19 @@ export interface LastPlayedCard {
 
 export type IGDBConnectionStatus = 'checking' | 'missing' | 'invalid' | 'connected'
 export type IGDBConnectionMode = 'api' | 'twitch'
-export type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'Update' | 'About'
+export type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'DiscordRPC' | 'Update' | 'About'
 export type UpdateCheckStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'
 export type SortField = 'name' | 'platform' | 'tag' | 'dateAdded'
+export type DiscordRpcImageMode = 'app-icon' | 'game-icon' | 'none'
+
+export interface DiscordRpcConfig {
+  enabled: boolean
+  showWhenNoGamePlayed: boolean
+  largeImage: DiscordRpcImageMode
+  smallImage: DiscordRpcImageMode
+  displayTimeElapsed: boolean
+  showButton: boolean
+}
 
 export interface IGDBConnectResult {
   success: boolean
@@ -168,6 +178,7 @@ export interface Config {
   twitchClientId: string
   twitchClientSecret: string
   cardHoverEffect: string
+  discordRpc?: DiscordRpcConfig
   igdbConnectionMode?: IGDBConnectionMode
   igdbApiBaseUrl?: string
   runOnStartup?: boolean

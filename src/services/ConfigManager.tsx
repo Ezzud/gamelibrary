@@ -3,8 +3,16 @@ import { exists, mkdir, readTextFile, writeTextFile, readDir, remove } from '@ta
 import { appDataDir, dirname, join, extname } from '@tauri-apps/api/path'
 import { invoke } from '@tauri-apps/api/core'
 import { Logger } from '../utils/Logger'
-import type { Config, GameCacheConfig, GameConfig, GameList, GameListEntry, PlayHistory, IGDBConnectionMode } from '../types/appTypes'
+import type { Config, DiscordRpcConfig, GameCacheConfig, GameConfig, GameList, GameListEntry, PlayHistory, IGDBConnectionMode } from '../types/appTypes'
 
+const defaultDiscordRpcConfig: DiscordRpcConfig = {
+    enabled: true,
+    showWhenNoGamePlayed: false,
+    largeImage: 'game-icon',
+    smallImage: 'app-icon',
+    displayTimeElapsed: true,
+    showButton: true,
+}
 
 const defaultConfig: Config = {
     customScanFolders: [],
@@ -13,6 +21,7 @@ const defaultConfig: Config = {
     twitchClientId: '',
     twitchClientSecret: '',
     cardHoverEffect: 'zoom',
+    discordRpc: defaultDiscordRpcConfig,
     igdbConnectionMode: 'api',
     igdbApiBaseUrl: 'https://gamelibrary.ezzud.fr/api',
     runOnStartup: true,
@@ -72,6 +81,23 @@ function resolveInitialIGDBConnectionMode(parsed: any): IGDBConnectionMode {
         typeof parsed?.twitchClientSecret === 'string' && parsed.twitchClientSecret.trim().length > 0;
 
     return hasExistingCredentials ? 'twitch' : 'api';
+}
+
+function resolveDiscordRpcConfig(parsed: any): DiscordRpcConfig {
+    const candidate = parsed?.discordRpc || {}
+
+    return {
+        enabled: typeof candidate?.enabled === 'boolean' ? candidate.enabled : true,
+        showWhenNoGamePlayed: typeof candidate?.showWhenNoGamePlayed === 'boolean' ? candidate.showWhenNoGamePlayed : false,
+        largeImage: candidate?.largeImage === 'app-icon' || candidate?.largeImage === 'game-icon' || candidate?.largeImage === 'none'
+            ? candidate.largeImage
+            : 'game-icon',
+        smallImage: candidate?.smallImage === 'app-icon' || candidate?.smallImage === 'game-icon' || candidate?.smallImage === 'none'
+            ? candidate.smallImage
+            : 'app-icon',
+        displayTimeElapsed: typeof candidate?.displayTimeElapsed === 'boolean' ? candidate.displayTimeElapsed : true,
+        showButton: typeof candidate?.showButton === 'boolean' ? candidate.showButton : true,
+    }
 }
 
 
@@ -319,6 +345,7 @@ async function loadConfig() {
             reduceWhenClosing: typeof parsed?.reduceWhenClosing === 'boolean' ? parsed.reduceWhenClosing : true,
             reduceWhenClosingNoticeShown: typeof parsed?.reduceWhenClosingNoticeShown === 'boolean' ? parsed.reduceWhenClosingNoticeShown : false,
             autoDetectGames: typeof parsed?.autoDetectGames === 'boolean' ? parsed.autoDetectGames : true,
+            discordRpc: resolveDiscordRpcConfig(parsed),
         } as Config;
     } catch (err) {
         Logger.error(`Error occurred while reading config at ${configPath}:`, err);
@@ -349,6 +376,21 @@ export async function setCardHoverEffect(cardHoverEffect: string) {
     };
     await saveConfig(nextConfig);
     Logger.info('Card hover effect saved to app config.');
+}
+
+export async function setDiscordRpcConfig(patch: Partial<DiscordRpcConfig>) {
+    const config = await loadConfig();
+    const currentDiscordRpc = config.discordRpc || defaultConfig.discordRpc;
+    const nextConfig: Config = {
+        ...config,
+        discordRpc: {
+            ...defaultDiscordRpcConfig,
+            ...currentDiscordRpc,
+            ...patch,
+        },
+    };
+    await saveConfig(nextConfig);
+    Logger.info('Discord RPC configuration saved to app config.');
 }
 
 export async function setRunOnStartup(enable: boolean, reduced = false) {

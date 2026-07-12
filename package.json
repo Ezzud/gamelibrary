@@ -1,7 +1,8 @@
 {
   "name": "gamelibrary",
-  "private": true,
-  "version": "0.4.1",
+  "private": false,
+  "author": "Ezzud",
+  "version": "0.4.2",
   "type": "module",
   "scripts": {
     "sync:version": "node scripts/sync-version.mjs",

@@ -9,6 +9,7 @@ import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
 import ToastSystem, { useToastSystem } from './components/ToastSystem'
+import { syncDiscordPresence } from './services/DiscordRPC'
 import {
     fetchAllCustomFolderGames,
     refetchAllSpecialTags,
@@ -135,6 +136,9 @@ function App() {
     const [sortField, setSortField] = useState<SortField>('name')
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
     const [settingsLoaded, setSettingsLoaded] = useState(false)
+    const discordPresenceStartedAtRef = useRef<number | null>(null)
+    const discordPresenceGameIdRef = useRef<string | null>(null)
+    const [autoDetectScanReady, setAutoDetectScanReady] = useState(false)
     const metadataHealthRetryTimerRef = useRef<number | null>(null)
     const metadataHealthCheckInFlightRef = useRef(false)
     const metadataHealthToastShownRef = useRef(false)
@@ -173,6 +177,41 @@ function App() {
     const handleSetSortDirection = async (value: 'asc' | 'desc') => {
         setSortDirection(value)
         await setConfigSortOrder(value)
+    }
+
+    const getPrimaryRunningGame = () => {
+        const primaryRunningGameId = runningGameIdsRef.current.values().next().value as string | undefined
+        if (!primaryRunningGameId) {
+            return null
+        }
+
+        return latestGamesRef.current.find((game) => game.id === primaryRunningGameId) || null
+    }
+
+    const syncDiscordPresenceForCurrentState = async () => {
+        const primaryRunningGame = getPrimaryRunningGame()
+        const activeDiscordGame = primaryRunningGame || null
+        const activeDiscordGameId = activeDiscordGame?.id || null
+
+        if (autoDetectGames && !autoDetectScanReady && !activeDiscordGame) {
+            return
+        }
+
+        if (discordPresenceGameIdRef.current !== activeDiscordGameId) {
+            discordPresenceGameIdRef.current = activeDiscordGameId
+            discordPresenceStartedAtRef.current = activeDiscordGame ? Date.now() : null
+        } else if (!activeDiscordGame) {
+            discordPresenceStartedAtRef.current = null
+        } else if (discordPresenceStartedAtRef.current === null) {
+            discordPresenceStartedAtRef.current = Date.now()
+        }
+
+        await syncDiscordPresence({
+            activeGame: activeDiscordGame,
+            isSettingsOpen,
+            isHomeActive: !isSettingsOpen && !activeDiscordGame,
+            elapsedStartedAt: discordPresenceStartedAtRef.current,
+        })
     }
 
     const compareSemver = (currentVersion: string, latestVersion: string) => {
@@ -368,6 +407,10 @@ function App() {
     }
 
     useEffect(() => {
+        void syncDiscordPresenceForCurrentState()
+    }, [selectedGame, isSettingsOpen, runningGameIds, autoDetectScanReady, autoDetectGames])
+
+    useEffect(() => {
         latestGamesRef.current = games
     }, [games])
 
@@ -469,10 +512,20 @@ function App() {
     useEffect(() => {
         if (!autoDetectGames) {
             autoDetectedGameIdsRef.current.clear()
+            setAutoDetectScanReady(true)
             return
         }
 
-        void detectAutoRunningGames()
+        if (games.length < 1) {
+            setAutoDetectScanReady(false)
+            return
+        }
+
+        setAutoDetectScanReady(false)
+
+        void detectAutoRunningGames().finally(() => {
+            setAutoDetectScanReady(true)
+        })
 
         const intervalId = window.setInterval(() => {
             void detectAutoRunningGames()
@@ -1390,6 +1443,7 @@ function App() {
                         initialCategory={settingsInitialCategory}
                         onConfigChanged={async () => {
                             await loadAppSettings()
+                            await syncDiscordPresenceForCurrentState()
                         }}
                         onScanPlatforms={handleScanPlatforms}
                         onCustomFolderAdded={handleCustomFolderAdded}

@@ -84,6 +84,8 @@ use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
 
+mod discord_rpc;
+
 #[cfg(target_os = "windows")]
 const WINDOWS_RUN_VALUE_NAMES: [&str; 4] = [
     "Game Library",
@@ -1318,6 +1320,7 @@ fn exit_app(app: tauri::AppHandle) {
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(discord_rpc::DiscordRpcState::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -1409,7 +1412,8 @@ pub fn run() {
             download_file_with_progress,
             unzip_file,
             copy_file,
-            exit_app
+            exit_app,
+            discord_rpc::discord_rpc_update_presence
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
