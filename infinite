@@ -1,0 +1,11 @@
+#!/bin/bash
+
+while true; do
+	pnpm run api:start
+	echo "Process stopped..."
+	for i in {1..5}; do
+		echo -ne "\r $i"
+		sleep 1
+	done
+	echo -ne "\r Restarting...   \n"
+done

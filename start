@@ -1,0 +1,9 @@
+#!/bin/bash
+GREEN=$'\e[0;32m'
+RED=$'\e[0;31m'
+YELLOW=$'\e[0;33m'
+CYAN=$'\e[0;36m'
+NC=$'\e[0m'
+
+START_BOT_COMMAND="screen -SL gamelibrary-api ./infinite"
+$START_BOT_COMMAND
