@@ -24,7 +24,6 @@ dist-ssr
 *.sw?
 .env
 pnpm-store
-pnpm-workspace.yaml
 .vscode
 .pnpm-store
 

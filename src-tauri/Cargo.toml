@@ -1,6 +1,6 @@
 [package]
 name = "GameLibrary"
-version = "0.3.12"
+version = "0.4.0"
 description = "A Game Library Manager built with Tauri and React"
 authors = ["Ezzud"]
 edition = "2021"
@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

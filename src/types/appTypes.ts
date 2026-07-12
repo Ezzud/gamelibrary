@@ -17,6 +17,7 @@ export interface LastPlayedCard {
 }
 
 export type IGDBConnectionStatus = 'checking' | 'missing' | 'invalid' | 'connected'
+export type IGDBConnectionMode = 'api' | 'twitch'
 export type ConfigCategory = 'General' | 'Library' | 'Scanning' | 'Update' | 'About'
 export type UpdateCheckStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'
 export type SortField = 'name' | 'platform' | 'tag' | 'dateAdded'
@@ -167,8 +168,14 @@ export interface Config {
   twitchClientId: string
   twitchClientSecret: string
   cardHoverEffect: string
+  igdbConnectionMode?: IGDBConnectionMode
+  igdbApiBaseUrl?: string
   runOnStartup?: boolean
+  runReduced?: boolean
   reduceWhilePlaying?: boolean
+  reduceWhenClosing?: boolean
+  reduceWhenClosingNoticeShown?: boolean
+  autoDetectGames?: boolean
   sortField?: SortField
   sortOrder?: 'asc' | 'desc'
 }

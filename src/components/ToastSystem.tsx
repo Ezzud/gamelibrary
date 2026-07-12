@@ -77,7 +77,7 @@ const ToastSystem = ({ toasts, onDismiss }: ToastStackProps) => {
 						toast.onClick()
 						onDismiss(toast.id)
 					}}
-					className={`pointer-events-auto w-80 rounded-lg bg-[#21364f] border border-[#3a5f84] text-white shadow-[0_10px_26px_rgba(0,0,0,0.35)] overflow-hidden transform transition-all duration-300 ${toast.visible ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
+					className={`pointer-events-auto w-80 rounded-lg text-white shadow-[0_10px_26px_rgba(0,0,0,0.35)] overflow-hidden transform transition-all duration-300 ${toast.style === 'error' ? 'bg-[#3a1111] border border-[#7d2323]' : 'bg-[#21364f] border border-[#3a5f84]'} ${toast.visible ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
 						} ${toast.onClick ? 'cursor-pointer' : ''}`}
 				>
 					<div className="px-3 py-2 text-sm">

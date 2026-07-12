@@ -27,6 +27,7 @@
     "core:window:allow-show",
     "core:window:allow-close",
     "core:window:allow-set-focus",
+    "notification:default",
     {
       "identifier": "fs:scope",
       "allow": [

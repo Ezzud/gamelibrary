@@ -1,0 +1,6 @@
+packages:
+  - '.'
+  - 'api'
+
+onlyBuiltDependencies:
+  - esbuild

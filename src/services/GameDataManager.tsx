@@ -1,23 +1,21 @@
 import { Logger } from "../utils/Logger";
 import { invoke } from "@tauri-apps/api/core";
 import { getAppConfig, loadGameCache, loadGameConfig, saveGameInfoCache } from "./ConfigManager";
-import type { IGDBCredentials } from "../types/appTypes";
+import type { IGDBConnectionMode, IGDBCredentials } from "../types/appTypes";
 
-const config = await getAppConfig();
-
-const activeCredentials: IGDBCredentials = {
-	clientId: config.twitchClientId || '',
-	clientSecret: config.twitchClientSecret || '',
-};
-
-if (!activeCredentials.clientId || !activeCredentials.clientSecret) {
-	Logger.error('Missing IGDB credentials. Set VITE_IGDB_CLIENT_ID and VITE_IGDB_CLIENT_SECRET in your environment.');
-}
+const DEFAULT_GAME_LIBRARY_API_URL = 'https://gamelibrary.ezzud.fr/api';
 
 const accessTokenCache: { token: string | null, expiresAt: number } = {
 	token: null,
 	expiresAt: 0
 };
+
+const activeCredentials: IGDBCredentials = {
+	clientId: '',
+	clientSecret: '',
+};
+
+let temporaryConnectionModeOverride: IGDBConnectionMode | null = null;
 
 const specificGameRenames = {
 	"Minecraft for Windows": "Minecraft",
@@ -25,6 +23,14 @@ const specificGameRenames = {
 	"assettocorsa": "Assetto Corsa",
 	"Hatsune Miku Project DIVA Mega Mix Plus": "Hatsune Miku: Project DIVA Mega Mix+",
 	"DB Xenoverse 2": "Dragon Ball Xenoverse 2"
+};
+
+const normalizeApiBaseUrl = (value: string) => value.trim().replace(/\/+$/, '');
+
+const buildApiUrl = (baseUrl: string, path: string) => {
+	const normalizedBaseUrl = normalizeApiBaseUrl(baseUrl) || DEFAULT_GAME_LIBRARY_API_URL;
+	const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+	return `${normalizedBaseUrl}${normalizedPath}`;
 };
 
 const resetAccessTokenCache = () => {
@@ -45,34 +51,108 @@ const applyIGDBCredentials = (credentials: IGDBCredentials) => {
 	}
 };
 
+const resolveTwitchCredentials = async (credentials?: IGDBCredentials) => {
+	if (credentials) {
+		return {
+			clientId: credentials.clientId.trim(),
+			clientSecret: credentials.clientSecret.trim(),
+		};
+	}
+
+	const config = await getAppConfig();
+	return {
+		clientId: (config.twitchClientId || '').trim(),
+		clientSecret: (config.twitchClientSecret || '').trim(),
+	};
+};
+
+const resolveIGDBRuntimeConfig = async (credentials?: IGDBCredentials) => {
+	const config = await getAppConfig();
+	const connectionMode: IGDBConnectionMode = temporaryConnectionModeOverride || (config.igdbConnectionMode === 'twitch' ? 'twitch' : 'api');
+	const apiBaseUrl = normalizeApiBaseUrl(config.igdbApiBaseUrl || DEFAULT_GAME_LIBRARY_API_URL) || DEFAULT_GAME_LIBRARY_API_URL;
+	const twitchCredentials = await resolveTwitchCredentials(credentials);
+
+	return {
+		connectionMode,
+		apiBaseUrl,
+		twitchCredentials,
+	};
+};
+
 export const setIGDBCredentials = (clientId: string, clientSecret: string) => {
 	applyIGDBCredentials({ clientId, clientSecret });
 };
 
-const getValidAccessToken = async (): Promise<string> => {
+export const setTemporaryIGDBConnectionMode = (mode: IGDBConnectionMode | null) => {
+	temporaryConnectionModeOverride = mode;
+	Logger.info(`Temporary IGDB connection mode set to ${mode || 'none'}`);
+};
+
+export const getTemporaryIGDBConnectionMode = () => temporaryConnectionModeOverride;
+
+const getValidAccessToken = async (credentials?: IGDBCredentials): Promise<string> => {
 	const now = Date.now();
 	if (accessTokenCache.token && accessTokenCache.expiresAt > now) {
 		return accessTokenCache.token;
 	}
 
-	const token = await getIGDBAccessToken();
+	const token = await getIGDBAccessToken(credentials);
 	accessTokenCache.token = token;
 	accessTokenCache.expiresAt = now + 60 * 60 * 1000;
 	return token;
 };
 
+export const testGameLibraryApi = async (baseUrl?: string) => {
+	const controller = new AbortController();
+	const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+	try {
+		const normalizedBaseUrl = normalizeApiBaseUrl(baseUrl || DEFAULT_GAME_LIBRARY_API_URL) || DEFAULT_GAME_LIBRARY_API_URL;
+		const response = await fetch(buildApiUrl(normalizedBaseUrl, '/health?t=' + Date.now()), {
+			signal: controller.signal,
+		});
+		if (!response.ok) {
+			throw new Error(`GameLibrary API health check failed with status ${response.status}`);
+		}
+
+		const data = await response.json() as { version?: string; pingMs?: number; ping?: number };
+		return {
+			success: true,
+			data: {
+				version: typeof data.version === 'string' ? data.version : null,
+				pingMs: typeof data.pingMs === 'number' ? data.pingMs : typeof data.ping === 'number' ? data.ping : null,
+			},
+		};
+	} catch (err) {
+		Logger.error('Failed to test GameLibrary API connection:', err);
+		return { success: false, data: null };
+	} finally {
+		window.clearTimeout(timeoutId);
+	}
+};
+
 export const initIGDB = async (credentials?: IGDBCredentials): Promise<boolean> => {
+	const runtime = await resolveIGDBRuntimeConfig(credentials);
+
+	if (runtime.connectionMode === 'api' && !credentials) {
+		const health = await testGameLibraryApi(runtime.apiBaseUrl);
+		if (health.success) {
+			Logger.success('GameLibrary API initialized successfully');
+			return true;
+		}
+
+		Logger.error('Failed to initialize GameLibrary API');
+		return false;
+	}
+
 	const previousCredentials = {
 		clientId: activeCredentials.clientId,
 		clientSecret: activeCredentials.clientSecret,
 	};
 
-	if (credentials) {
-		applyIGDBCredentials(credentials);
-	}
+	applyIGDBCredentials(runtime.twitchCredentials);
 
 	try {
-		await getValidAccessToken();
+		await getValidAccessToken(runtime.twitchCredentials);
 		Logger.success('IGDB initialized successfully');
 		return true;
 	} catch (err) {
@@ -84,15 +164,20 @@ export const initIGDB = async (credentials?: IGDBCredentials): Promise<boolean> 
 	}
 };
 
-export const getIGDBAccessToken = async (): Promise<string> => {
+export const getIGDBAccessToken = async (credentials?: IGDBCredentials): Promise<string> => {
 	try {
-		if (!activeCredentials.clientId || !activeCredentials.clientSecret) {
+		const twitchCredentials = credentials ? {
+			clientId: credentials.clientId.trim(),
+			clientSecret: credentials.clientSecret.trim(),
+		} : activeCredentials.clientId && activeCredentials.clientSecret ? activeCredentials : (await resolveTwitchCredentials());
+
+		if (!twitchCredentials.clientId || !twitchCredentials.clientSecret) {
 			throw new Error('Missing IGDB credentials');
 		}
 
 		const token = await invoke<string>('igdb_get_access_token', {
-			clientId: activeCredentials.clientId,
-			clientSecret: activeCredentials.clientSecret,
+			clientId: twitchCredentials.clientId,
+			clientSecret: twitchCredentials.clientSecret,
 		});
 		return token;
 	} catch (err) {
@@ -178,107 +263,189 @@ const scoreNameMatch = (query: string, candidate: string): number => {
 	return score;
 };
 
-export const fetchArtworkUrl = async (artworkId: number): Promise<string | null> => {
+const fetchArtworkUrlViaTwitch = async (artworkId: number, credentials?: IGDBCredentials): Promise<string | null> => {
 	try {
-		const accessToken = await getValidAccessToken();
+		const accessToken = await getValidAccessToken(credentials);
+		const twitchCredentials = credentials ? {
+			clientId: credentials.clientId.trim(),
+			clientSecret: credentials.clientSecret.trim(),
+		} : activeCredentials;
 		const responseText = await invoke<string>('igdb_post', {
 			endpoint: 'artworks',
 			body: `fields url; where id = ${artworkId};`,
-			clientId: activeCredentials.clientId,
+			clientId: twitchCredentials.clientId,
 			accessToken,
 		});
 		const data = JSON.parse(responseText);
 		if (data.length > 0 && data[0].url) {
 			return data[0].url;
-		} else {
-			return null;
 		}
+		return null;
 	} catch (err) {
 		Logger.error(`Error occurred while fetching artwork URL from IGDB for artwork ID ${artworkId}:`, err);
 		return null;
 	}
 };
 
-export const searchGame = async (gameName: string) => {
-	try {
-		const mappedGameName = specificGameRenames[gameName as keyof typeof specificGameRenames] || gameName;
-		const accessToken = await getValidAccessToken();
-		const resultsById = new Map<number, any>();
+const searchGameViaTwitch = async (gameName: string, credentials?: IGDBCredentials) => {
+	const mappedGameName = specificGameRenames[gameName as keyof typeof specificGameRenames] || gameName;
+	const accessToken = await getValidAccessToken(credentials);
+	const twitchCredentials = credentials ? {
+		clientId: credentials.clientId.trim(),
+		clientSecret: credentials.clientSecret.trim(),
+	} : activeCredentials;
+	const resultsById = new Map<number, any>();
 
-		const runVariantSearches = async (variantSource: string) => {
-			const variants = buildSearchVariants(variantSource);
-			for (const variant of variants) {
-				const escapedVariant = escapeApicalypseSearch(variant);
-				const responseText = await invoke<string>('igdb_post', {
-					endpoint: 'games',
-					body: `search "${escapedVariant}"; fields id,name,cover.url,platforms.name,total_rating_count,game_type,artworks; limit 20;`,
-					clientId: activeCredentials.clientId,
-					accessToken,
-				});
+	const runVariantSearches = async (variantSource: string) => {
+		const variants = buildSearchVariants(variantSource);
+		for (const variant of variants) {
+			const escapedVariant = escapeApicalypseSearch(variant);
+			const responseText = await invoke<string>('igdb_post', {
+				endpoint: 'games',
+				body: `search "${escapedVariant}"; fields id,name,cover.url,platforms.name,total_rating_count,game_type,artworks; limit 20;`,
+				clientId: twitchCredentials.clientId,
+				accessToken,
+			});
 
-				const data = JSON.parse(responseText);
-				if (Array.isArray(data)) {
-					for (const game of data) {
-						if (game?.id && !resultsById.has(game.id)) {
-							resultsById.set(game.id, game);
-						}
+			const data = JSON.parse(responseText);
+			if (Array.isArray(data)) {
+				for (const game of data) {
+					if (game?.id && !resultsById.has(game.id)) {
+						resultsById.set(game.id, game);
 					}
 				}
 			}
+		}
+	};
+
+	await runVariantSearches(mappedGameName);
+
+	if (resultsById.size === 0 && /\bdemo\b/i.test(mappedGameName)) {
+		const withoutDemo = mappedGameName.replace(/\bdemo\b/gi, ' ').replace(/\s+/g, ' ').trim();
+		if (withoutDemo.length >= 2) {
+			await runVariantSearches(withoutDemo);
+		}
+	}
+
+	if (resultsById.size === 0) {
+		const camelSpacedName = splitCamelCaseName(mappedGameName);
+		if (camelSpacedName && camelSpacedName !== mappedGameName.trim()) {
+			await runVariantSearches(camelSpacedName);
+		}
+	}
+
+	const candidates = Array.from(resultsById.values());
+	if (candidates.length > 0) {
+		const best = candidates.sort((a, b) => {
+			const aScore = scoreNameMatch(mappedGameName, a?.name || '');
+			const bScore = scoreNameMatch(mappedGameName, b?.name || '');
+			if (aScore !== bScore) {
+				return bScore - aScore;
+			}
+
+			const aPopularity = Number(a?.total_rating_count || 0);
+			const bPopularity = Number(b?.total_rating_count || 0);
+			return bPopularity - aPopularity;
+		})[0];
+
+		const rawCoverUrl = best.cover && best.cover.url ? best.cover.url : null;
+		const fixedCoverUrl = rawCoverUrl ? rawCoverUrl.replace('t_thumb', 't_cover_big') : null;
+
+		let thumbnailUrl = null;
+		if (best.artworks && best.artworks.length > 0) {
+			const artworkId = best.artworks[0];
+			thumbnailUrl = await fetchArtworkUrlViaTwitch(artworkId, credentials);
+		}
+		if (thumbnailUrl) thumbnailUrl = thumbnailUrl.replace('t_thumb', 't_1080p');
+
+		return {
+			success: true,
+			data: {
+				title: best.name,
+				cover_url: fixedCoverUrl,
+				thumbnail_url: thumbnailUrl,
+				id: best.id
+			}
 		};
+	}
 
-		await runVariantSearches(mappedGameName);
+	return { success: false, code: 'GAME_NOT_FOUND', data: null };
+};
 
-		if (resultsById.size === 0 && /\bdemo\b/i.test(mappedGameName)) {
-			const withoutDemo = mappedGameName.replace(/\bdemo\b/gi, ' ').replace(/\s+/g, ' ').trim();
-			if (withoutDemo.length >= 2) {
-				await runVariantSearches(withoutDemo);
-			}
+const getGameDetailsViaTwitch = async (gameId: number, credentials?: IGDBCredentials) => {
+	const accessToken = await getValidAccessToken(credentials);
+	const twitchCredentials = credentials ? {
+		clientId: credentials.clientId.trim(),
+		clientSecret: credentials.clientSecret.trim(),
+	} : activeCredentials;
+	const responseText = await invoke<string>('igdb_post', {
+		endpoint: 'games',
+		body: `fields name,cover.url,platforms.name,artworks; where id = ${gameId};`,
+		clientId: twitchCredentials.clientId,
+		accessToken,
+	});
+	const data = JSON.parse(responseText);
+	if (data.length === 0) {
+		return null;
+	}
+
+	const game = data[0];
+	Logger.info(`Fetched details for game ID ${gameId} from IGDB:`, game);
+
+	let thumbnailUrl = null;
+	if (game.artworks && game.artworks.length > 0) {
+		const artworkId = game.artworks[0];
+		thumbnailUrl = await fetchArtworkUrlViaTwitch(artworkId, credentials);
+	}
+	if (thumbnailUrl) thumbnailUrl = thumbnailUrl.replace('t_thumb', 't_1080p');
+
+	return {
+		title: game.name,
+		cover_url: game.cover ? game.cover.url : null,
+		thumbnail_url: thumbnailUrl
+	};
+};
+
+const searchGameViaApi = async (gameName: string, baseUrl: string) => {
+	const response = await fetch(buildApiUrl(baseUrl, '/igdb/search'), {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ gameName }),
+	});
+
+	if (!response.ok) {
+		throw new Error(`GameLibrary API search failed with status ${response.status}`);
+	}
+
+	return await response.json() as { success: boolean; code?: string; data: { title: string; cover_url: string | null; thumbnail_url: string | null; id: number | null } | null };
+};
+
+const getGameDetailsViaApi = async (gameId: number, baseUrl: string) => {
+	const response = await fetch(buildApiUrl(baseUrl, '/igdb/details'), {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ gameId }),
+	});
+
+	if (!response.ok) {
+		throw new Error(`GameLibrary API details request failed with status ${response.status}`);
+	}
+
+	return await response.json() as { title: string | null; cover_url: string | null; thumbnail_url: string | null } | null;
+};
+
+export const fetchArtworkUrl = async (artworkId: number): Promise<string | null> => {
+	return await fetchArtworkUrlViaTwitch(artworkId);
+};
+
+export const searchGame = async (gameName: string) => {
+	try {
+		const runtime = await resolveIGDBRuntimeConfig();
+		if (runtime.connectionMode === 'api') {
+			return await searchGameViaApi(gameName, runtime.apiBaseUrl);
 		}
 
-		if (resultsById.size === 0) {
-			const camelSpacedName = splitCamelCaseName(mappedGameName);
-			if (camelSpacedName && camelSpacedName !== mappedGameName.trim()) {
-				await runVariantSearches(camelSpacedName);
-			}
-		}
-
-		const candidates = Array.from(resultsById.values());
-		if (candidates.length > 0) {
-			const best = candidates.sort((a, b) => {
-				const aScore = scoreNameMatch(mappedGameName, a?.name || '');
-				const bScore = scoreNameMatch(mappedGameName, b?.name || '');
-				if (aScore !== bScore) {
-					return bScore - aScore;
-				}
-
-				const aPopularity = Number(a?.total_rating_count || 0);
-				const bPopularity = Number(b?.total_rating_count || 0);
-				return bPopularity - aPopularity;
-			})[0];
-
-			const rawCoverUrl = best.cover && best.cover.url ? best.cover.url : null;
-			const fixedCoverUrl = rawCoverUrl ? rawCoverUrl.replace('t_thumb', 't_cover_big') : null;
-
-			let thumbnailUrl = null;
-			if (best.artworks && best.artworks.length > 0) {
-				const artworkId = best.artworks[0];
-				thumbnailUrl = await fetchArtworkUrl(artworkId);
-			}
-			if (thumbnailUrl) thumbnailUrl = thumbnailUrl.replace('t_thumb', 't_1080p');
-
-			return {
-				success: true,
-				data: {
-					title: best.name,
-					cover_url: fixedCoverUrl,
-					thumbnail_url: thumbnailUrl,
-					id: best.id
-				}
-			};
-		} else {
-			return { success: false, code: 'GAME_NOT_FOUND', data: null };
-		}
+		return await searchGameViaTwitch(gameName, runtime.twitchCredentials);
 	} catch (err) {
 		Logger.error(`Error occurred while fetching game data from IGDB for "${gameName}":`, err);
 		return { success: false, code: 'FETCH_ERROR', data: null };
@@ -287,33 +454,12 @@ export const searchGame = async (gameName: string) => {
 
 export const getGameDetails = async (gameId: number) => {
 	try {
-		const accessToken = await getValidAccessToken();
-		const responseText = await invoke<string>('igdb_post', {
-			endpoint: 'games',
-			body: `fields name,cover.url,platforms.name,artworks; where id = ${gameId};`,
-			clientId: activeCredentials.clientId,
-			accessToken,
-		});
-		const data = JSON.parse(responseText);
-		if (data.length > 0) {
-			const game = data[0];
-			Logger.info(`Fetched details for game ID ${gameId} from IGDB:`, game);
-
-			let thumbnailUrl = null;
-			if (game.artworks && game.artworks.length > 0) {
-				const artworkId = game.artworks[0];
-				thumbnailUrl = await fetchArtworkUrl(artworkId);
-			}
-			if (thumbnailUrl) thumbnailUrl = thumbnailUrl.replace('t_thumb', 't_1080p');
-
-			return {
-				title: game.name,
-				cover_url: game.cover ? game.cover.url : null,
-				thumbnail_url: thumbnailUrl
-			};
-		} else {
-			return null;
+		const runtime = await resolveIGDBRuntimeConfig();
+		if (runtime.connectionMode === 'api') {
+			return await getGameDetailsViaApi(gameId, runtime.apiBaseUrl);
 		}
+
+		return await getGameDetailsViaTwitch(gameId, runtime.twitchCredentials);
 	} catch (err) {
 		Logger.error(`Error occurred while fetching game details from IGDB for game ID ${gameId}:`, err);
 		return null;

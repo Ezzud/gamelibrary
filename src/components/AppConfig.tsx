@@ -26,7 +26,10 @@ import {
 	Wrench,
 	Maximize2,
 	Expand,
-	RotateCw
+	RotateCw,
+	Globe,
+	KeyRound,
+	Link2
 } from 'lucide-react'
 import { FaSteam, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
@@ -45,12 +48,18 @@ import {
 	removeCustomScanFolder,
 	setCardHoverEffect,
 	setRunOnStartup,
-	setReduceWhilePlaying
+	setRunReduced,
+	setReduceWhilePlaying,
+	setReduceWhenClosing,
+	setAutoDetectGames,
+	setIGDBConnectionMode,
+	setIGDBApiBaseUrl
 } from '../services/ConfigManager'
 import { chooseFolder } from '../services/GameScanner'
+import { testGameLibraryApi } from '../services/GameDataManager'
 import { Logger } from '../utils/Logger'
 import { getVersion } from '@tauri-apps/api/app'
-import type { AppConfigProps, ConfigCategory, UpdateCheckStatus } from '../types/appTypes'
+import type { AppConfigProps, ConfigCategory, IGDBConnectionMode, UpdateCheckStatus } from '../types/appTypes'
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
@@ -143,11 +152,19 @@ const AppConfig = ({
 	const [showClientSecret, setShowClientSecret] = useState(false)
 	const [isConnectingCredentials, setIsConnectingCredentials] = useState(false)
 	const [credentialsStatus, setCredentialsStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+	const [igdbConnectionMode, setIgdbConnectionModeState] = useState<IGDBConnectionMode>('api')
+	const [gameLibraryApiBaseUrl, setGameLibraryApiBaseUrlState] = useState('https://gamelibrary.ezzud.fr/api')
 	const [cardHoverEffect, setCardHoverEffectState] = useState('zoom')
 	const [runOnStartup, setRunOnStartupState] = useState(false)
+	const [runReduced, setRunReducedState] = useState(false)
 	const [reduceWhilePlaying, setReduceWhilePlayingState] = useState(true)
+	const [reduceWhenClosing, setReduceWhenClosingState] = useState(true)
+	const [autoDetectGames, setAutoDetectGamesState] = useState(false)
 	const [isUpdatingRunOnStartup, setIsUpdatingRunOnStartup] = useState(false)
+	const [isUpdatingRunReduced, setIsUpdatingRunReduced] = useState(false)
 	const [isUpdatingReduceWhilePlaying, setIsUpdatingReduceWhilePlaying] = useState(false)
+	const [isUpdatingReduceWhenClosing, setIsUpdatingReduceWhenClosing] = useState(false)
+	const [isUpdatingAutoDetectGames, setIsUpdatingAutoDetectGames] = useState(false)
 	const [updateStatus, setUpdateStatus] = useState<UpdateCheckStatus>('idle')
 	const [currentVersion, setCurrentVersion] = useState('Unknown')
 	const [latestVersion, setLatestVersion] = useState<string | null>(null)
@@ -238,9 +255,14 @@ const AppConfig = ({
 			const config = await getAppConfig()
 			setCredentialsClientId(config.twitchClientId || '')
 			setCredentialsClientSecret(config.twitchClientSecret || '')
+			setIgdbConnectionModeState(config.igdbConnectionMode === 'twitch' ? 'twitch' : 'api')
+			setGameLibraryApiBaseUrlState((config.igdbApiBaseUrl || 'https://gamelibrary.ezzud.fr/api').trim())
 			setCardHoverEffectState(config.cardHoverEffect || 'zoom')
 			setRunOnStartupState(!!config.runOnStartup)
+			setRunReducedState(config.runReduced === true)
 			setReduceWhilePlayingState(config.reduceWhilePlaying !== false)
+			setReduceWhenClosingState(config.reduceWhenClosing !== false)
+			setAutoDetectGamesState(config.autoDetectGames === true)
 		}
 
 		void loadCredentials()
@@ -587,6 +609,59 @@ const AppConfig = ({
 		}
 	}
 
+	const handleChangeIGDBConnectionMode = async (mode: IGDBConnectionMode) => {
+		if (mode === igdbConnectionMode) {
+			return
+		}
+
+		setIgdbConnectionModeState(mode)
+		try {
+			await setIGDBConnectionMode(mode)
+			await onConfigChanged?.()
+			setCredentialsStatus(null)
+		} catch (error) {
+			Logger.error('Failed to change IGDB connection mode:', error)
+			onShowToast?.('Failed to change IGDB connection mode.', { durationMs: 5000, style: 'error' })
+		}
+	}
+
+	const handleGameLibraryApiBaseUrlChange = async (value: string) => {
+		setGameLibraryApiBaseUrlState(value)
+		try {
+			await setIGDBApiBaseUrl(value)
+			await onConfigChanged?.()
+		} catch (error) {
+			Logger.error('Failed to save GameLibrary API base URL:', error)
+		}
+	}
+
+	const handleTestGameLibraryApi = async () => {
+		if (isConnectingCredentials) {
+			return
+		}
+
+		setCredentialsStatus(null)
+		setIsConnectingCredentials(true)
+		try {
+			await handleGameLibraryApiBaseUrlChange(gameLibraryApiBaseUrl)
+			const result = await testGameLibraryApi(gameLibraryApiBaseUrl)
+			if (result.success) {
+				setCredentialsStatus({
+					type: 'success',
+					message: `Connected to GameLibrary API${result.data?.version ? ` v${result.data.version}` : ''}${typeof result.data?.pingMs === 'number' ? ` (${result.data.pingMs}ms)` : ''}.`
+				})
+				return
+			}
+
+			setCredentialsStatus({ type: 'error', message: 'GameLibrary API health check failed.' })
+		} catch (error) {
+			Logger.error('Failed to test GameLibrary API:', error)
+			setCredentialsStatus({ type: 'error', message: 'Failed to connect to GameLibrary API.' })
+		} finally {
+			setIsConnectingCredentials(false)
+		}
+	}
+
 	const handleSetCardHoverEffect = async (effect: string) => {
 		setCardHoverEffectState(effect)
 		try {
@@ -605,7 +680,7 @@ const AppConfig = ({
 		const next = !runOnStartup
 		setIsUpdatingRunOnStartup(true)
 		try {
-			await setRunOnStartup(next)
+			await setRunOnStartup(next, runReduced)
 			setRunOnStartupState(next)
 			await onConfigChanged?.()
 			onShowToast?.(next ? 'Enabled run on startup' : 'Disabled run on startup', { durationMs: 3000, style: 'success' })
@@ -614,6 +689,49 @@ const AppConfig = ({
 			onShowToast?.('Failed to change run-on-startup setting', { durationMs: 5000, style: 'error' })
 		} finally {
 			setIsUpdatingRunOnStartup(false)
+		}
+	}
+
+	const handleToggleRunReduced = async () => {
+		if (isUpdatingRunReduced) {
+			return
+		}
+
+		const next = !runReduced
+		setIsUpdatingRunReduced(true)
+		try {
+			await setRunReduced(next)
+			setRunReducedState(next)
+			if (runOnStartup) {
+				await setRunOnStartup(true, next)
+			}
+			await onConfigChanged?.()
+			onShowToast?.(next ? 'Enabled start reduced' : 'Disabled start reduced', { durationMs: 3000, style: 'success' })
+		} catch (err) {
+			Logger.error('Failed to toggle run reduced:', err)
+			onShowToast?.('Failed to change start-reduced setting', { durationMs: 5000, style: 'error' })
+		} finally {
+			setIsUpdatingRunReduced(false)
+		}
+	}
+
+	const handleToggleAutoDetectGames = async () => {
+		if (isUpdatingAutoDetectGames) {
+			return
+		}
+
+		const next = !autoDetectGames
+		setIsUpdatingAutoDetectGames(true)
+		try {
+			await setAutoDetectGames(next)
+			setAutoDetectGamesState(next)
+			await onConfigChanged?.()
+			onShowToast?.(next ? 'Enabled auto detect games' : 'Disabled auto detect games', { durationMs: 3000, style: 'success' })
+		} catch (err) {
+			Logger.error('Failed to toggle auto detect games:', err)
+			onShowToast?.('Failed to change auto-detect-games setting', { durationMs: 5000, style: 'error' })
+		} finally {
+			setIsUpdatingAutoDetectGames(false)
 		}
 	}
 
@@ -634,6 +752,26 @@ const AppConfig = ({
 			onShowToast?.('Failed to change reduce-while-playing setting', { durationMs: 5000, style: 'error' })
 		} finally {
 			setIsUpdatingReduceWhilePlaying(false)
+		}
+	}
+
+	const handleToggleReduceWhenClosing = async () => {
+		if (isUpdatingReduceWhenClosing) {
+			return
+		}
+
+		const next = !reduceWhenClosing
+		setIsUpdatingReduceWhenClosing(true)
+		try {
+			await setReduceWhenClosing(next)
+			setReduceWhenClosingState(next)
+			await onConfigChanged?.()
+			onShowToast?.(next ? 'Enabled reduce when closing' : 'Disabled reduce when closing', { durationMs: 3000, style: 'success' })
+		} catch (err) {
+			Logger.error('Failed to toggle reduce when closing:', err)
+			onShowToast?.('Failed to change reduce-when-closing setting', { durationMs: 5000, style: 'error' })
+		} finally {
+			setIsUpdatingReduceWhenClosing(false)
 		}
 	}
 
@@ -754,48 +892,109 @@ const AppConfig = ({
 						</h3>
 
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-							<p className="text-sm text-steam-100 mb-3">Credentials</p>
-							<div className="space-y-3">
-								<input
-									type="text"
-									value={credentialsClientId}
-									onChange={(event) => setCredentialsClientId(event.target.value)}
-									disabled={isConnectingCredentials}
-									placeholder="Twitch Client ID"
-									className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
-								/>
-
-								<div className="relative">
-									<input
-										type={showClientSecret ? 'text' : 'password'}
-										value={credentialsClientSecret}
-										onChange={(event) => setCredentialsClientSecret(event.target.value)}
-										disabled={isConnectingCredentials}
-										placeholder="Twitch Client Secret"
-										className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-20 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
-									/>
-									<button
-										type="button"
-										onClick={() => setShowClientSecret((prev) => !prev)}
-										disabled={isConnectingCredentials}
-										className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md bg-[#2a4f75] hover:bg-[#36648f] disabled:opacity-50 text-xs text-white transition-colors"
-										aria-label={showClientSecret ? 'Hide client secret' : 'Show client secret'}
-										title={showClientSecret ? 'Hide client secret' : 'Show client secret'}
-									>
-										{showClientSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-									</button>
-								</div>
+							<p className="text-sm text-steam-100 mb-3">IGDB Source</p>
+							<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+								<button
+									type="button"
+									onClick={() => void handleChangeIGDBConnectionMode('api')}
+									className={`rounded-lg px-4 py-3 text-left transition-colors shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] ${igdbConnectionMode === 'api' ? 'bg-steam-600 ring-2 ring-sky-400/40' : 'bg-steam-700/55 hover:bg-steam-700'}`}
+								>
+									<div className="flex items-start gap-3">
+										<div className="mt-1 rounded-md bg-steam-900/45 p-2 text-sky-300">
+											<Globe className="w-4 h-4" />
+										</div>
+										<div>
+											<p className="text-sm font-semibold text-white">Use GameLibrary's API</p>
+											<p className="text-xs text-steam-300 mt-1">No Credentials needed (Recommended)</p>
+										</div>
+									</div>
+								</button>
 
 								<button
 									type="button"
-									onClick={() => void handleConnectCredentials()}
-									disabled={isConnectingCredentials || !credentialsClientId.trim() || !credentialsClientSecret.trim()}
-									className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+									onClick={() => void handleChangeIGDBConnectionMode('twitch')}
+									className={`rounded-lg px-4 py-3 text-left transition-colors shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] ${igdbConnectionMode === 'twitch' ? 'bg-steam-600 ring-2 ring-sky-400/40' : 'bg-steam-700/55 hover:bg-steam-700'}`}
 								>
-									{isConnectingCredentials ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-									{isConnectingCredentials ? 'Connecting...' : 'Connect'}
+									<div className="flex items-start gap-3">
+										<div className="mt-1 rounded-md bg-steam-900/45 p-2 text-sky-300">
+											<KeyRound className="w-4 h-4" />
+										</div>
+										<div>
+											<p className="text-sm font-semibold text-white">Twitch Credentials</p>
+											<p className="text-xs text-steam-300 mt-1">Requires a Twitch app credentials</p>
+										</div>
+									</div>
 								</button>
 							</div>
+
+							{igdbConnectionMode === 'api' ? (
+								<div className="mt-4 space-y-3">
+									<div className="relative">
+										<input
+											type="text"
+											value={gameLibraryApiBaseUrl}
+											onChange={(event) => void handleGameLibraryApiBaseUrlChange(event.target.value)}
+											disabled={isConnectingCredentials}
+											placeholder="https://gamelibrary.ezzud.fr/api"
+											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-20 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
+										/>
+										<button
+											type="button"
+											onClick={() => void handleTestGameLibraryApi()}
+											disabled={isConnectingCredentials || !gameLibraryApiBaseUrl.trim()}
+											className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded-md bg-[#2a4f75] px-2 py-1 text-xs text-white transition-colors hover:bg-[#36648f] disabled:opacity-50"
+											aria-label="Test GameLibrary API"
+											title="Test GameLibrary API"
+										>
+											<Link2 className="w-4 h-4" />
+											{isConnectingCredentials ? 'Testing...' : 'Test'}
+										</button>
+									</div>
+									<p className="text-xs text-steam-400">The API host can be changed if you want to point to your own deployment.</p>
+								</div>
+							) : (
+								<div className="mt-4 space-y-3">
+									<input
+										type="text"
+										value={credentialsClientId}
+										onChange={(event) => setCredentialsClientId(event.target.value)}
+										disabled={isConnectingCredentials}
+										placeholder="Twitch Client ID"
+										className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
+									/>
+
+									<div className="relative">
+										<input
+											type={showClientSecret ? 'text' : 'password'}
+											value={credentialsClientSecret}
+											onChange={(event) => setCredentialsClientSecret(event.target.value)}
+											disabled={isConnectingCredentials}
+											placeholder="Twitch Client Secret"
+											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-20 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
+										/>
+										<button
+											type="button"
+											onClick={() => setShowClientSecret((prev) => !prev)}
+											disabled={isConnectingCredentials}
+											className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md bg-[#2a4f75] hover:bg-[#36648f] disabled:opacity-50 text-xs text-white transition-colors"
+											aria-label={showClientSecret ? 'Hide client secret' : 'Show client secret'}
+											title={showClientSecret ? 'Hide client secret' : 'Show client secret'}
+										>
+											{showClientSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+										</button>
+									</div>
+
+									<button
+										type="button"
+										onClick={() => void handleConnectCredentials()}
+										disabled={isConnectingCredentials || !credentialsClientId.trim() || !credentialsClientSecret.trim()}
+										className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+									>
+										{isConnectingCredentials ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+										{isConnectingCredentials ? 'Connecting...' : 'Connect'}
+									</button>
+								</div>
+							)}
 
 							{credentialsStatus && (
 								<div
@@ -879,6 +1078,42 @@ const AppConfig = ({
 
 							<div className="mt-4 flex items-center justify-between gap-4">
 								<div>
+									<p className="text-sm text-steam-100">Start the app reduced</p>
+									<p className="text-xs text-steam-400">When launch on startup is enabled, begin in the tray instead of showing the window.</p>
+								</div>
+								<div className="flex items-center mr-2">
+									<div
+										role="switch"
+										tabIndex={0}
+										aria-checked={runReduced}
+										aria-disabled={isUpdatingRunReduced}
+										aria-busy={isUpdatingRunReduced}
+										onKeyDown={async (e) => {
+											if (isUpdatingRunReduced) {
+												return
+											}
+
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault()
+												void handleToggleRunReduced()
+											}
+										}}
+										onClick={() => void handleToggleRunReduced()}
+										className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none ${isUpdatingRunReduced
+											? 'cursor-not-allowed opacity-50 grayscale bg-zinc-600'
+											: 'cursor-pointer '
+										} ${runReduced ? 'bg-sky-400' : 'bg-zinc-700'}`}
+									>
+										<div
+											className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${runReduced ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'
+												} ${isUpdatingRunReduced ? 'opacity-80' : ''}`}
+										/>
+									</div>
+								</div>
+							</div>
+
+							<div className="mt-4 flex items-center justify-between gap-4">
+								<div>
 									<p className="text-sm text-steam-100">Reduce when running a game</p>
 									<p className="text-xs text-steam-400">Hide the main window while a game is active, then bring it back when playtime tracking stops.</p>
 								</div>
@@ -908,6 +1143,78 @@ const AppConfig = ({
 										<div
 											className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${reduceWhilePlaying ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'
 												} ${isUpdatingReduceWhilePlaying ? 'opacity-80' : ''}`}
+										/>
+									</div>
+								</div>
+							</div>
+
+							<div className="mt-4 flex items-center justify-between gap-4">
+								<div>
+									<p className="text-sm text-steam-100">Reduce when closing the app</p>
+									<p className="text-xs text-steam-400">Send the app to the tray instead of closing the window with the cross button.</p>
+								</div>
+								<div className="flex items-center mr-2">
+									<div
+										role="switch"
+										tabIndex={0}
+										aria-checked={reduceWhenClosing}
+										aria-disabled={isUpdatingReduceWhenClosing}
+										aria-busy={isUpdatingReduceWhenClosing}
+										onKeyDown={async (e) => {
+											if (isUpdatingReduceWhenClosing) {
+												return
+											}
+
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault()
+												void handleToggleReduceWhenClosing()
+											}
+										}}
+										onClick={() => void handleToggleReduceWhenClosing()}
+										className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none ${isUpdatingReduceWhenClosing
+											? 'cursor-not-allowed opacity-50 grayscale bg-zinc-600'
+											: 'cursor-pointer '
+										} ${reduceWhenClosing ? 'bg-sky-400' : 'bg-zinc-700'}`}
+									>
+										<div
+											className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${reduceWhenClosing ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'
+												} ${isUpdatingReduceWhenClosing ? 'opacity-80' : ''}`}
+										/>
+									</div>
+								</div>
+							</div>
+
+							<div className="mt-4 flex items-center justify-between gap-4">
+								<div>
+									<p className="text-sm text-steam-100">Auto detect running games</p>
+									<p className="text-xs text-steam-400">If you are starting games without using the Library, it will still detect it and start playtime tracking.</p>
+								</div>
+								<div className="flex items-center mr-2">
+									<div
+										role="switch"
+										tabIndex={0}
+										aria-checked={autoDetectGames}
+										aria-disabled={isUpdatingAutoDetectGames}
+										aria-busy={isUpdatingAutoDetectGames}
+										onKeyDown={async (e) => {
+											if (isUpdatingAutoDetectGames) {
+												return
+											}
+
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault()
+												void handleToggleAutoDetectGames()
+											}
+										}}
+										onClick={() => void handleToggleAutoDetectGames()}
+										className={`relative inline-flex h-8 w-16 items-center select-none rounded-md p-1 transition-all duration-300 focus:outline-none ${isUpdatingAutoDetectGames
+											? 'cursor-not-allowed opacity-50 grayscale bg-zinc-600'
+											: 'cursor-pointer '
+										} ${autoDetectGames ? 'bg-sky-400' : 'bg-zinc-700'}`}
+									>
+										<div
+											className={`h-6 w-6 bg-white rounded-md shadow transform transition-all duration-400 ${autoDetectGames ? 'translate-x-8 rotate-90' : 'translate-x-0 rotate-0'
+												} ${isUpdatingAutoDetectGames ? 'opacity-80' : ''}`}
 										/>
 									</div>
 								</div>

@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import GameCard from './GameCard'
-import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, KeyRound, Link2, Loader, Play, Plus, RefreshCw, ShieldCheck, Star, Tags, Trash2 } from 'lucide-react'
+import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, Link2, Loader, Play, Plus, RefreshCw, ShieldCheck, Star, Tags, Trash2 } from 'lucide-react'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import { launchGame, openGameFolder } from '../services/GameLauncher'
 import { trackPlaytimeForProcess } from '../services/PlaytimeManager'
-import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, loadGameCache, removeCustomScanFolder, removeGameFromList, saveGameConfig, getAppConfig, getGameCoverPath } from '../services/ConfigManager'
+import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, loadGameCache, removeCustomScanFolder, removeGameFromList, saveGameConfig, getAppConfig, getGameCoverPath, setIGDBApiBaseUrl, setIGDBConnectionMode } from '../services/ConfigManager'
 import { chooseFolder, fetchCustomGame, registerGames } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
+import { testGameLibraryApi } from '../services/GameDataManager'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 import type { Game, GameLibraryProps, SortField } from '../types/appTypes'
 import { readFile } from '@tauri-apps/plugin-fs'
 
 const SCAN_PLATFORMS = ['Steam', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const MIN_LAUNCH_LOADING_MS = 5000
+const DEFAULT_METADATA_API_URL = 'https://gamelibrary.ezzud.fr/api'
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
 	const elapsed = Date.now() - startedAt
@@ -143,7 +145,13 @@ const GameLibrary = (props: GameLibraryProps) => {
 	const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set(['Steam']))
 	const [twitchClientId, setTwitchClientId] = useState('')
 	const [twitchClientSecret, setTwitchClientSecret] = useState('')
+	const [igdbConnectionMode, setIgdbConnectionModeState] = useState<'api' | 'twitch'>('api')
+	const [gameLibraryApiBaseUrl, setGameLibraryApiBaseUrl] = useState(DEFAULT_METADATA_API_URL)
 	const [isConnectingIGDB, setIsConnectingIGDB] = useState(false)
+	const [isSavingMetadataSource, setIsSavingMetadataSource] = useState(false)
+	const [metadataSourceError, setMetadataSourceError] = useState<string | null>(null)
+	const [metadataSourceStatusMessage, setMetadataSourceStatusMessage] = useState<string | null>(null)
+	const [metadataSourceStatusTone, setMetadataSourceStatusTone] = useState<'success' | 'error' | null>(null)
 	const [igdbConnectError, setIgdbConnectError] = useState<string | null>(null)
 	const [isPlatformMenuOpen, setIsPlatformMenuOpen] = useState(false)
 	const [isTagMenuOpen, setIsTagMenuOpen] = useState(false)
@@ -159,6 +167,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 	const [isAddingManualGame, setIsAddingManualGame] = useState(false)
 	const [cardHoverEffect, setCardHoverEffect] = useState('zoom')
 	const [showSkipIGDBConfirmation, setShowSkipIGDBConfirmation] = useState(false)
+	const [skipIGDBConfirmationSource, setSkipIGDBConfirmationSource] = useState<'api' | 'twitch' | null>(null)
 	const [skipIGDBSetup, setSkipIGDBSetup] = useState(false)
 	const [dateLoading, setDateLoading] = useState(true)
 	const [displayCoverLoading, setDisplayCoverLoading] = useState(true)
@@ -214,6 +223,22 @@ const GameLibrary = (props: GameLibraryProps) => {
 	}, [])
 
 	useEffect(() => {
+		const loadMetadataSource = async () => {
+			try {
+				const config = await getAppConfig()
+				setIgdbConnectionModeState(config.igdbConnectionMode === 'twitch' ? 'twitch' : 'api')
+				setGameLibraryApiBaseUrl((config.igdbApiBaseUrl || DEFAULT_METADATA_API_URL).trim() || DEFAULT_METADATA_API_URL)
+				setTwitchClientId((config.twitchClientId || '').trim())
+				setTwitchClientSecret((config.twitchClientSecret || '').trim())
+			} catch (error) {
+				Logger.warn('Failed to load metadata source config for the library empty state:', error)
+			}
+		}
+
+		void loadMetadataSource()
+	}, [])
+
+	useEffect(() => {
 		const loadCardHoverEffect = async () => {
 			try {
 				const config = await getAppConfig()
@@ -232,6 +257,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 			if (games.length < 1) {
 				setGameTagsById({})
 				setGameDateAddedById({})
+				setDateLoading(false)
 				return
 			}
 
@@ -264,6 +290,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 			if (games.length < 1) {
 				setGameTagsById({})
 				setGameDateAddedById({})
+				setDisplayCoverLoading(false)
 				return
 			}
 
@@ -473,10 +500,11 @@ const GameLibrary = (props: GameLibraryProps) => {
 	}
 
 	const selectedTagVisual = tagFilter !== 'All' ? tagVisuals[tagFilter.toLowerCase()] : null
-	const credentialWarningMessage = igdbConnectionStatus === 'missing'
-		? 'You are missing the twitch credentials'
-		: igdbConnectionStatus === 'invalid'
-			? 'Your twitch credentials are invalid'
+	const twitchCredentialsMissing = !twitchClientId.trim() || !twitchClientSecret.trim()
+	const credentialWarningMessage = igdbConnectionMode === 'twitch' && twitchCredentialsMissing
+		? 'Twitch credentials are missing. Switch to the GameLibrary API or enter valid Twitch credentials.'
+		: igdbConnectionMode === 'twitch' && igdbConnectionStatus === 'invalid'
+			? 'Your Twitch credentials are invalid'
 			: null
 
 	const togglePlatform = (platform: string) => {
@@ -521,9 +549,73 @@ const GameLibrary = (props: GameLibraryProps) => {
 			const result = await onConnectIGDB(twitchClientId, twitchClientSecret)
 			if (!result.success) {
 				setIgdbConnectError(result.message || 'Unable to connect to IGDB with these credentials.')
+				return
 			}
+
+			await setIGDBConnectionMode('twitch')
+			setIgdbConnectionModeState('twitch')
+			setSkipIGDBSetup(true)
+			setMetadataSourceError(null)
 		} finally {
 			setIsConnectingIGDB(false)
+		}
+	}
+
+	const handleUseApiSource = async () => {
+		if (isSavingMetadataSource) {
+			return
+		}
+
+		setMetadataSourceError(null)
+		setMetadataSourceStatusMessage(null)
+		setMetadataSourceStatusTone(null)
+		setIsSavingMetadataSource(true)
+		try {
+			const result = await testGameLibraryApi(gameLibraryApiBaseUrl)
+			if (!result.success) {
+				setMetadataSourceStatusMessage('Unable to reach the GameLibrary API. Check the URL and try again.')
+				setMetadataSourceStatusTone('error')
+				return
+			}
+
+			const versionText = result.data?.version ? ` version ${result.data.version}` : ''
+			const pingText = typeof result.data?.pingMs === 'number' ? ` in ${result.data.pingMs}ms` : ''
+			setMetadataSourceStatusMessage(`GameLibrary API is healthy${versionText}${pingText}.`)
+			setMetadataSourceStatusTone('success')
+		} catch (error) {
+			Logger.error('Failed to test GameLibrary API metadata source:', error)
+			setMetadataSourceStatusMessage('Unable to reach the GameLibrary API. Please try again.')
+			setMetadataSourceStatusTone('error')
+		} finally {
+			setIsSavingMetadataSource(false)
+		}
+	}
+
+	const handleSkipToApiSource = async () => {
+		if (isSavingMetadataSource) {
+			return
+		}
+
+		setMetadataSourceError(null)
+		setMetadataSourceStatusMessage(null)
+		setMetadataSourceStatusTone(null)
+		setIsSavingMetadataSource(true)
+		try {
+			await setIGDBConnectionMode('api')
+			await setIGDBApiBaseUrl(DEFAULT_METADATA_API_URL)
+			setIgdbConnectionModeState('api')
+			setGameLibraryApiBaseUrl(DEFAULT_METADATA_API_URL)
+			setSkipIGDBSetup(true)
+			setIgdbConnectError(null)
+			setMetadataSourceError(null)
+			setMetadataSourceStatusMessage(null)
+			setMetadataSourceStatusTone(null)
+			onRefresh()
+		} catch (error) {
+			Logger.error('Failed to skip IGDB setup and switch to the default API source:', error)
+			setMetadataSourceError('Unable to switch to the default API source. Please try again.')
+		} finally {
+			setIsSavingMetadataSource(false)
 		}
 	}
 
@@ -1114,27 +1206,27 @@ const GameLibrary = (props: GameLibraryProps) => {
 			</div>
 
 			{/* Skip IGDB Confirmation Modal */}
-			{showSkipIGDBConfirmation && (
+			{showSkipIGDBConfirmation && skipIGDBConfirmationSource && (
 				<div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-sm">
 					<div className="bg-steam-800 border border-sky-500 rounded-xl shadow-2xl max-w-md w-full mx-4">
 						<div className="px-6 py-4">
-							<h3 className="text-lg font-semibold text-white">Skip IGDB Credentials?</h3>
+							<h3 className="text-lg font-semibold text-white">Skip {skipIGDBConfirmationSource === 'api' ? 'API setup' : 'Twitch credentials'}?</h3>
 						</div>
 						<div className="px-6 py-4 space-y-3">
 							<p className="text-sm text-steam-300">
-								Are you sure you want to skip the IGDB credentials? Your games will not have
+								Are you sure you want to skip {skipIGDBConfirmationSource === 'api' ? 'the API health check' : 'the Twitch credentials setup'}? Game covers and thumbnails may be limited.
 							</p>
-							<div className="text-sm text-blue-400 font-medium">
-								Game Covers and Thumbnails, Formatted titles
-							</div>
 							<p className="text-xs text-steam-400">
-								You can always set up IGDB credentials later in the settings.
+								You can always update this later in the settings.
 							</p>
 						</div>
 						<div className="px-6 py-4 flex items-center gap-2 justify-end">
 							<button
 								type="button"
-								onClick={() => setShowSkipIGDBConfirmation(false)}
+								onClick={() => {
+									setShowSkipIGDBConfirmation(false)
+									setSkipIGDBConfirmationSource(null)
+								}}
 								className="px-4 py-2 rounded-lg bg-steam-700 hover:bg-steam-600 text-white transition-colors"
 							>
 								Cancel
@@ -1143,9 +1235,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 								type="button"
 								onClick={() => {
 									setShowSkipIGDBConfirmation(false)
-									setSkipIGDBSetup(true)
-									setTwitchClientId('')
-									setTwitchClientSecret('')
+										setSkipIGDBConfirmationSource(null)
+									void handleSkipToApiSource()
 								}}
 								className="px-4 py-2 rounded-lg bg-red-700/70 hover:bg-red-600 text-white transition-colors"
 							>
@@ -1166,98 +1257,182 @@ const GameLibrary = (props: GameLibraryProps) => {
 				) : games.length === 0 ? (
 					igdbConnectionStatus !== 'connected' && !skipIGDBSetup ? (
 						<div className="min-h-[60vh] flex items-center">
-							<div className="max-w-2xl mx-auto w-full rounded-xl bg-linear-to-b from-steam-800/75 to-steam-900/75 px-5 py-6 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
-								<div className="text-center mb-4">
+							<div className="max-w-3xl mx-auto w-full rounded-xl bg-linear-to-b from-steam-800/75 to-steam-900/75 px-5 py-6 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
+								<div className="text-center mb-5">
 									<p className="text-steam-200 text-xl font-semibold inline-flex items-center gap-2">
-										<FaTwitch className="w-5 h-5 text-[#9146FF]" />
-										Connect Twitch Developer Credentials
+										<ShieldCheck className="w-5 h-5 text-sky-300" />
+										Choose your metadata source
 									</p>
-									<p className="text-steam-400 text-sm mt-2">IGDB requires a Twitch app Client ID and Client Secret before your first scan.</p>
+									<p className="text-steam-400 text-sm mt-2">Pick the source you want GameLibrary to use before you scan your first games.</p>
 								</div>
 
-								<div className="rounded-lg bg-steam-900/55 px-4 py-4 space-y-2">
-									<p className="text-sm text-steam-200 font-medium">Quick setup tutorial</p>
-									<ol className="text-xs text-steam-400 space-y-1 list-decimal pl-4">
-										<li>
-											Open{' '}
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+									<button
+										type="button"
+										onClick={() => setIgdbConnectionModeState('api')}
+										className={`rounded-xl px-4 py-4 text-left transition-colors shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] ${igdbConnectionMode === 'api' ? 'bg-steam-600 ring-2 ring-sky-400/40' : 'bg-steam-700/55 hover:bg-steam-700'}`}
+									>
+										<div className="flex items-start gap-3">
+											<div className="mt-1 rounded-md bg-steam-900/45 p-2 text-sky-300">
+												<Link2 className="w-4 h-4" />
+											</div>
+											<div>
+												<p className="text-sm font-semibold text-white">GameLibrary API</p>
+												<p className="text-xs text-steam-300 mt-1">No Twitch credentials required</p>
+											</div>
+										</div>
+									</button>
+
+									<button
+										type="button"
+										onClick={() => setIgdbConnectionModeState('twitch')}
+										className={`rounded-xl px-4 py-4 text-left transition-colors shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] ${igdbConnectionMode === 'twitch' ? 'bg-steam-600 ring-2 ring-sky-400/40' : 'bg-steam-700/55 hover:bg-steam-700'}`}
+									>
+										<div className="flex items-start gap-3">
+											<div className="mt-1 rounded-md bg-steam-900/45 p-2 text-[#9146FF]">
+												<FaTwitch className="w-4 h-4" />
+											</div>
+											<div>
+												<p className="text-sm font-semibold text-white">Twitch credentials</p>
+												<p className="text-xs text-steam-300 mt-1">Use your own IGDB client credentials</p>
+											</div>
+										</div>
+									</button>
+								</div>
+
+								{igdbConnectionMode === 'api' ? (
+									<div className="mt-4 space-y-3">
+										<div className="rounded-lg bg-steam-900/55 px-4 py-4 space-y-3">
+											<div>
+												<p className="text-sm text-steam-200 font-medium">API setup</p>
+												<p className="text-xs text-steam-400 mt-1">The default GameLibrary API works out of the box, but you can point this app at your own deployment.</p>
+											</div>
+											<div className="relative">
+												<input
+													type="text"
+													value={gameLibraryApiBaseUrl}
+													onChange={(event) => setGameLibraryApiBaseUrl(event.target.value)}
+													disabled={isSavingMetadataSource}
+													placeholder="https://gamelibrary.ezzud.fr/api"
+													className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-20 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
+												/>
+												<button
+													type="button"
+													onClick={() => void handleUseApiSource()}
+													disabled={isSavingMetadataSource || !gameLibraryApiBaseUrl.trim()}
+													className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded-md bg-[#2a4f75] px-2 py-1 text-xs text-white transition-colors hover:bg-[#36648f] disabled:opacity-50"
+													aria-label="Use GameLibrary API"
+													title="Use GameLibrary API"
+												>
+													<Link2 className="w-4 h-4" />
+													{isSavingMetadataSource ? 'Testing...' : 'Test'}
+												</button>
+											</div>
+											<p className="text-xs text-steam-400">Selecting the API source will save it to your settings immediately.</p>
+										</div>
+										{metadataSourceStatusMessage && (
+											<p className={`text-xs ${metadataSourceStatusTone === 'error' ? 'text-red-300' : 'text-emerald-300'}`}>{metadataSourceStatusMessage}</p>
+										)}
+										{metadataSourceError && (
+											<p className="text-xs text-red-300">{metadataSourceError}</p>
+										)}
+										<div className="flex items-center gap-2">
+											<button
+												type="button"
+												onClick={() => void handleUseApiSource()}
+												disabled={isSavingMetadataSource}
+												className="flex-1 px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+											>
+												{isSavingMetadataSource ? <Loader className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+												{isSavingMetadataSource ? 'Testing...' : 'Next'}
+											</button>
+											<button
+												type="button"
+												onClick={() => {
+													setSkipIGDBConfirmationSource('api')
+													setShowSkipIGDBConfirmation(true)
+												}}
+												disabled={isSavingMetadataSource}
+												className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-white hover:text-white font-medium hover:shadow-lg"
+												title="Skip API setup"
+											>
+												Skip
+											</button>
+										</div>
+									</div>
+								) : (
+									<div className="mt-4 space-y-3">
+										<div className="rounded-lg bg-steam-900/55 px-4 py-4 space-y-2">
+											<p className="text-sm text-steam-200 font-medium">Twitch developer setup</p>
+											<ol className="text-xs text-steam-400 space-y-1 list-decimal pl-4">
+												<li>Open the Twitch developer console and create an application.</li>
+												<li>Use <span className="text-sky-300">https://localhost</span> as the redirect URL.</li>
+												<li>Paste your Client ID and Client Secret below.</li>
+											</ol>
+										</div>
+
+										<input
+											type="text"
+											value={twitchClientId}
+											onChange={(event) => setTwitchClientId(event.target.value)}
+											disabled={isConnectingIGDB}
+											placeholder="Twitch Client ID"
+											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
+										/>
+										<input
+											type="password"
+											value={twitchClientSecret}
+											onChange={(event) => setTwitchClientSecret(event.target.value)}
+											disabled={isConnectingIGDB}
+											placeholder="Twitch Client Secret"
+											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
+										/>
+										<p className="text-xs text-steam-400">
+											Need help getting Twitch credentials? Read the{' '}
 											<a
-												href="https://dev.twitch.tv/console/apps"
+												href="https://api-docs.igdb.com/#getting-started"
 												target="_blank"
 												rel="noreferrer"
-												className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200 underline"
+												className="text-sky-300 hover:text-sky-200 underline"
 											>
-												<Link2 className="w-3 h-3" />
-												https://dev.twitch.tv/console/apps
+												IGDB getting started guide
 											</a>
-										</li>
-										<li>Create a new application in the Twitch Developer Portal.</li>
-										<li><span className="text-steam-300">PS:</span> make sure 2FA is enabled on your Twitch account first.</li>
-										<li>Add <span className="text-sky-300">https://localhost</span> as the Redirect URL.</li>
-										<li>Set Category to <span className="text-steam-300">Application integration</span>.</li>
-										<li>Set Client Type to <span className="text-steam-300">Confidential</span>.</li>
-										<li>Click <span className="text-steam-300">Manage</span>, copy Client ID, then generate and copy Client Secret.</li>
-										<li>
-											<span className="flex items-start gap-1.5">
-												<KeyRound className="w-3 h-3 mt-0.5 shrink-0" />
-												<span>Paste both values below.</span>
-											</span>
-										</li>
-										<li>
-											<span className="flex items-start gap-1.5">
-												<ShieldCheck className="w-3 h-3 mt-0.5 shrink-0" />
-												<span>Click Connect.</span>
-											</span>
-										</li>
-									</ol>
-								</div>
+											, for the credential setup steps.
+										</p>
 
-								<div className="mt-4 space-y-3">
-									<input
-										type="text"
-										value={twitchClientId}
-										onChange={(event) => setTwitchClientId(event.target.value)}
-										disabled={isConnectingIGDB}
-										placeholder="Twitch Client ID"
-										className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
-									/>
-									<input
-										type="password"
-										value={twitchClientSecret}
-										onChange={(event) => setTwitchClientSecret(event.target.value)}
-										disabled={isConnectingIGDB}
-										placeholder="Twitch Client Secret"
-										className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
-									/>
+										{igdbConnectionStatus === 'invalid' && !igdbConnectError && (
+											<p className="text-xs text-red-300">Saved credentials are invalid. Please update and reconnect.</p>
+										)}
 
-									{igdbConnectionStatus === 'invalid' && !igdbConnectError && (
-										<p className="text-xs text-red-300">Saved credentials are invalid. Please update and reconnect.</p>
-									)}
+										{igdbConnectError && (
+											<p className="text-xs text-red-300">{igdbConnectError}</p>
+										)}
 
-									{igdbConnectError && (
-										<p className="text-xs text-red-300">{igdbConnectError}</p>
-									)}
-
-									<div className="flex items-center gap-2">
-										<button
-											type="button"
-											onClick={() => void handleConnectIGDB()}
-											disabled={isConnectingIGDB || !twitchClientId.trim() || !twitchClientSecret.trim() || igdbConnectionStatus === 'checking'}
-											className="flex-1 px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
-										>
-											{isConnectingIGDB ? <Loader className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-											{isConnectingIGDB ? 'Connecting...' : 'Connect'}
-										</button>
-										<button
-											type="button"
-											onClick={() => setShowSkipIGDBConfirmation(true)}
-											disabled={isConnectingIGDB}
-											className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-white hover:text-white font-medium hover:shadow-lg"
-											title="Skip IGDB credentials setup"
-										>
-											Skip
-										</button>
+										<div className="flex items-center gap-2">
+											<button
+												type="button"
+												onClick={() => void handleConnectIGDB()}
+												disabled={isConnectingIGDB || !twitchClientId.trim() || !twitchClientSecret.trim() || igdbConnectionStatus === 'checking'}
+												className="flex-1 px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+											>
+												{isConnectingIGDB ? <Loader className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+												{isConnectingIGDB ? 'Connecting...' : 'Connect'}
+											</button>
+											<button
+												type="button"
+												onClick={() => {
+													setSkipIGDBConfirmationSource('twitch')
+													setShowSkipIGDBConfirmation(true)
+												}}
+												disabled={isConnectingIGDB}
+												className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-white hover:text-white font-medium hover:shadow-lg"
+												title="Skip Twitch setup"
+											>
+												Skip
+											</button>
+										</div>
 									</div>
-								</div>
+								)}
 							</div>
 						</div>
 					) : (

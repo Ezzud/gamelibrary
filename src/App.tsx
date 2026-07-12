@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
+import { sendNotification } from '@tauri-apps/plugin-notification'
 import AppConfig from './components/AppConfig'
 import GameLibrary from './components/GameLibrary'
 import Sidebar from './components/Sidebar'
@@ -34,12 +36,15 @@ import {
     saveGameConfig,
     saveGameInfoCache,
     removeFavorite,
+    setIGDBApiBaseUrl,
+    setIGDBConnectionMode,
     setTwitchCredentials,
     updateLatestPlayHistoryEntry,
     setConfigSortField,
     setConfigSortOrder,
+    setReduceWhenClosingNoticeShown as persistReduceWhenClosingNoticeShown,
 } from './services/ConfigManager'
-import { initIGDB, searchGame, getGameDetails } from './services/GameDataManager'
+import { initIGDB, searchGame, getGameDetails, setTemporaryIGDBConnectionMode } from './services/GameDataManager'
 import { launchGame } from './services/GameLauncher'
 import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from './services/PlaytimeManager'
 import { getVersion } from '@tauri-apps/api/app'
@@ -47,6 +52,11 @@ import type { ConfigCategory, Game, IGDBConnectionStatus, LastPlayedCard, SortFi
 
 const MIN_LAUNCH_LOADING_MS = 5000
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
+const AUTO_DETECT_POLL_INTERVAL_MS = 5000
+
+const METADATA_HEALTH_RETRY_MS = 10 * 60 * 1000
+const DEFAULT_METADATA_API_URL = 'https://gamelibrary.ezzud.fr/api'
+const normalizePathForCompare = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').trim().toLowerCase()
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
     const elapsed = Date.now() - startedAt
@@ -91,6 +101,12 @@ const restoreAppWindow = async () => {
 function App() {
     const didRunStartupScanRef = useRef(false)
     const appWindowReducedRef = useRef(false)
+    const appWindowReducedByCloseRef = useRef(false)
+    const reduceWhenClosingNoticeShownRef = useRef(false)
+    const autoDetectScanInFlightRef = useRef(false)
+    const autoDetectedGameIdsRef = useRef<Set<string>>(new Set())
+    const latestGamesRef = useRef<Game[]>([])
+    const runningGameIdsRef = useRef<Set<string>>(new Set())
     const [games, setGames] = useState<Game[]>([])
     const [selectedGame, setSelectedGame] = useState<Game | null>(null)
     const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -111,12 +127,43 @@ function App() {
     const [igdbConnectionStatus, setIgdbConnectionStatus] = useState<IGDBConnectionStatus>('checking')
     const [settingsInitialCategory, setSettingsInitialCategory] = useState<ConfigCategory>('General')
     const [reduceWhilePlaying, setReduceWhilePlaying] = useState(true)
+    const [reduceWhenClosing, setReduceWhenClosingState] = useState(true)
+    const [autoDetectGames, setAutoDetectGames] = useState(true)
     const [searchQuery, setSearchQuery] = useState('')
     const [platformFilter, setPlatformFilter] = useState('All')
     const [tagFilter, setTagFilter] = useState('All')
     const [sortField, setSortField] = useState<SortField>('name')
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
     const [settingsLoaded, setSettingsLoaded] = useState(false)
+    const metadataHealthRetryTimerRef = useRef<number | null>(null)
+    const metadataHealthCheckInFlightRef = useRef(false)
+    const metadataHealthToastShownRef = useRef(false)
+
+    const clearMetadataHealthRetry = () => {
+        if (metadataHealthRetryTimerRef.current !== null) {
+            window.clearInterval(metadataHealthRetryTimerRef.current)
+            metadataHealthRetryTimerRef.current = null
+        }
+    }
+
+    const showMetadataHealthNotice = (message: string, style: 'warning' | 'error' = 'warning') => {
+        if (metadataHealthToastShownRef.current) {
+            return
+        }
+
+        metadataHealthToastShownRef.current = true
+        showLaunchToast(message, { durationMs: 7000, style })
+    }
+
+    const ensureMetadataHealthRetry = () => {
+        if (metadataHealthRetryTimerRef.current !== null) {
+            return
+        }
+
+        metadataHealthRetryTimerRef.current = window.setInterval(() => {
+            void validateIGDBCredentialsFromConfig()
+        }, METADATA_HEALTH_RETRY_MS)
+    }
 
     const handleSetSortField = async (value: SortField) => {
         setSortField(value)
@@ -257,9 +304,17 @@ function App() {
         try {
             const config = await getAppConfig()
             setReduceWhilePlaying(config.reduceWhilePlaying !== false)
+            setReduceWhenClosingState(config.reduceWhenClosing !== false)
+            reduceWhenClosingNoticeShownRef.current = config.reduceWhenClosingNoticeShown === true
+            setAutoDetectGames(config.autoDetectGames === true)
+            return config
         } catch (error) {
             Logger.warn('Failed to load app settings:', error)
-            setReduceWhilePlaying(true)
+            setReduceWhilePlaying(false)
+            setReduceWhenClosingState(true)
+            reduceWhenClosingNoticeShownRef.current = false
+            setAutoDetectGames(true)
+            return null
         }
     }
 
@@ -285,6 +340,7 @@ function App() {
                         })
                     })
             }
+            runningGameIdsRef.current = next
             nextRunningCount = next.size
             return next
         })
@@ -305,9 +361,130 @@ function App() {
 
         if (nextRunningCount === 0 && appWindowReducedRef.current) {
             appWindowReducedRef.current = false
-            void restoreAppWindow()
+            if (!appWindowReducedByCloseRef.current) {
+                void restoreAppWindow()
+            }
         }
     }
+
+    useEffect(() => {
+        latestGamesRef.current = games
+    }, [games])
+
+    useEffect(() => {
+        runningGameIdsRef.current = runningGameIds
+    }, [runningGameIds])
+
+    const detectAutoRunningGames = async () => {
+        if (!autoDetectGames) {
+            return
+        }
+
+        if (autoDetectScanInFlightRef.current) {
+            Logger.info('Skipping auto-detect scan because a previous scan is still in flight.')
+            return
+        }
+
+        autoDetectScanInFlightRef.current = true
+        try {
+            const currentGames = latestGamesRef.current
+            if (currentGames.length < 1) {
+                Logger.info('Auto-detect scan skipped because no games are loaded yet.')
+                return
+            }
+
+            const runningProcesses = await invoke<string[]>('list_running_processes')
+            const normalizedProcesses = Array.isArray(runningProcesses)
+                ? runningProcesses
+                    .map((processPath) => (typeof processPath === 'string' ? processPath : '').trim())
+                    .filter(Boolean)
+                : []
+
+            if (normalizedProcesses.length < 1) {
+                Logger.info('Auto-detect scan found no running executable paths.')
+                return
+            }
+
+            const candidates = currentGames
+                .map((game) => ({ ...game, normalizedPath: normalizePathForCompare(game.path) }))
+                .filter((game) => game.normalizedPath.length > 0)
+                .sort((left, right) => right.normalizedPath.length - left.normalizedPath.length)
+
+            let detectedCount = 0
+
+            for (const processPath of normalizedProcesses) {
+                const normalizedProcessPath = normalizePathForCompare(processPath)
+                if (!normalizedProcessPath.endsWith('.exe')) {
+                    continue
+                }
+
+                const matchedGame = candidates.find((game) => {
+                    return (
+                        normalizedProcessPath === game.normalizedPath ||
+                        normalizedProcessPath.startsWith(`${game.normalizedPath}/`)
+                    )
+                })
+
+                if (!matchedGame) {
+                    continue
+                }
+
+                if (runningGameIdsRef.current.has(matchedGame.id) || autoDetectedGameIdsRef.current.has(matchedGame.id)) {
+                    continue
+                }
+
+                Logger.info(
+                    `Auto-detected running game ${matchedGame.name} (ID: ${matchedGame.id}) from process ${processPath}`
+                )
+
+                detectedCount++
+                try {
+                    await addPlayHistoryEntry(matchedGame.id)
+                    await refreshLastPlayedCards()
+                } catch (historyError) {
+                    Logger.warn(`Auto-detected game ${matchedGame.name} but failed to update play history:`, historyError)
+                }
+
+                void trackPlaytimeForProcess(matchedGame.id, matchedGame.path, processPath, (isRunning) => {
+                    if (isRunning) {
+                        autoDetectedGameIdsRef.current.add(matchedGame.id)
+                    } else {
+                        autoDetectedGameIdsRef.current.delete(matchedGame.id)
+                    }
+
+                    handleGameRunningChange(matchedGame.id, isRunning)
+                })
+            }
+
+            if (detectedCount > 0) {
+                Logger.info(`Auto-detect scan started tracking ${detectedCount} game(s).`)
+            }
+        } catch (error) {
+            Logger.error('Auto-detect scan failed:', error)
+        } finally {
+            autoDetectScanInFlightRef.current = false
+        }
+    }
+
+    useEffect(() => {
+        if (!autoDetectGames) {
+            autoDetectedGameIdsRef.current.clear()
+            return
+        }
+
+        void detectAutoRunningGames()
+
+        const intervalId = window.setInterval(() => {
+            void detectAutoRunningGames()
+        }, AUTO_DETECT_POLL_INTERVAL_MS)
+
+        Logger.info('Auto-detect games polling loop started.')
+
+        return () => {
+            window.clearInterval(intervalId)
+            Logger.info('Auto-detect games polling loop stopped.')
+        }
+    }, [autoDetectGames, games])
 
     const handlePlayLastPlayed = async (gameId: string) => {
         if (launchingGameId || runningGameIds.has(gameId)) {
@@ -399,18 +576,95 @@ function App() {
     }
 
     const validateIGDBCredentialsFromConfig = async () => {
-        const config = await getAppConfig()
-        const clientId = (config.twitchClientId || '').trim()
-        const clientSecret = (config.twitchClientSecret || '').trim()
-
-        if (!clientId || !clientSecret) {
-            setIgdbConnectionStatus('missing')
-            return false
+        if (metadataHealthCheckInFlightRef.current) {
+            return igdbConnectionStatus === 'connected'
         }
 
-        const valid = await initIGDB({ clientId, clientSecret })
-        setIgdbConnectionStatus(valid ? 'connected' : 'invalid')
-        return valid
+        metadataHealthCheckInFlightRef.current = true
+        const config = await getAppConfig()
+        const library = await loadGameList()
+        const hasGamesInLibrary = (library?.games || []).length > 0
+
+        try {
+            if (config.igdbConnectionMode === 'api') {
+                const valid = await initIGDB()
+                if (valid) {
+                    clearMetadataHealthRetry()
+                    metadataHealthToastShownRef.current = false
+                    setTemporaryIGDBConnectionMode(null)
+                    setIgdbConnectionStatus('connected')
+                    return true
+                }
+
+                const twitchClientId = (config.twitchClientId || '').trim()
+                const twitchClientSecret = (config.twitchClientSecret || '').trim()
+                if (twitchClientId && twitchClientSecret) {
+                    showMetadataHealthNotice('GameLibrary API is unavailable. Temporarily falling back to Twitch credentials.', 'error')
+                    setTemporaryIGDBConnectionMode('twitch')
+                    setIgdbConnectionStatus('connected')
+                    ensureMetadataHealthRetry()
+                    return true
+                }
+
+                if (hasGamesInLibrary) {
+                    showMetadataHealthNotice('GameLibrary API is unavailable and Twitch credentials are missing.', 'error')
+                }
+                await setIGDBConnectionMode('api')
+                await setIGDBApiBaseUrl(DEFAULT_METADATA_API_URL)
+                setTemporaryIGDBConnectionMode(null)
+                setIgdbConnectionStatus('missing')
+                ensureMetadataHealthRetry()
+                return false
+            }
+
+            const clientId = (config.twitchClientId || '').trim()
+            const clientSecret = (config.twitchClientSecret || '').trim()
+
+            if (!clientId || !clientSecret) {
+                if (hasGamesInLibrary) {
+                    showMetadataHealthNotice('Twitch credentials are missing. Switching to the GameLibrary API.')
+                }
+                await setIGDBConnectionMode('api')
+                await setIGDBApiBaseUrl(DEFAULT_METADATA_API_URL)
+                setTemporaryIGDBConnectionMode(null)
+                const valid = await initIGDB()
+                setIgdbConnectionStatus(valid ? 'connected' : 'missing')
+                if (valid) {
+                    clearMetadataHealthRetry()
+                    metadataHealthToastShownRef.current = false
+                } else {
+                    ensureMetadataHealthRetry()
+                }
+                return valid
+            }
+
+            const valid = await initIGDB({ clientId, clientSecret })
+            if (valid) {
+                clearMetadataHealthRetry()
+                metadataHealthToastShownRef.current = false
+                setTemporaryIGDBConnectionMode('twitch')
+                setIgdbConnectionStatus('connected')
+                return true
+            }
+
+            if (hasGamesInLibrary) {
+                showMetadataHealthNotice('Twitch credentials are invalid. Falling back to the GameLibrary API.')
+            }
+            await setIGDBConnectionMode('api')
+            await setIGDBApiBaseUrl(DEFAULT_METADATA_API_URL)
+            setTemporaryIGDBConnectionMode(null)
+            const fallbackValid = await initIGDB()
+            setIgdbConnectionStatus(fallbackValid ? 'connected' : 'invalid')
+            if (fallbackValid) {
+                clearMetadataHealthRetry()
+                metadataHealthToastShownRef.current = false
+            } else {
+                ensureMetadataHealthRetry()
+            }
+            return fallbackValid
+        } finally {
+            metadataHealthCheckInFlightRef.current = false
+        }
     }
 
     const handleConnectIGDB = async (clientId: string, clientSecret: string) => {
@@ -459,10 +713,39 @@ function App() {
 
     useEffect(() => {
         let unlisten: (() => void) | undefined
+        let unlistenCloseRequested: (() => void) | undefined
 
         const registerTrayRestoreListener = async () => {
             unlisten = await listen('restore-app-window', () => {
+                appWindowReducedByCloseRef.current = false
                 void restoreAppWindow()
+            })
+
+            const currentWindow = getCurrentWindow()
+            unlistenCloseRequested = await currentWindow.onCloseRequested(async (event) => {
+                if (!reduceWhenClosing) {
+                    return
+                }
+
+                event.preventDefault()
+
+                if (!reduceWhenClosingNoticeShownRef.current) {
+                    sendNotification({
+                        title: 'GameLibrary is now reduced',
+                        body: 'You can change this option in the App settings',
+                    })
+
+                    try {
+                        await persistReduceWhenClosingNoticeShown(true)
+                        reduceWhenClosingNoticeShownRef.current = true
+                    } catch (error) {
+                        Logger.warn('Failed to persist reduce-when-closing notification state:', error)
+                    }
+                }
+
+                appWindowReducedRef.current = true
+                appWindowReducedByCloseRef.current = true
+                void reduceAppWindow()
             })
         }
 
@@ -470,8 +753,11 @@ function App() {
 
         return () => {
             unlisten?.()
+            unlistenCloseRequested?.()
+            clearMetadataHealthRetry()
+            setTemporaryIGDBConnectionMode(null)
         }
-    }, [])
+    }, [reduceWhenClosing, persistReduceWhenClosingNoticeShown])
 
     useEffect(() => {
         if (didRunStartupScanRef.current) {
@@ -483,9 +769,15 @@ function App() {
             Logger.info('App mounted, loading games...')
             setIsLoadingGames(true)
             try {
+                const config = await loadAppSettings()
+                const startedWithAuto = await invoke<boolean>('was_started_with_auto_arg').catch(() => false)
+                if (config?.runOnStartup && config.runReduced && startedWithAuto) {
+                    appWindowReducedRef.current = true
+                    appWindowReducedByCloseRef.current = false
+                    await reduceAppWindow()
+                }
                 await validateIGDBCredentialsFromConfig()
                 await loadFavoriteGameIds()
-                await loadAppSettings()
                 await loadGames()
                 Logger.info('Initial game loading complete.')
             } finally {
@@ -1094,7 +1386,9 @@ function App() {
                         scanProgress={scanProgress}
                         scanStatusMessage={scanStatusMessage}
                         initialCategory={settingsInitialCategory}
-                        onConfigChanged={loadAppSettings}
+                        onConfigChanged={async () => {
+                            await loadAppSettings()
+                        }}
                         onScanPlatforms={handleScanPlatforms}
                         onCustomFolderAdded={handleCustomFolderAdded}
                         onRefreshGames={loadGames}

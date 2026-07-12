@@ -303,14 +303,14 @@ fn is_startup_approved_disabled_windows(value_name: &str) -> Result<bool, String
 }
 
 #[tauri::command]
-async fn set_run_on_startup(enable: bool) -> Result<bool, String> {
+async fn set_run_on_startup(enable: bool, reduced: bool) -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let exe_path = match std::env::current_exe() {
             Ok(p) => p,
             Err(e) => return Err(format!("Failed to determine executable path: {}", e)),
         };
 
-        eprintln!("[startup-reg] set_run_on_startup(enable={}) exe_path='{}'", enable, exe_path.display());
+        eprintln!("[startup-reg] set_run_on_startup(enable={}, reduced={}) exe_path='{}'", enable, reduced, exe_path.display());
 
         #[cfg(target_os = "windows")]
         {
@@ -329,8 +329,14 @@ async fn set_run_on_startup(enable: bool) -> Result<bool, String> {
                 }
 
                 eprintln!("[startup-reg] Creating fresh Windows startup entry.");
+                let command_value = if reduced {
+                    format!("\"{}\" --auto", exe_str)
+                } else {
+                    format!("\"{}\"", exe_str)
+                };
+
                 let status = Command::new("reg")
-                    .args(["add", key, "/v", name, "/t", "REG_SZ", "/d", &exe_str, "/f"])
+                    .args(["add", key, "/v", name, "/t", "REG_SZ", "/d", &command_value, "/f"])
                     .creation_flags(0x08000000)
                     .status()
                     .map_err(|e| format!("Failed to run reg.exe: {}", e))?;
@@ -372,6 +378,11 @@ async fn set_run_on_startup(enable: bool) -> Result<bool, String> {
 
             if enable {
                 let _ = fs::create_dir_all(&launch_agents);
+                let program_arguments = if reduced {
+                    "    <string>--auto</string>\n"
+                } else {
+                    ""
+                };
                 let plist = format!(r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"> 
 <plist version=\"1.0\"> 
@@ -381,11 +392,12 @@ async fn set_run_on_startup(enable: bool) -> Result<bool, String> {
   <key>ProgramArguments</key>
   <array>
     <string>{}</string>
+{}
   </array>
   <key>RunAtLoad</key>
   <true/>
 </dict>
-</plist>"#, exe_path.to_string_lossy());
+</plist>"#, exe_path.to_string_lossy(), program_arguments);
                 fs::write(&plist_path, plist).map_err(|e| format!("Failed to write plist: {}", e))?;
                 return Ok(true);
             } else {
@@ -407,6 +419,11 @@ async fn set_run_on_startup(enable: bool) -> Result<bool, String> {
 
             if enable {
                 let _ = fs::create_dir_all(&autostart_dir);
+                let exec_value = if reduced {
+                    format!("\"{}\" --auto", exe_path.to_string_lossy())
+                } else {
+                    format!("\"{}\"", exe_path.to_string_lossy())
+                };
                 let desktop = format!(r#"[Desktop Entry]
 Type=Application
 Name=GameLibrary
@@ -414,7 +431,7 @@ Exec={}
 X-GNOME-Autostart-enabled=true
 NoDisplay=false
 Comment=Start GameLibrary on login
-"#, exe_path.to_string_lossy());
+"#, exec_value);
                 fs::write(&desktop_path, desktop).map_err(|e| format!("Failed to write desktop file: {}", e))?;
                 return Ok(true);
             } else {
@@ -533,6 +550,11 @@ async fn is_run_on_startup_disabled() -> Result<bool, String> {
             err
         )
     })?
+}
+
+#[tauri::command]
+fn was_started_with_auto_arg() -> bool {
+    std::env::args().any(|arg| arg == "--auto")
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -983,6 +1005,28 @@ fn is_process_in_game_folder(
             .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
 }
 
+    #[tauri::command]
+    async fn list_running_processes() -> Result<Vec<String>, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut system = System::new();
+            system.refresh_processes();
+
+            let mut running_processes = system
+                .processes()
+                .values()
+                .filter_map(|process| process.exe().map(normalize_path))
+                .filter(|path| path.ends_with(".exe"))
+                .collect::<Vec<String>>();
+
+            running_processes.sort();
+            running_processes.dedup();
+
+            Ok(running_processes)
+        })
+        .await
+        .map_err(|err| format!("Failed to list running processes: {}", err))?
+    }
+
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy()
         .replace('/', "\\")
@@ -1268,6 +1312,7 @@ async fn install_update_cmd(app: tauri::AppHandle) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             let _ = app.emit("restore-app-window", ());
@@ -1331,7 +1376,9 @@ pub fn run() {
             set_run_on_startup,
             get_run_on_startup,
             is_run_on_startup_disabled,
+            was_started_with_auto_arg,
             wait_for_process_exit,
+            list_running_processes,
             download_and_launch_installer,
             check_for_updates_cmd,
             install_update_cmd,

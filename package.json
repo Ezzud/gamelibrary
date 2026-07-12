@@ -1,11 +1,13 @@
 {
   "name": "gamelibrary",
   "private": true,
-  "version": "0.3.12",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "sync:version": "node scripts/sync-version.mjs",
     "dev": "vite",
+    "api:dev": "pnpm --dir api dev",
+    "api:start": "pnpm --dir api start",
     "prebuild": "pnpm run sync:version",
     "build": "tsc && vite build",
     "pretauri": "pnpm run sync:version",
@@ -21,6 +23,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-fs": "^2.5.0",
+    "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-updater": "~2",
     "lucide-react": "^1.8.0",

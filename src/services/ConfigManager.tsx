@@ -3,7 +3,7 @@ import { exists, mkdir, readTextFile, writeTextFile, readDir, remove } from '@ta
 import { appDataDir, dirname, join, extname } from '@tauri-apps/api/path'
 import { invoke } from '@tauri-apps/api/core'
 import { Logger } from '../utils/Logger'
-import type { Config, GameCacheConfig, GameConfig, GameList, GameListEntry, PlayHistory } from '../types/appTypes'
+import type { Config, GameCacheConfig, GameConfig, GameList, GameListEntry, PlayHistory, IGDBConnectionMode } from '../types/appTypes'
 
 
 const defaultConfig: Config = {
@@ -13,8 +13,14 @@ const defaultConfig: Config = {
     twitchClientId: '',
     twitchClientSecret: '',
     cardHoverEffect: 'zoom',
+    igdbConnectionMode: 'api',
+    igdbApiBaseUrl: 'https://gamelibrary.ezzud.fr/api',
     runOnStartup: true,
+    runReduced: false,
     reduceWhilePlaying: false,
+    reduceWhenClosing: true,
+    reduceWhenClosingNoticeShown: false,
+    autoDetectGames: true,
     sortField: 'name',
     sortOrder: 'asc'
 };
@@ -49,6 +55,23 @@ async function ensureParentDir(filePath: string) {
 
 function normalizePathForCompare(value: string) {
     return value.replace(/\\/g, '/').replace(/\/+$/, '').trim().toLowerCase();
+}
+
+function normalizeApiBaseUrl(value: string) {
+    return value.trim().replace(/\/+$/, '');
+}
+
+function resolveInitialIGDBConnectionMode(parsed: any): IGDBConnectionMode {
+    const candidate = parsed?.igdbConnectionMode;
+    if (candidate === 'api' || candidate === 'twitch') {
+        return candidate;
+    }
+
+    const hasExistingCredentials =
+        typeof parsed?.twitchClientId === 'string' && parsed.twitchClientId.trim().length > 0 &&
+        typeof parsed?.twitchClientSecret === 'string' && parsed.twitchClientSecret.trim().length > 0;
+
+    return hasExistingCredentials ? 'twitch' : 'api';
 }
 
 
@@ -287,7 +310,15 @@ async function loadConfig() {
             twitchClientId: typeof parsed?.twitchClientId === 'string' ? parsed.twitchClientId : '',
             twitchClientSecret: typeof parsed?.twitchClientSecret === 'string' ? parsed.twitchClientSecret : '',
             cardHoverEffect: typeof parsed?.cardHoverEffect === 'string' ? parsed.cardHoverEffect : 'zoom',
+            igdbConnectionMode: resolveInitialIGDBConnectionMode(parsed),
+            igdbApiBaseUrl: typeof parsed?.igdbApiBaseUrl === 'string' && parsed.igdbApiBaseUrl.trim().length > 0
+                ? normalizeApiBaseUrl(parsed.igdbApiBaseUrl)
+                : defaultConfig.igdbApiBaseUrl,
+            runReduced: typeof parsed?.runReduced === 'boolean' ? parsed.runReduced : false,
             reduceWhilePlaying: typeof parsed?.reduceWhilePlaying === 'boolean' ? parsed.reduceWhilePlaying : false,
+            reduceWhenClosing: typeof parsed?.reduceWhenClosing === 'boolean' ? parsed.reduceWhenClosing : true,
+            reduceWhenClosingNoticeShown: typeof parsed?.reduceWhenClosingNoticeShown === 'boolean' ? parsed.reduceWhenClosingNoticeShown : false,
+            autoDetectGames: typeof parsed?.autoDetectGames === 'boolean' ? parsed.autoDetectGames : true,
         } as Config;
     } catch (err) {
         Logger.error(`Error occurred while reading config at ${configPath}:`, err);
@@ -320,21 +351,32 @@ export async function setCardHoverEffect(cardHoverEffect: string) {
     Logger.info('Card hover effect saved to app config.');
 }
 
-export async function setRunOnStartup(enable: boolean) {
+export async function setRunOnStartup(enable: boolean, reduced = false) {
     const config = await loadConfig();
     const nextConfig: Config = {
         ...config,
         runOnStartup: !!enable,
+        runReduced: !!reduced,
     };
     await saveConfig(nextConfig);
 
     try {
-        await invoke('set_run_on_startup', { enable });
+        await invoke('set_run_on_startup', { enable, reduced });
         Logger.info(`Run-on-startup ${enable ? 'enabled' : 'disabled'}`);
     } catch (err) {
         Logger.error('Failed to set run-on-startup via backend:', err);
         throw err;
     }
+}
+
+export async function setRunReduced(enable: boolean) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        runReduced: !!enable,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`Run-reduced ${enable ? 'enabled' : 'disabled'}`);
 }
 
 export async function getRunOnStartup() {
@@ -357,11 +399,61 @@ export async function setReduceWhilePlaying(enable: boolean) {
     Logger.info(`Reduce-while-playing ${enable ? 'enabled' : 'disabled'}`);
 }
 
+export async function setReduceWhenClosing(enable: boolean) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        reduceWhenClosing: !!enable,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`Reduce-when-closing ${enable ? 'enabled' : 'disabled'}`);
+}
+
+export async function setReduceWhenClosingNoticeShown(shown: boolean) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        reduceWhenClosingNoticeShown: !!shown,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`Reduce-when-closing notice shown flag set to ${shown}`);
+}
+
+export async function setAutoDetectGames(enable: boolean) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        autoDetectGames: !!enable,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`Auto-detect-games ${enable ? 'enabled' : 'disabled'}`);
+}
+
+export async function setIGDBConnectionMode(mode: IGDBConnectionMode) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        igdbConnectionMode: mode,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`IGDB connection mode set to ${mode}`);
+}
+
+export async function setIGDBApiBaseUrl(baseUrl: string) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        igdbApiBaseUrl: normalizeApiBaseUrl(baseUrl) || defaultConfig.igdbApiBaseUrl,
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`IGDB API base URL saved to ${nextConfig.igdbApiBaseUrl}`);
+}
+
 export async function ensureRunOnStartupAppliedOnLaunch() {
     const config = await loadConfig();
     if (config.runOnStartup === null || config.runOnStartup === undefined) {
         try {
-            await setRunOnStartup(true);
+            await setRunOnStartup(true, config.runReduced === true);
             Logger.info('Run-on-startup was enabled in config and re-applied on launch.');
         } catch (err) {
             Logger.error('Failed to re-apply run-on-startup during launch sync:', err);
@@ -379,7 +471,7 @@ export async function ensureRunOnStartupAppliedOnLaunch() {
     }
 
     try {
-        await setRunOnStartup(true);
+        await setRunOnStartup(true, config.runReduced === true);
         Logger.info('Run-on-startup was enabled in config but missing in OS startup list. Re-applied on launch.');
     } catch (err) {
         Logger.error('Failed to re-apply run-on-startup during launch sync:', err);
