@@ -56,6 +56,28 @@ const buildImageText = async (mode: DiscordRpcConfig['largeImage'] | DiscordRpcC
     return ''
 }
 
+export const clearDiscordPresence = async () => {
+    try {
+        if(!DISCORD_APP_ID) {
+            Logger.warn('Discord RPC App ID is not set. Skipping Discord RPC presence clear.')
+            return
+        }
+
+        Logger.info('Clearing Discord RPC presence.')
+        await invoke('discord_rpc_update_presence', {
+            payload: { 
+                enabled: false,
+                appId: DISCORD_APP_ID,
+                name: "",
+                displayTimeElapsed: false,
+                showButton: false
+            },
+        })
+    } catch (error) {
+        Logger.error('Failed to clear Discord presence:', error)
+    }
+}
+
 export const syncDiscordPresence = async (context: {
     activeGame?: Game | null
     isSettingsOpen: boolean

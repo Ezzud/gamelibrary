@@ -2,7 +2,7 @@
   "name": "gamelibrary",
   "private": false,
   "author": "Ezzud",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "type": "module",
   "scripts": {
     "sync:version": "node scripts/sync-version.mjs",

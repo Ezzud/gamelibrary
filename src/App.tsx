@@ -9,7 +9,7 @@ import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
 import ToastSystem, { useToastSystem } from './components/ToastSystem'
-import { syncDiscordPresence } from './services/DiscordRPC'
+import { clearDiscordPresence, syncDiscordPresence } from './services/DiscordRPC'
 import {
     fetchAllCustomFolderGames,
     refetchAllSpecialTags,
@@ -204,6 +204,14 @@ function App() {
             discordPresenceStartedAtRef.current = null
         } else if (discordPresenceStartedAtRef.current === null) {
             discordPresenceStartedAtRef.current = Date.now()
+        }
+
+        const cf = await getAppConfig();
+        const visibleBrowsingState = cf.discordRpc?.showWhenNoGamePlayed ?? false 
+
+        if(!activeDiscordGame && !visibleBrowsingState) {
+            await clearDiscordPresence()
+            return
         }
 
         await syncDiscordPresence({
