@@ -3,10 +3,22 @@ import { Logger } from '../utils/Logger'
 
 export const launchGame = async (gamePath: string, gameId: string) => {
 	try {
+		Logger.info(`Launching game at path: ${gamePath} with ID: ${gameId}`)
 		const launchPath = await invoke<string>('launch_game', { gamePath, gameId })
 		return launchPath
 	} catch (err) {
 		Logger.error(`Error occurred while launching game at ${gamePath}:`, err)
+		throw err
+	}
+}
+
+export const launchSteamGame = async (steamId: string, gameId: string) => {
+	try {
+		Logger.info(`Launching Steam game with ID: ${steamId} and game ID: ${gameId}`)
+		const launchPath = await invoke<string>('launch_steam_game', { steamId, gameId: gameId })
+		return launchPath
+	} catch (err) {
+		Logger.error(`Error occurred while launching Steam game with ID ${steamId}:`, err)
 		throw err
 	}
 }

@@ -46,7 +46,7 @@ import {
     setReduceWhenClosingNoticeShown as persistReduceWhenClosingNoticeShown,
 } from './services/ConfigManager'
 import { initIGDB, searchGame, getGameDetails, setTemporaryIGDBConnectionMode } from './services/GameDataManager'
-import { launchGame } from './services/GameLauncher'
+import { launchGame, launchSteamGame } from './services/GameLauncher'
 import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from './services/PlaytimeManager'
 import { getVersion } from '@tauri-apps/api/app'
 import type { ConfigCategory, Game, IGDBConnectionStatus, LastPlayedCard, SortField } from './types/appTypes'
@@ -577,7 +577,22 @@ function App() {
 
             setLaunchingGameId(game.id)
             const launchStartedAt = Date.now()
-            const launchPath = await launchGame(game.path, game.id)
+
+            let launchPath: string;
+            if(!config.launchWithSteam) {
+                Logger.warn(`Set default launchWithSteam to true for game ${game.name} (ID: ${game.id}) because it was undefined.`)
+                config.launchWithSteam = true;
+                await saveGameConfig(game.id, {
+                    ...config,
+                    launchWithSteam: true,
+                })
+            }
+
+            if(config?.launchWithSteam && config?.steamId) {
+                launchPath = await launchSteamGame(config.steamId, game.id)
+            } else {
+                launchPath = await launchGame(game.path, game.id)
+            }
             try {
                 await addPlayHistoryEntry(game.id)
                 await refreshLastPlayedCards()
@@ -614,7 +629,21 @@ function App() {
                 allLaunchFiles: pickerPendingConfig?.allLaunchFiles || pickerLaunchFiles,
             })
 
-            const launchPath = await launchGame(pickerGame.path, pickerGame.id)
+            if(!pickerPendingConfig?.launchWithSteam) {
+                Logger.warn(`Set default launchWithSteam to true for game ${pickerGame.name} (ID: ${pickerGame.id}) because it was undefined.`)
+                pickerPendingConfig.launchWithSteam = true;
+                await saveGameConfig(pickerGame.id, {
+                    ...pickerPendingConfig,
+                    launchWithSteam: true,
+                })
+            }
+
+            let launchPath: string;
+            if(pickerPendingConfig?.launchWithSteam && pickerPendingConfig?.steamId) {
+                launchPath = await launchSteamGame(pickerPendingConfig.steamId, pickerGame.id)
+            } else {
+                launchPath = await launchGame(pickerGame.path, pickerGame.id)
+            }
             try {
                 await addPlayHistoryEntry(pickerGame.id)
                 await refreshLastPlayedCards()

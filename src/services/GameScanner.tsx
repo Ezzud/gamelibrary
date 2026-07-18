@@ -1,10 +1,10 @@
-import { exists, readDir } from "@tauri-apps/plugin-fs";
+import { exists, readDir, readTextFile  } from "@tauri-apps/plugin-fs";
 import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir } from "@tauri-apps/api/path";
 import { Logger } from "../utils/Logger";
 import { searchGame } from "./GameDataManager";
 import { addGamesToList, saveGameConfig, saveGameInfoCache, loadGameList, loadGameConfig, removeGameFromList, getCustomScanFolders, getIgnoredFolders, loadGameCache } from "./ConfigManager";
-import type { GameCacheConfig, GameConfig, GameListEntry, ScanProgressCallback } from "../types/appTypes";
+import type { GameCacheConfig, GameConfig, GameListEntry, ScanProgressCallback, SteamData } from "../types/appTypes";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -416,6 +416,9 @@ export async function scanAndAddSteamGames(onProgress?: ScanProgressCallback) {
 			const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
 			reportProgress(onProgress, mappedPercent, update.message);
 		});
+
+		reportProgress(onProgress, 95, 'Assigning Steam IDs');
+		await assignSteamIdsToGames();
 
 		reportProgress(onProgress, 100, 'Steam scan complete.');
 	} catch (err) {
@@ -863,6 +866,33 @@ export async function fetchAllCustomFolderGames(folderPath: string) {
 	return games;
 }
 
+export async function fetchSteamLibraryIds(StreamLibraryPath: string) {
+	const entries = await readDir(StreamLibraryPath);
+	const games: SteamData[] = [];
+	
+	for (const entry of entries) {
+		if (entry.isDirectory) continue;
+		if (!entry.name.startsWith("appmanifest_")) continue;
+		if (!entry.name.endsWith(".acf")) continue;
+
+		const manifestPath = `${StreamLibraryPath}/${entry.name}`;
+		const content = await readTextFile(manifestPath);
+
+		const appId = content.match(/"appid"\s*"(\d+)"/)?.[1];
+		const installDir = content.match(/"installdir"\s*"([^"]+)"/)?.[1];
+
+		if (!appId || !installDir) continue;
+
+		games.push({
+			appId,
+			installDir,
+			manifestPath,
+		});
+	}
+
+  	return games;
+}
+
 export async function fetchAllSteamGames() {
 	const games: any[] = [];
 	const seenGameNames = new Set<string>();
@@ -875,6 +905,7 @@ export async function fetchAllSteamGames() {
 		path: string;
 		defaultLaunchFile: string | null;
 		allLaunchFiles: string[] | null;
+		steamId?: string | null;
 	}) => {
 		if (isIgnoredPath(game.path)) {
 			Logger.info(`Skipping ignored game path: ${game.path}`);
@@ -901,10 +932,17 @@ export async function fetchAllSteamGames() {
 				const pathExists = await exists(fullPath);
 				if (pathExists) {
 					Logger.success(`Found Steam library at: ${fullPath}`);
+
+					// Path is common folder
+					const parentPath = fullPath.split('/').slice(0, -1).join('/');
+					const steamIds = await fetchSteamLibraryIds(parentPath);
+
 					const entries = await readDir(fullPath);
 					for (const entry of entries) {
 						if (entry.isDirectory) {
 							const gamePath = `${fullPath}/${entry.name}`;
+							const steamIdEntry = steamIds.find(id => id.installDir.toLowerCase() === entry.name.toLowerCase());
+
 							const launchFiles = await getAllLaunchFiles(gamePath);
 							if (launchFiles.length < 1) {
 								Logger.warn(`No launch files found for game at ${gamePath}, skipping.`);
@@ -917,6 +955,7 @@ export async function fetchAllSteamGames() {
 							addDiscoveredGame({
 								name: entry.name,
 								path: gamePath,
+								steamId: steamIdEntry ? steamIdEntry.appId : null,
 								defaultLaunchFile: launchFiles.length > 0 ? launchFiles[0] : null,
 								allLaunchFiles: launchFiles.length > 0 ? launchFiles : null
 							});
@@ -936,10 +975,17 @@ export async function fetchAllSteamGames() {
 			const libraryExists = await exists(libraryPath);
 			if (libraryExists) {
 				Logger.success(`Found additional Steam library at: ${libraryPath}`);
+
+				// Path is common folder
+				const parentPath = libraryPath.split('/').slice(0, -1).join('/');
+				const steamIds = await fetchSteamLibraryIds(parentPath);
+
 				const libraryEntries = await readDir(libraryPath);
 				for (const entry of libraryEntries) {
 					if (entry.isDirectory) {
 						const gamePath = `${libraryPath}/${entry.name}`;
+						const steamIdEntry = steamIds.find(id => id.installDir.toLowerCase() === entry.name.toLowerCase());
+
 						const launchFiles = await getAllLaunchFiles(gamePath);
 						if (launchFiles.length < 1) {
 							Logger.warn(`No launch files found for game at ${gamePath}, skipping.`);
@@ -953,6 +999,7 @@ export async function fetchAllSteamGames() {
 						addDiscoveredGame({
 							name: entry.name,
 							path: gamePath,
+							steamId: steamIdEntry ? steamIdEntry.appId : null,
 							defaultLaunchFile: launchFiles.length > 0 ? launchFiles[0] : null,
 							allLaunchFiles: launchFiles.length > 0 ? launchFiles : null
 						});
@@ -989,6 +1036,30 @@ export async function removeDuplicateGames() {
 async function generateGameId() {
 	// game-number
 	return `game-${Math.floor(Math.random() * 100000)}`;
+}
+
+export async function assignSteamIdsToGames() {
+	const gameList = await loadGameList();
+	for (const game of gameList.games) {
+		const cache = await loadGameCache(game.id);
+		if(cache.platform === "Steam") {
+			const config = await loadGameConfig(game.id);
+			if(!config.steamId) {
+				const gamePath = game.path.replace(/\\/g, '/');
+				const gameExists = await exists(gamePath);
+				if(!gameExists) {
+					Logger.warn(`Game path does not exist for ${game.name} at ${game.path}, skipping Steam ID assignment.`);
+					continue;
+				}
+				const commonFolder = gamePath.split('/').slice(0, -1).join('/');
+				const steamappsFolder = commonFolder.split('/').slice(0, -1).join('/');
+				const steamIds = await fetchSteamLibraryIds(steamappsFolder);
+				const steamIdEntry = steamIds.find(id => id.installDir.toLowerCase() === gamePath.split('/').pop()?.toLowerCase());
+				saveGameConfig(game.id, { ...config, steamId: steamIdEntry ? steamIdEntry.appId : null });
+				Logger.info(`Assigned Steam ID ${steamIdEntry ? steamIdEntry.appId : 'null'} to game ${game.name} at ${game.path}`)
+			}
+		}
+	}
 }
 
 export async function registerGames(games: any[], platform: string, onProgress?: ScanProgressCallback) {
@@ -1124,6 +1195,7 @@ export async function registerGames(games: any[], platform: string, onProgress?:
 				customArguments: '',
 				defaultLaunchFile: game.defaultLaunchFile,
 				allLaunchFiles: game.allLaunchFiles,
+				steamId: game.steamId || null,
 				specialTags: specialTags,
 				searchName: searchName,
 				dateAdded: Date.now(),

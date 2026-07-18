@@ -38,6 +38,7 @@ const defaultGameConfig: GameConfig = {
     defaultLaunchFile: undefined,
     allLaunchFiles: undefined,
     lockedLaunchFile: false,
+    launchWithSteam: true,
     specialTags: [],
     searchName: '',
     forced_igdb_id: null,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Save, Loader, FolderOpen, TerminalSquare, FolderCog, FileCog, Info, Rocket, X, RefreshCw, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, Save, Loader, FolderOpen, TerminalSquare, FolderCog, FileCog, Info, Rocket, X, RefreshCw, Image as ImageIcon, Dock, RectangleEllipsis } from 'lucide-react'
 import { dirname } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-dialog'
 import { loadGameConfig, saveGameConfig, getGameCachePath, copyFileToGameCache, getGameCoverPath, getGameThumbnailPath } from '../services/ConfigManager'
@@ -22,6 +22,8 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 	const [allLaunchFiles, setAllLaunchFiles] = useState<string[]>([])
 	const [cachePath, setCachePath] = useState('')
 	const [forcedIGDBId, setForcedIGDBId] = useState('')
+	const [steamId, setSteamId] = useState<string | null>(null)
+	const [launchWithSteam, setLaunchWithSteam] = useState(true)
 	const [saveMessage, setSaveMessage] = useState('')
 	const [isSaving, setIsSaving] = useState(false)
 	const [isResettingIGDBData, setIsResettingIGDBData] = useState(false)
@@ -84,6 +86,16 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 				} else {
 					setForcedIGDBId('')
 				}
+
+				// Load steam_id from config
+				if (config.steamId) {
+					setSteamId(config.steamId)
+				} else {
+					setSteamId(null)
+				}
+
+				// Load launchWithSteam from config
+				setLaunchWithSteam(!!config.launchWithSteam)
 			} else {
 				setSearchName(folderName)
 			}
@@ -119,6 +131,8 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 				customArguments: launchArgs,
 				searchName: trimmedSearchName || folderName || game.name,
 				forced_igdb_id: forcedId,
+				steamId: steamId,
+				launchWithSteam: launchWithSteam,
 			})
 
 			setSaveMessage('Configuration saved successfully!')
@@ -131,6 +145,27 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 		} finally {
 			setIsSaving(false)
 		}
+	}
+
+	const handleSetLaunchWithSteam = async (value: boolean) => {
+		setIsSaving(true)
+		try {
+			const currentConfig = await loadGameConfig(game.id)
+			await saveGameConfig(game.id, {
+				...currentConfig,
+				launchWithSteam: value,
+			})
+			setSaveMessage(`Launch with Steam set to ${value ? 'enabled' : 'disabled'}`)
+			setTimeout(() => setSaveMessage(''), 3000)
+			onConfigSaved?.()
+		} catch (error) {
+			console.error('Failed to update launchWithSteam:', error)
+			setSaveMessage('Failed to save configuration')
+			setTimeout(() => setSaveMessage(''), 3000)
+		} finally {
+			setIsSaving(false)
+		}
+		setLaunchWithSteam(value)
 	}
 
 	const handleClearForcedIGDBId = async () => {
@@ -348,20 +383,81 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 				) : (
 					<div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)] gap-8 items-start">
 						<div className="bg-[#16263b]/88 rounded-xl p-6 shadow-[0_14px_28px_rgba(0,0,0,0.24)]">
+							{steamId && (
+								<div className="mb-6 flex items-center justify-between gap-4">
+									<div className="flex-1">
+									<label className="flex items-center gap-2 text-steam-300 font-semibold mb-2">
+										<Dock className="w-4 h-4 text-steam-300" />
+										Launch With Steam (Recommended)
+									</label>
+
+									<p className="text-steam-400 text-sm">
+										Launches the game using the Steam client. 
+										<br />
+										Disable this if you want to use custom launch arguments or if the game
+										doesn't work with Steam launch. Multiple games with Anti-Cheat won't load without this enabled.
+									</p>
+									</div>
+
+									<div
+									role="switch"
+									tabIndex={0}
+									aria-checked={launchWithSteam}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault()
+										handleSetLaunchWithSteam(!launchWithSteam)
+										}
+									}}
+									onClick={() => handleSetLaunchWithSteam(!launchWithSteam)}
+									className={`relative inline-flex h-8 w-16 shrink-0 items-center rounded-md p-1 transition-all duration-300 cursor-pointer ${
+										launchWithSteam ? 'bg-sky-400' : 'bg-zinc-700'
+									}`}
+									>
+									<div
+										className={`h-6 w-6 rounded-md bg-white shadow transition-all duration-300 ${
+										launchWithSteam ? 'translate-x-8' : 'translate-x-0'
+										}`}
+									/>
+									</div>
+								</div>
+								)}
+							
 							{/* Launch Arguments */}
 							<div className="mb-6">
-								<label className="flex items-center gap-2 text-steam-300 font-semibold mb-2">
-									<TerminalSquare className="w-4 h-4 text-steam-300" />
+								<label
+									className={`flex items-center gap-2 font-semibold mb-2 transition-colors ${
+									launchWithSteam ? 'text-steam-500' : 'text-steam-300'
+									}`}
+								>
+									<TerminalSquare
+									className={`w-4 h-4 ${
+										launchWithSteam ? 'text-steam-500' : 'text-steam-300'
+									}`}
+									/>
 									Launch Arguments
 								</label>
-								<p className="text-steam-400 text-sm mb-3">
+
+								<p
+									className={`text-sm mb-3 transition-colors ${
+									launchWithSteam ? 'text-steam-400' : 'text-steam-400'
+									}`}
+								>
 									Additional command-line arguments to pass when launching the game
 								</p>
+
 								<textarea
 									value={launchArgs}
 									onChange={(e) => setLaunchArgs(e.target.value)}
-									placeholder='e.g., -windowed -high -quality ultra'
-									className="w-full bg-[#0f1a2a]/95 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-steam-500/70 font-mono text-sm resize-none h-24 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+									disabled={launchWithSteam}
+									placeholder="e.g., -windowed -high -quality ultra"
+									className={`w-full rounded-lg p-3 font-mono text-sm resize-none h-24 transition-all
+									${
+										launchWithSteam
+										? 'bg-[#0f1a2a]/60 text-steam-500 cursor-not-allowed opacity-60'
+										: 'bg-[#0f1a2a]/95 text-white focus:outline-none focus:ring-2 focus:ring-steam-500/70'
+									}
+									shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]`}
 								/>
 							</div>
 
@@ -384,7 +480,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 
 							<div className="mb-6">
 								<label className="flex items-center gap-2 text-steam-300 font-semibold mb-2">
-									<Info className="w-4 h-4 text-steam-300" />
+									<RectangleEllipsis className="w-4 h-4 text-steam-300" />
 									Search Name
 								</label>
 								<p className="text-steam-400 text-sm mb-3">

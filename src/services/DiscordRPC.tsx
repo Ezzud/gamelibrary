@@ -144,7 +144,7 @@ export const syncDiscordPresence = async (context: {
                 smallText: smallText || null,
                 displayTimeElapsed: rpc.displayTimeElapsed,
                 showButton: rpc.showButton,
-                buttonLabel: rpc.showButton ? APP_NAME : null,
+                buttonLabel: rpc.showButton ? "Try GameLibrary!" : null,
                 buttonUrl: rpc.showButton ? normalizeDiscordUrl(APP_URL) : null,
                 elapsedStartedAt,
             },

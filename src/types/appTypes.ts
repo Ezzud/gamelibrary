@@ -8,6 +8,12 @@ export interface Game {
   size?: number
 }
 
+export interface SteamData {
+  appId: string;
+  installDir: string;
+  manifestPath: string;
+}
+
 export interface LastPlayedCard {
   gameId: string
   name: string
@@ -195,6 +201,8 @@ export interface GameConfig {
   customArguments: string
   defaultLaunchFile?: string
   allLaunchFiles?: string[]
+  steamId?: string | null
+  launchWithSteam?: boolean
   lockedLaunchFile?: boolean
   specialTags?: string[]
   searchName?: string

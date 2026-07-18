@@ -868,6 +868,19 @@ fn launch_game(
 }
 
 #[tauri::command]
+fn launch_steam_game(
+    steam_id: String,
+    _game_id: String,
+) -> Result<String, String> {
+    let uri = format!("steam://rungameid/{}", steam_id);
+
+    open::that(&uri)
+        .map_err(|e| format!("Failed to launch Steam game: {}", e))?;
+
+    Ok(uri)
+}
+
+#[tauri::command]
 async fn wait_for_process_exit(
     exe_path: String,
     game_path: String,
@@ -1400,6 +1413,7 @@ pub fn run() {
             get_directory_size,
             open_game_folder,
             launch_game,
+            launch_steam_game,
             set_run_on_startup,
             get_run_on_startup,
             is_run_on_startup_disabled,

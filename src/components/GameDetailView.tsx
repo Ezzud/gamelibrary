@@ -18,13 +18,14 @@ import { FaSteam, FaXbox } from 'react-icons/fa'
 import { SiEpicgames, SiGogdotcom } from 'react-icons/si'
 import GameConfigPanel from './GameConfigPanel'
 import { getGameSize as fetchGameSize } from '../services/GameDataManager'
-import { launchGame, openGameFolder } from '../services/GameLauncher'
+import { launchGame, launchSteamGame, openGameFolder } from '../services/GameLauncher'
 import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from '../services/PlaytimeManager'
 import { addPlayHistoryEntry, getPlayHistory, loadGameCache, loadGameConfig, saveGameConfig, getGameCoverPath, getGameThumbnailPath, loadGameList, saveGameList, saveGameInfoCache } from '../services/ConfigManager'
 import { chooseFolder, getAllLaunchFiles } from '../services/GameScanner'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 import type { Game, GameDetailViewProps } from '../types/appTypes'
 import { readFile } from '@tauri-apps/plugin-fs';
+import { Logger } from '../utils/Logger'
 
 const MIN_LAUNCH_LOADING_MS = 5000
 
@@ -283,7 +284,21 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 		setIsLaunching(true)
 		const launchStartedAt = Date.now()
 		try {
-			const launchPath = await launchGame(game.path, game.id)
+			if(!config.launchWithSteam) {
+				Logger.warn(`Set default launchWithSteam to true for game ${game.name} (ID: ${game.id}) because it was undefined.`)
+				config.launchWithSteam = true;
+				await saveGameConfig(game.id, {
+					...config,
+					launchWithSteam: true,
+				})
+			}
+
+			let launchPath: string;
+			if(config?.launchWithSteam && config?.steamId) {
+				launchPath = await launchSteamGame(config.steamId, game.id)
+			} else {
+				launchPath = await launchGame(game.path, game.id)
+			}
 			try {
 				await addPlayHistoryEntry(game.id)
 				await onLaunchSuccess()
@@ -323,7 +338,21 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 				allLaunchFiles: pendingLaunchConfig?.allLaunchFiles || availableLaunchFiles,
 			})
 
-			const launchPath = await launchGame(game.path, game.id)
+			if(!pendingLaunchConfig?.launchWithSteam) {
+                Logger.warn(`Set default launchWithSteam to true for game ${game.name} (ID: ${game.id}) because it was undefined.`)
+                pendingLaunchConfig.launchWithSteam = true;
+                await saveGameConfig(game.id, {
+                    ...pendingLaunchConfig,
+                    launchWithSteam: true,
+                })
+            }
+
+			let launchPath: string;
+			if(pendingLaunchConfig?.launchWithSteam && pendingLaunchConfig?.steamId) {
+				launchPath = await launchSteamGame(pendingLaunchConfig.steamId, game.id)
+			} else {
+				launchPath = await launchGame(game.path, game.id)
+			}
 			try {
 				await addPlayHistoryEntry(game.id)
 				await onLaunchSuccess()
