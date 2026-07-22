@@ -178,6 +178,6 @@ jobs:
           releaseDraft: false
           prerelease: false
           assetNamePattern: '[name]_[arch][setup][ext]'
-          args: --config src-tauri/tauri.microsoftstore.conf.json
+          args: --config src-tauri/tauri.conf.json --config src-tauri/tauri.nsis.conf.json
           includeUpdaterJson: true
           updaterJsonPreferNsis: true

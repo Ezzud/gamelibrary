@@ -2,7 +2,7 @@
   "name": "gamelibrary",
   "private": false,
   "author": "Ezzud",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "type": "module",
   "scripts": {
     "sync:version": "node scripts/sync-version.mjs",
@@ -16,7 +16,9 @@
     "tauri": "tauri",
     "version": "pnpm run sync:version",
     "tauri:dev": "pnpm run tauri dev",
-    "tauri:build": "pnpm run tauri build --no-bundle && pnpm run tauri bundle --config ./src-tauri/tauri.microsoftstore.conf.json"
+    "tauri:build": "pnpm run tauri build --no-bundle && pnpm run tauri bundle --config ./src-tauri/tauri.nsis.conf.json",
+    "tauri:build:macos": "pnpm run tauri build --no-bundle && pnpm run tauri bundle --config ./src-tauri/tauri.macos.conf.json",
+    "tauri:build:linux": "pnpm run tauri build --no-bundle && pnpm run tauri bundle --config ./src-tauri/tauri.linux.conf"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.2",
