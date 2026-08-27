@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import GameCard from './GameCard'
 import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, Link2, Loader, Play, Plus, RefreshCw, ShieldCheck, Star, Tags, Trash2 } from 'lucide-react'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import { launchGame, launchSteamGame, openGameFolder } from '../services/GameLauncher'
 import { trackPlaytimeForProcess } from '../services/PlaytimeManager'
-import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, loadGameConfig, loadGameCache, removeCustomScanFolder, removeGameFromList, saveGameConfig, getAppConfig, getGameCoverPath, setIGDBApiBaseUrl, setIGDBConnectionMode } from '../services/ConfigManager'
+import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, getPlayHistory, loadGameConfig, loadGameCache, removeCustomScanFolder, removeGameFromList, saveGameConfig, getAppConfig, getGameCoverPath, setIGDBApiBaseUrl, setIGDBConnectionMode } from '../services/ConfigManager'
 import { chooseFolder, fetchCustomGame, registerGames } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
 import { testGameLibraryApi } from '../services/GameDataManager'
@@ -17,6 +17,11 @@ const SCAN_PLATFORMS = ['Steam', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net'
 const MIN_LAUNCH_LOADING_MS = 5000
 const DEFAULT_METADATA_API_URL = 'https://gamelibrary.ezzud.fr/api'
 const normalizeApiBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
+const dateDataCache: Record<string, { dateAdded: number | null; lastPlayedAt: number | null }> = {}
+const coverDataCache: Record<string, string | null> = {}
+
+const hasCachedGameData = (games: Game[], cache: Record<string, unknown>) =>
+	games.length === 0 || games.every((game) => Object.prototype.hasOwnProperty.call(cache, game.id))
 
 const waitForMinimumLaunchLoading = async (startedAt: number) => {
 	const elapsed = Date.now() - startedAt
@@ -164,14 +169,16 @@ const GameLibrary = (props: GameLibraryProps) => {
 	const [removingCustomFolderPath, setRemovingCustomFolderPath] = useState<string | null>(null)
 	const [gameTagsById, setGameTagsById] = useState<Record<string, string[]>>({})
 	const [gameDateAddedById, setGameDateAddedById] = useState<Record<string, number | null>>({})
+	const [gameLastPlayedById, setGameLastPlayedById] = useState<Record<string, number | null>>({})
 	const [gameCoversById, setGameCoversById] = useState<Record<string, string | null>>({})
+	const [metadataRefreshKey, setMetadataRefreshKey] = useState(0)
 	const [isAddingManualGame, setIsAddingManualGame] = useState(false)
 	const [cardHoverEffect, setCardHoverEffect] = useState('zoom')
 	const [showSkipIGDBConfirmation, setShowSkipIGDBConfirmation] = useState(false)
 	const [skipIGDBConfirmationSource, setSkipIGDBConfirmationSource] = useState<'api' | 'twitch' | null>(null)
 	const [skipIGDBSetup, setSkipIGDBSetup] = useState(false)
-	const [dateLoading, setDateLoading] = useState(true)
-	const [displayCoverLoading, setDisplayCoverLoading] = useState(true)
+	const [dateLoading, setDateLoading] = useState(!hasCachedGameData(games, dateDataCache))
+	const [displayCoverLoading, setDisplayCoverLoading] = useState(!hasCachedGameData(games, coverDataCache))
 	const platformMenuRef = useRef<HTMLDivElement | null>(null)
 	const tagMenuRef = useRef<HTMLDivElement | null>(null)
 	const sortMenuRef = useRef<HTMLDivElement | null>(null)
@@ -255,26 +262,41 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 	useEffect(() => {
 		const loadDateAddedData = async () => {
+			setDateLoading(!hasCachedGameData(games, dateDataCache))
+
 			if (games.length < 1) {
-				setGameTagsById({})
 				setGameDateAddedById({})
+				setGameLastPlayedById({})
 				setDateLoading(false)
 				return
 			}
 
-			const pairs = await Promise.all(
-				games.map(async (game) => {
+			const pairs = await Promise.all(games.map(async (game) => {
+				const cached = dateDataCache[game.id]
+				if (cached) {
+					return [game.id, cached] as const
+				}
+
 					try {
 						const config = await loadGameConfig(game.id)
 						const dateAdded = parseDateAdded((config as any)?.dateAdded)
-						return [game.id, dateAdded] as const
+						const plays = await getPlayHistory(game.id)
+						const lastPlayedAt = plays.reduce<number | null>((latest, play) => {
+							const playedAt = parseDateAdded(play.playedAt)
+							return playedAt !== null && (latest === null || playedAt > latest) ? playedAt : latest
+						}, null)
+						const data = { dateAdded, lastPlayedAt }
+						dateDataCache[game.id] = data
+						return [game.id, data] as const
 					} catch {
-						return [game.id, null] as const
+						const data = { dateAdded: null, lastPlayedAt: null }
+						dateDataCache[game.id] = data
+						return [game.id, data] as const
 					}
-				})
-			)
+			}))
 
-			setGameDateAddedById(Object.fromEntries(pairs))
+			setGameDateAddedById(Object.fromEntries(pairs.map(([gameId, data]) => [gameId, data.dateAdded])))
+			setGameLastPlayedById(Object.fromEntries(pairs.map(([gameId, data]) => [gameId, data.lastPlayedAt])))
 			setGameTagsById((prev) => {
 				const validIds = new Set(games.map((game) => game.id))
 				const next = Object.fromEntries(Object.entries(prev).filter(([gameId]) => validIds.has(gameId)))
@@ -284,19 +306,25 @@ const GameLibrary = (props: GameLibraryProps) => {
 		}
 
 		void loadDateAddedData()
-	}, [games])
+	}, [games, metadataRefreshKey])
 
 	useEffect(() => {
 		const loadDisplayCoverData = async () => {
+			setDisplayCoverLoading(!hasCachedGameData(games, coverDataCache))
+
 			if (games.length < 1) {
-				setGameTagsById({})
 				setGameDateAddedById({})
+				setGameLastPlayedById({})
 				setDisplayCoverLoading(false)
 				return
 			}
 
-			const pairs = await Promise.all(
-				games.map(async (game) => {
+			const pairs = await Promise.all(games.map(async (game) => {
+				const cached = coverDataCache[game.id]
+				if (cached !== undefined) {
+					return [game.id, cached] as const
+				}
+
 					try {
 						const coverPath = await getGameCoverPath(game.id)
 						if (coverPath) {
@@ -305,14 +333,16 @@ const GameLibrary = (props: GameLibraryProps) => {
 								type: 'image/jpeg',
 							});
 							const url = URL.createObjectURL(blob);
+								coverDataCache[game.id] = url
 							return [game.id, url] as const
 						}
+						coverDataCache[game.id] = null
 						return [game.id, null] as const
 					} catch {
+						coverDataCache[game.id] = null
 						return [game.id, null] as const
 					}
-				})
-			)
+			}))
 
 			setGameCoversById(Object.fromEntries(pairs))
 			setGameTagsById((prev) => {
@@ -324,7 +354,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 		}
 
 		void loadDisplayCoverData()
-	}, [games])
+	}, [games, metadataRefreshKey])
 
 	const availablePlatforms = Array.from(new Set([...SCAN_PLATFORMS, ...games.map((game) => game.platform)])).filter(Boolean).sort((a, b) => a.localeCompare(b))
 	const availableTags = Array.from(
@@ -406,6 +436,23 @@ const GameLibrary = (props: GameLibraryProps) => {
 				} else {
 					result = a.name.localeCompare(b.name)
 				}
+			} else if (sortField === 'lastPlayed') {
+				const aLastPlayed = gameLastPlayedById[a.id] ?? null
+				const bLastPlayed = gameLastPlayedById[b.id] ?? null
+
+				if (aLastPlayed === null && bLastPlayed === null) {
+					result = a.name.localeCompare(b.name)
+				} else if (aLastPlayed === null) {
+					result = 1
+				} else if (bLastPlayed === null) {
+					result = -1
+				} else {
+					result = sortDirection === 'asc'
+						? aLastPlayed - bLastPlayed
+						: bLastPlayed - aLastPlayed
+				}
+
+				return result
 			} else {
 				const aFirstTag = ((gameTagsById[a.id] || [])[0] || '').toLowerCase()
 				const bFirstTag = ((gameTagsById[b.id] || [])[0] || '').toLowerCase()
@@ -497,6 +544,9 @@ const GameLibrary = (props: GameLibraryProps) => {
 		if (field === 'dateAdded') {
 			return 'Date Added'
 		}
+		if (field === 'lastPlayed') {
+			return 'Last Played'
+		}
 		return 'Tag'
 	}
 
@@ -537,6 +587,23 @@ const GameLibrary = (props: GameLibraryProps) => {
 		setIsPlatformMenuOpen(false)
 		setIsTagMenuOpen(false)
 		setIsSortMenuOpen(false)
+	}
+
+	const handleRefreshLibrary = () => {
+		Object.values(coverDataCache).forEach((coverUrl) => {
+			if (coverUrl) {
+				URL.revokeObjectURL(coverUrl)
+			}
+		})
+		Object.keys(dateDataCache).forEach((gameId) => delete dateDataCache[gameId])
+		Object.keys(coverDataCache).forEach((gameId) => delete coverDataCache[gameId])
+		setGameDateAddedById({})
+		setGameLastPlayedById({})
+		setGameCoversById({})
+		setDateLoading(true)
+		setDisplayCoverLoading(true)
+		setMetadataRefreshKey((previous) => previous + 1)
+		onRefresh()
 	}
 
 	const handleConnectIGDB = async () => {
@@ -580,7 +647,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 			}
 
 			const versionText = result.data?.version ? ` version ${result.data.version}` : ''
-			const pingText = typeof result.data?.pingMs === 'number' ? ` in ${result.data.pingMs}ms` : ''
+			const pingText = typeof result.data?.pingRequest === 'number' ? ` in ${result.data.pingRequest}ms` : ''
 			setMetadataSourceStatusMessage(`GameLibrary API is healthy${versionText}${pingText}.`)
 			setMetadataSourceStatusTone('success')
 		} catch (error) {
@@ -764,11 +831,6 @@ const GameLibrary = (props: GameLibraryProps) => {
 	}
 
 	const handleDeleteGame = async (game: Game) => {
-		const confirmed = window.confirm(`Delete ${game.name} from your library?`)
-		if (!confirmed) {
-			return
-		}
-
 		try {
 			await addIgnoredFolder(game.path)
 			await removeGameFromList(game.id)
@@ -983,9 +1045,9 @@ const GameLibrary = (props: GameLibraryProps) => {
 							<div className="flex items-center gap-2">
 								<button
 									type="button"
-									onClick={onRefresh}
+									onClick={handleRefreshLibrary}
 									disabled={isLoading || isLoadingGames}
-									className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-steam-600 bg-steam-700 hover:bg-steam-600 hover:border-steam-500 focus:outline-none disabled:opacity-50 transition-colors shrink-0"
+									className="theme-secondary-surface inline-flex items-center justify-center w-9 h-9 rounded-lg border border-steam-600 bg-steam-700 hover:bg-steam-600 hover:border-steam-500 focus:outline-none disabled:opacity-50 transition-colors shrink-0"
 									aria-label="Refresh game library"
 									title="Refresh game library"
 								>
@@ -995,7 +1057,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 									type="button"
 									onClick={() => void handleAddManualGame()}
 									disabled={isLoading || isAddingManualGame}
-									className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-steam-600 bg-steam-700 hover:bg-steam-600 hover:border-steam-500 focus:outline-none disabled:opacity-50 transition-colors shrink-0"
+									className="theme-secondary-surface inline-flex items-center justify-center w-9 h-9 rounded-lg border border-steam-600 bg-steam-700 hover:bg-steam-600 hover:border-steam-500 focus:outline-none disabled:opacity-50 transition-colors shrink-0"
 									aria-label="Add game manually"
 									title="Add game manually"
 								>
@@ -1006,7 +1068,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 									value={searchQuery}
 									onChange={(event) => onSearchQueryChange(event.target.value)}
 									placeholder={`Search by name or path`}
-									className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
+									className="theme-secondary-surface w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
 								/>
 							</div>
 
@@ -1194,6 +1256,16 @@ const GameLibrary = (props: GameLibraryProps) => {
 											className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${sortField === 'dateAdded' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
 										>
 											Date Added
+										</button>
+										<button
+											type="button"
+											onClick={() => {
+												onSortFieldChange('lastPlayed')
+												setIsSortMenuOpen(false)
+											}}
+											className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${sortField === 'lastPlayed' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
+										>
+											Last Played
 										</button>
 									</div>
 								)}
@@ -1629,4 +1701,19 @@ const GameLibrary = (props: GameLibraryProps) => {
 	)
 }
 
-export default GameLibrary
+export default memo(GameLibrary, (previous, next) => (
+	previous.games === next.games
+	&& previous.favoriteGameIds === next.favoriteGameIds
+	&& previous.runningGameIds === next.runningGameIds
+	&& previous.igdbConnectionStatus === next.igdbConnectionStatus
+	&& previous.isLoading === next.isLoading
+	&& previous.isLoadingGames === next.isLoadingGames
+	&& previous.scanProgress === next.scanProgress
+	&& previous.scanStatusMessage === next.scanStatusMessage
+	&& previous.searchQuery === next.searchQuery
+	&& previous.platformFilter === next.platformFilter
+	&& previous.tagFilter === next.tagFilter
+	&& previous.sortField === next.sortField
+	&& previous.sortDirection === next.sortDirection
+	&& previous.settingsLoaded === next.settingsLoaded
+))

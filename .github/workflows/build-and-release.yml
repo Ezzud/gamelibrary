@@ -84,19 +84,16 @@ jobs:
           echo "[Detect Version Change] version_changed=$VERSION_CHANGED"
           echo "version_changed=$VERSION_CHANGED" >> "$GITHUB_OUTPUT"
 
-  build_and_release:
-    name: Build and Release Tauri App
+  prepare_release:
+    name: Prepare Release
     needs: detect_version_change
-    runs-on: windows-latest
-    timeout-minutes: 90
+    runs-on: ubuntu-latest
     if: github.ref_type == 'branch' && github.ref_name == 'master' && needs.detect_version_change.outputs.version_changed == 'true' && needs.detect_version_change.outputs.api_only_changes != 'true'
     permissions:
-      contents: write
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_TERM_PROGRESS_WHEN: always
-      CARGO_TERM_PROGRESS_WIDTH: 80
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      contents: read
+    outputs:
+      tag_exists: ${{ steps.tag_check.outputs.tag_exists }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
 
     steps:
       - name: Checkout
@@ -104,30 +101,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Sync version files
-        run: pnpm run sync:version
 
       - name: Check if release tag exists
         id: tag_check
@@ -166,18 +143,84 @@ jobs:
             printf '\nEOF\n'
           } >> $GITHUB_OUTPUT
 
-      - name: Build and create release
-        if: steps.tag_check.outputs.tag_exists == 'false'
+  build_platform:
+    name: Build and Release ${{ matrix.platform }}
+    needs:
+      - detect_version_change
+      - prepare_release
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    timeout-minutes: 90
+    if: needs.prepare_release.outputs.tag_exists == 'false'
+    permissions:
+      contents: write
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_TERM_PROGRESS_WHEN: always
+      CARGO_TERM_PROGRESS_WIDTH: 80
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows
+            os: windows-latest
+            config: src-tauri/tauri.nsis.conf.json
+            tag_suffix: ''
+          - platform: Linux
+            os: ubuntu-latest
+            config: src-tauri/tauri.linux.conf.json
+            tag_suffix: '-linux'
+          - platform: macOS
+            os: macos-latest
+            config: src-tauri/tauri.macos.conf.json
+            tag_suffix: '-macos'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync version files
+        run: pnpm run sync:version
+
+      - name: Build and release ${{ matrix.platform }} bundle
         uses: tauri-apps/tauri-action@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ needs.detect_version_change.outputs.current_version }}
-          releaseName: GameLibrary v${{ needs.detect_version_change.outputs.current_version }}
-          releaseBody: ${{ steps.changelog.outputs.changelog }}
+          tagName: v${{ needs.detect_version_change.outputs.current_version }}${{ matrix.tag_suffix }}
+          releaseName: GameLibrary v${{ needs.detect_version_change.outputs.current_version }}${{ matrix.tag_suffix }}
+          releaseBody: ${{ needs.prepare_release.outputs.changelog }}
           releaseDraft: false
           prerelease: false
           assetNamePattern: '[name]_[arch][setup][ext]'
-          args: --config src-tauri/tauri.conf.json --config src-tauri/tauri.nsis.conf.json
+          args: --config src-tauri/tauri.conf.json --config ${{ matrix.config }}
           includeUpdaterJson: true
           updaterJsonPreferNsis: true

@@ -1,5 +1,11 @@
 {
   "bundle": {
     "targets": ["appimage", "deb", "rpm"]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzNDc0RDc3N0VGMjg0OEEKUldTS2hQSitkMDFIbzRTaEtxdGVEWWNKZlk4MnA2aU16L3ZaZVJWSUI5VmhEL2YrUU4rdEM2OFgK",
+      "endpoints": ["https://gamelibrary.ezzud.fr/api/updater/linux"]
+    }
   }
 }

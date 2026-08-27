@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { appDataDir, appLocalDataDir } from '@tauri-apps/api/path'
 import {
 	Check,
+	ChevronDown,
 	AlertCircle,
 	Info,
 	Database,
@@ -29,7 +30,8 @@ import {
 	RotateCw,
 	Globe,
 	KeyRound,
-	Link2
+	Link2,
+	Palette
 } from 'lucide-react'
 import { FaSteam, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
@@ -54,8 +56,10 @@ import {
 	setReduceWhenClosing,
 	setAutoDetectGames,
 	setIGDBConnectionMode,
-	setIGDBApiBaseUrl
+	setIGDBApiBaseUrl,
+	setTheme
 } from '../services/ConfigManager'
+import { applyTheme, getAvailableThemes } from '../services/ThemeManager'
 import { chooseFolder } from '../services/GameScanner'
 import { testGameLibraryApi } from '../services/GameDataManager'
 import { Logger } from '../utils/Logger'
@@ -158,6 +162,11 @@ const AppConfig = ({
 	const [igdbConnectionMode, setIgdbConnectionModeState] = useState<IGDBConnectionMode>('api')
 	const [gameLibraryApiBaseUrl, setGameLibraryApiBaseUrlState] = useState('https://gamelibrary.ezzud.fr/api')
 	const [cardHoverEffect, setCardHoverEffectState] = useState('zoom')
+	const [selectedTheme, setSelectedTheme] = useState('default')
+	const [appliedTheme, setAppliedTheme] = useState('default')
+	const [isApplyingTheme, setIsApplyingTheme] = useState(false)
+	const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false)
+	const themeMenuRef = useRef<HTMLDivElement | null>(null)
 	const [runOnStartup, setRunOnStartupState] = useState(false)
 	const [runReduced, setRunReducedState] = useState(false)
 	const [reduceWhilePlaying, setReduceWhilePlayingState] = useState(true)
@@ -188,6 +197,7 @@ const AppConfig = ({
 	const categories = useMemo(
 		() => [
 			{ key: 'General' as const, label: 'General', icon: Settings2 },
+			{ key: 'Appearance' as const, label: 'Appearance', icon: Palette },
 			{ key: 'Library' as const, label: 'Library', icon: Wrench },
 			{ key: 'Scanning' as const, label: 'Scanning', icon: ScanSearch },
 			{ key: 'DiscordRPC' as const, label: 'Discord RPC', icon: Link2 },
@@ -268,6 +278,12 @@ const AppConfig = ({
 			setIgdbConnectionModeState(config.igdbConnectionMode === 'twitch' ? 'twitch' : 'api')
 			setGameLibraryApiBaseUrlState((config.igdbApiBaseUrl || 'https://gamelibrary.ezzud.fr/api').trim())
 			setCardHoverEffectState(config.cardHoverEffect || 'zoom')
+			const configuredTheme = config.theme?.trim() || 'default'
+			setSelectedTheme(configuredTheme)
+			setAppliedTheme(configuredTheme)
+			if (!config.theme) {
+				void setTheme('default')
+			}
 			setRunOnStartupState(!!config.runOnStartup)
 			setRunReducedState(config.runReduced === true)
 			setReduceWhilePlayingState(config.reduceWhilePlaying !== false)
@@ -678,7 +694,7 @@ const AppConfig = ({
 			if (result.success) {
 				setCredentialsStatus({
 					type: 'success',
-					message: `Connected to GameLibrary API${result.data?.version ? ` v${result.data.version}` : ''}${typeof result.data?.pingMs === 'number' ? ` (${result.data.pingMs}ms)` : ''}.`
+					message: `Connected to GameLibrary API${result.data?.version ? ` v${result.data.version}` : ''}${typeof result.data?.pingRequest === 'number' ? ` (${result.data.pingRequest}ms)` : ''}.`
 				})
 				return
 			}
@@ -699,6 +715,34 @@ const AppConfig = ({
 			Logger.info(`Card hover effect changed to: ${effect}`)
 		} catch (error) {
 			Logger.error('Failed to save card hover effect:', error)
+		}
+	}
+
+	const handleThemeSelection = async (theme: string) => {
+		const nextTheme = theme.trim() || 'default'
+		setSelectedTheme(nextTheme)
+		try {
+			await setTheme(nextTheme)
+		} catch (error) {
+			Logger.error('Failed to save theme selection:', error)
+		}
+	}
+
+	const handleApplyTheme = async () => {
+		if (isApplyingTheme || selectedTheme === appliedTheme) {
+			return
+		}
+
+		setIsApplyingTheme(true)
+		try {
+			const applied = await applyTheme(selectedTheme)
+			setSelectedTheme(applied)
+			setAppliedTheme(applied)
+			onConfigChanged?.()
+		} catch (error) {
+			Logger.error('Failed to apply selected theme:', error)
+		} finally {
+			setIsApplyingTheme(false)
 		}
 	}
 
@@ -931,13 +975,12 @@ const AppConfig = ({
 
 	return (
 		<div className="h-full flex bg-steam-900 text-white">
-			<aside className="w-72 bg-steam-800 p-4 shadow-[6px_0_20px_rgba(0,0,0,0.25)]">
-				<div className="mb-4 rounded-xl bg-linear-to-br from-steam-700 to-steam-800 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.2)]">
+			<aside className="w-72 bg-steam-900 p-4 shadow-[6px_0_20px_rgba(0,0,0,0.25)]">
+				<div className="mb-4 rounded-xl bg-steam-800 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.2)]">
 					<h2 className="text-lg font-semibold flex items-center gap-2">
 						<Settings2 className="w-4 h-4 text-steam-300" />
 						App Config
 					</h2>
-					<p className="text-xs text-steam-300 mt-1">Control folders, platforms, and scan behavior.</p>
 				</div>
 				<nav className="space-y-2">
 					{categories.map((category) => {
@@ -973,13 +1016,14 @@ const AppConfig = ({
 					</div>
 				</div>
 
-				{activeCategory === 'General' && (
+				{(activeCategory === 'General' || activeCategory === 'Appearance') && (
 					<div className="rounded-xl bg-steam-800 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_14px_30px_rgba(0,0,0,0.2)]">
 						<h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-							<Settings2 className="w-4 h-4 text-steam-300" />
-							General
+							{activeCategory === 'Appearance' ? <Palette className="w-4 h-4 text-steam-300" /> : <Settings2 className="w-4 h-4 text-steam-300" />}
+							{activeCategory}
 						</h3>
 
+						{activeCategory === 'General' && (
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
 							<p className="text-sm text-steam-100 mb-3">IGDB Source</p>
 							<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1091,7 +1135,7 @@ const AppConfig = ({
 										type="button"
 										onClick={() => void handleConnectCredentials()}
 										disabled={isConnectingCredentials || !credentialsClientId.trim() || !credentialsClientSecret.trim()}
-										className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+										className="theme-primary-action px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
 									>
 										{isConnectingCredentials ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
 										{isConnectingCredentials ? 'Connecting...' : 'Connect'}
@@ -1109,6 +1153,73 @@ const AppConfig = ({
 									{credentialsStatus.message}
 								</div>
 							)}
+						</div>
+						)}
+
+						{activeCategory === 'Appearance' && (
+						<>
+						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+							<div className="flex items-center justify-between gap-4">
+								<div className="flex items-center gap-2">
+									<Palette className="w-4 h-4 text-steam-300" />
+									<div>
+										<p className="text-sm text-steam-100">App Theme</p>
+									</div>
+								</div>
+								<div className="flex items-center gap-2">
+									<div
+										ref={themeMenuRef}
+										className="relative w-max"
+										onBlur={(event) => {
+											if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+												setIsThemeMenuOpen(false)
+											}
+										}}
+									>
+										<button
+											type="button"
+											onClick={() => setIsThemeMenuOpen((previous) => !previous)}
+											className="inline-flex w-max min-w-32 items-center justify-between gap-3 rounded-md bg-steam-700 border border-steam-600 py-2 pl-3 pr-2 text-sm text-white transition-colors hover:bg-steam-600 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
+											aria-haspopup="listbox"
+											aria-expanded={isThemeMenuOpen}
+											aria-label="Select theme"
+										>
+													<span>{selectedTheme === 'catpuccin' ? 'Catppuccin' : selectedTheme === 'ezzud-favorite' ? "Ezzud's Favorite" : 'Default'}</span>
+											<ChevronDown className={`h-4 w-4 text-steam-300 transition-transform ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
+										</button>
+										{isThemeMenuOpen && (
+											<div className="absolute right-0 top-full z-30 mt-1 w-max min-w-full rounded-md border border-steam-600 bg-steam-800 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.35)]" role="listbox">
+												{getAvailableThemes().map((theme) => (
+													<button
+														key={theme}
+														type="button"
+														onClick={() => {
+															void handleThemeSelection(theme)
+															setIsThemeMenuOpen(false)
+														}}
+														className={`block w-full whitespace-nowrap rounded px-3 py-2 text-left text-sm transition-colors ${selectedTheme === theme ? 'bg-steam-600 text-white' : 'text-steam-200 hover:bg-steam-700 hover:text-white'}`}
+														role="option"
+														aria-selected={selectedTheme === theme}
+													>
+															{theme === 'catpuccin' ? 'Catppuccin' : theme === 'ezzud-favorite' ? "Ezzud's Favorite" : 'Default'}
+													</button>
+												))}
+											</div>
+										)}
+									</div>
+									{selectedTheme !== appliedTheme && (
+										<button
+											type="button"
+											onClick={() => void handleApplyTheme()}
+											disabled={isApplyingTheme}
+											className="inline-flex items-center gap-2 rounded-md bg-steam-600 px-3 py-2 text-sm text-white transition-colors hover:bg-steam-500 disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											{isApplyingTheme && <Loader2 className="w-4 h-4 animate-spin" />}
+											Apply
+										</button>
+									)}
+								</div>
+							</div>
 						</div>
 
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
@@ -1140,7 +1251,11 @@ const AppConfig = ({
 								))}
 							</div>
 						</div>
+						</>
+						)}
 
+						{activeCategory === 'General' && (
+						<>
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
 							<p className="text-sm text-steam-100 mb-3">Startup</p>
 							<div className="flex items-center justify-between gap-4">
@@ -1479,6 +1594,8 @@ const AppConfig = ({
 								</div>
 							)}
 						</div>
+						</>
+						)}
 					</div>
 				)}
 
@@ -1863,8 +1980,7 @@ const AppConfig = ({
 						</div>
 
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-							<div className="rounded-lg bg-linear-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
-								<p className="text-xs uppercase tracking-wide text-steam-400 mb-3">Identity</p>
+							<div className="rounded-lg bg-steam-900/45 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
 								<div className="space-y-2 text-sm">
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
 										<p className="text-steam-400 text-xs">App name</p>
@@ -1881,8 +1997,7 @@ const AppConfig = ({
 								</div>
 							</div>
 
-							<div className="rounded-lg bg-linear-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
-								<p className="text-xs uppercase tracking-wide text-steam-400 mb-3">Repository</p>
+							<div className="rounded-lg bg-steam-900/45 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
 								<div className="space-y-2 text-sm">
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
 										<p className="text-steam-400 text-xs">Branch followed</p>
@@ -1895,8 +2010,7 @@ const AppConfig = ({
 								</div>
 							</div>
 
-							<div className="rounded-lg bg-linear-to-br from-steam-900/70 to-steam-800/40 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] lg:col-span-2 space-y-3">
-								<p className="text-xs uppercase tracking-wide text-steam-400">Locations</p>
+							<div className="rounded-lg bg-steam-900/45 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] lg:col-span-2 space-y-3">
 								<div className="text-sm text-steam-200 flex items-center justify-between gap-3">
 									<div className="min-w-0">
 										<p className="text-steam-400">App location</p>

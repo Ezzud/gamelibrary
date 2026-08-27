@@ -48,7 +48,9 @@ import {
 import { initIGDB, searchGame, getGameDetails, setTemporaryIGDBConnectionMode } from './services/GameDataManager'
 import { launchGame, launchSteamGame } from './services/GameLauncher'
 import { formatPlaytime, getPlaytime, trackPlaytimeForProcess } from './services/PlaytimeManager'
+import { applyTheme } from './services/ThemeManager'
 import { getVersion } from '@tauri-apps/api/app'
+import { Loader2 } from 'lucide-react'
 import type { ConfigCategory, Game, IGDBConnectionStatus, LastPlayedCard, SortField } from './types/appTypes'
 
 const MIN_LAUNCH_LOADING_MS = 5000
@@ -136,6 +138,7 @@ function App() {
     const [sortField, setSortField] = useState<SortField>('name')
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
     const [settingsLoaded, setSettingsLoaded] = useState(false)
+    const [themeLoaded, setThemeLoaded] = useState(false)
     const discordPresenceStartedAtRef = useRef<number | null>(null)
     const discordPresenceGameIdRef = useRef<string | null>(null)
     const [autoDetectScanReady, setAutoDetectScanReady] = useState(false)
@@ -350,6 +353,7 @@ function App() {
     const loadAppSettings = async () => {
         try {
             const config = await getAppConfig()
+            await applyTheme(config.theme)
             setReduceWhilePlaying(config.reduceWhilePlaying !== false)
             setReduceWhenClosingState(config.reduceWhenClosing !== false)
             reduceWhenClosingNoticeShownRef.current = config.reduceWhenClosingNoticeShown === true
@@ -361,6 +365,7 @@ function App() {
             setReduceWhenClosingState(true)
             reduceWhenClosingNoticeShownRef.current = false
             setAutoDetectGames(true)
+            await applyTheme('default')
             return null
         }
     }
@@ -862,6 +867,8 @@ function App() {
             setIsLoadingGames(true)
             try {
                 const config = await loadAppSettings()
+                await applyTheme(config?.theme || 'default')
+                setThemeLoaded(true)
                 const startedWithAuto = await invoke<boolean>('was_started_with_auto_arg').catch(() => false)
                 if (config?.runOnStartup && config.runReduced && startedWithAuto) {
                     appWindowReducedRef.current = true
@@ -1440,6 +1447,14 @@ function App() {
         setSelectedGame(null)
     }
 
+    if (!themeLoaded) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-steam-900 text-white">
+                <Loader2 className="h-8 w-8 animate-spin text-steam-400" />
+            </div>
+        )
+    }
+
     return (
         <div className="flex h-screen bg-steam-900 text-white overflow-hidden">
             <ToastSystem toasts={launchToasts} onDismiss={dismissToast} />
@@ -1471,7 +1486,7 @@ function App() {
             />
 
             <div className="flex-1 flex flex-col relative">
-                {isSettingsOpen ? (
+                {isSettingsOpen && (
                     <AppConfig
                         isScanning={isScanning}
                         isRefetchingTags={isRefetchingTags}
@@ -1490,7 +1505,8 @@ function App() {
                         onConnectIGDB={handleConnectIGDB}
                         onShowToast={showLaunchToast}
                     />
-                ) : selectedGame ? (
+                )}
+                {selectedGame && (
                     <GameDetailView
                         game={selectedGame}
                         onBack={() => setSelectedGame(null)}
@@ -1503,8 +1519,10 @@ function App() {
                         isFavorite={favoriteGameIds.has(selectedGame.id)}
                         onToggleFavorite={() => handleToggleFavorite(selectedGame)}
                     />
-                ) : settingsLoaded ? (
-                    <GameLibrary
+                )}
+                {settingsLoaded && (
+                    <div className={isSettingsOpen || selectedGame ? 'hidden' : 'flex flex-1 min-h-0'}>
+                        <GameLibrary
                         games={games}
                         favoriteGameIds={favoriteGameIds}
                         onGameSelect={setSelectedGame}
@@ -1536,8 +1554,9 @@ function App() {
                         sortDirection={sortDirection}
                         onSortDirectionChange={handleSetSortDirection}
                         settingsLoaded={settingsLoaded}
-                    />
-                ): null}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     )

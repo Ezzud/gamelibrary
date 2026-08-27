@@ -104,7 +104,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 		<div className="relative w-64 flex flex-col overflow-hidden bg-steam-900">
 			<div className="pointer-events-none absolute right-0 top-1/2 h-[90%] w-px -translate-y-1/2 bg-[#2b4157]" />
 			{/* Header */}
-			<div className="p-6 space-y-3 bg-steam-800">
+			<div className="p-6 space-y-3 bg-steam-900">
 				<div className="flex items-center justify-center gap-3">
 					<Gamepad2 className="w-8 h-8 text-steam-400" />
 					<h1 className="text-xl font-bold">Game Library</h1>
@@ -115,7 +115,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 				type="button"
 				onClick={onGoHome}
 				disabled={isHomeActive}
-				className={`mt-3 mx-3 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${isHomeActive
+				className={`${!isHomeActive ? 'theme-primary-action font-semibold' : ''} mt-3 mx-3 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${isHomeActive
 						? 'text-[#c8def2] bg-[#1a344b] font-semibold cursor-default'
 						: 'text-white bg-[#2f79b1] ring-2 ring-[#86c6ff]/50 hover:bg-[#3a89c5]'
 					}`}
@@ -136,7 +136,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 						return (
 							<div
 								key={`${card.gameId}-${card.playedAt}`}
-								className="group rounded-md bg-steam-800/75 hover:bg-steam-700/75 transition-colors p-2"
+										className="theme-secondary-surface group rounded-md bg-steam-800/75 hover:bg-steam-700/75 transition-colors p-2"
 								onContextMenu={(event) => handleLastPlayedContextMenu(event, card.gameId)}
 							>
 								<div className="flex items-start gap-2">
@@ -198,7 +198,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 					type="button"
 					onClick={onToggleSettings}
 					disabled={isSettingsActive}
-					className={`w-full px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${isSettingsActive
+					className={`${!isSettingsActive ? 'theme-primary-action font-semibold' : ''} w-full px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${isSettingsActive
 							? 'text-[#c8def2] bg-[#1a344b] font-semibold cursor-default'
 							: 'text-white bg-[#2f79b1] ring-2 ring-[#86c6ff]/50 hover:bg-[#3a89c5]'
 						}`}

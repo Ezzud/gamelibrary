@@ -1,0 +1,152 @@
+:root {
+  --theme-font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  --theme-font-size: 16px;
+  --theme-line-height: 24px;
+  --theme-color-white: 205 214 244;
+  --theme-color-black: 17 17 27;
+  --theme-steam-100: 205 214 244;
+  --theme-steam-200: 186 194 222;
+  --theme-steam-300: 166 173 200;
+  --theme-steam-400: 127 132 156;
+  --theme-steam-500: 137 180 250;
+  --theme-steam-600: 88 91 112;
+  --theme-steam-700: 69 71 90;
+  --theme-steam-800: 49 50 68;
+  --theme-steam-900: 30 30 46;
+  --theme-selection-background: 203 166 247;
+  --theme-selection-foreground: 17 17 27;
+  --theme-scrollbar-track: 24 24 37;
+  --theme-scrollbar-thumb: 69 71 90;
+  --theme-scrollbar-thumb-hover: 88 91 112;
+
+  --theme-surface-app: var(--theme-steam-900);
+  --theme-surface-panel: 49 50 68;
+  --theme-surface-panel-muted: 69 71 90;
+  --theme-surface-control: 69 71 90;
+  --theme-surface-control-hover: 88 91 112;
+  --theme-surface-control-active: 116 199 236;
+  --theme-surface-accent: 203 166 247;
+  --theme-surface-accent-hover: 245 194 231;
+  --theme-toggle-enabled: 166 73 98;
+  --theme-surface-navigation-active: 49 50 68;
+  --theme-surface-navigation-hover: 88 91 112;
+  --theme-surface-detail: 24 24 37;
+  --theme-surface-detail-panel: 49 50 68;
+  --theme-surface-detail-panel-alt: 45 46 63;
+  --theme-surface-detail-panel-muted: 35 36 51;
+  --theme-surface-detail-control: 69 71 90;
+  --theme-surface-detail-control-hover: 88 91 112;
+  --theme-surface-config: var(--theme-steam-900);
+  --theme-surface-config-control: 69 71 90;
+  --theme-surface-config-control-hover: 88 91 112;
+  --theme-surface-menu: 49 50 68;
+  --theme-surface-menu-end: 35 36 51;
+  --theme-fade-background: 30 30 46;
+  --theme-text-detail-muted: 166 173 200;
+  --theme-text-primary: var(--theme-steam-100);
+  --theme-text-secondary: var(--theme-steam-200);
+  --theme-text-muted: var(--theme-steam-300);
+  --theme-border-default: 88 91 112;
+  --theme-border-subtle: 69 71 90;
+  --theme-border-accent: 137 180 250;
+  --theme-color-success: 166 227 161;
+  --theme-color-warning: 249 226 175;
+  --theme-color-danger: 243 139 168;
+  --theme-color-danger-surface: 69 39 55;
+  --theme-color-danger-surface-hover: 136 57 75;
+  --theme-color-info: 203 166 247;
+  --theme-color-selected-text: 205 214 244;
+  --theme-color-steam: 137 180 250;
+  --theme-color-gog: 203 166 247;
+  --theme-color-epic: 17 17 27;
+  --theme-color-battlenet: 30 102 140;
+  --theme-color-xbox: 166 227 161;
+  --theme-color-ea: 243 139 168;
+  --theme-color-hypervisor: 243 139 168;
+  --theme-color-onlinefixed: 166 227 161;
+  --theme-color-cracked: 17 17 27;
+  --theme-color-nonpc: 249 226 175;
+  --theme-color-vr: 116 199 236;
+  --theme-radius-control: 0.375rem;
+  --theme-radius-panel: 0.75rem;
+  --theme-shadow-panel: 0 14px 30px rgb(17 17 27 / 0.45);
+  --theme-shadow-card: 0 6px 18px rgb(17 17 27 / 0.55);
+  --theme-motion-fast: 150ms;
+  --theme-motion-normal: 200ms;
+  --theme-scrollbar-width: 8px;
+  --theme-scrollbar-radius: 4px;
+  --theme-card-animation-duration: 360ms;
+  --theme-card-animation-distance: 12px;
+}
+
+:root {
+  font-family: var(--theme-font-family);
+  color-scheme: dark;
+}
+
+[class*="bg-[#1b2838]"] { background-color: rgb(var(--theme-surface-panel)) !important; }
+[class*="bg-[#2a475e]"] { background-color: rgb(var(--theme-surface-control)) !important; }
+[class*="bg-[#3a6285]"] { background-color: rgb(var(--theme-surface-control-hover)) !important; }
+[class*="bg-[#4d7aa1]"] { background-color: rgb(var(--theme-surface-control-active)) !important; }
+[class*="bg-[#2f79b1]"] { background-color: rgb(var(--theme-surface-accent)) !important; }
+[class*="bg-[#3a89c5]"] { background-color: rgb(var(--theme-surface-accent-hover)) !important; }
+[class*="bg-[#8b1f1f]"] { background-color: rgb(var(--theme-color-hypervisor)) !important; }
+[class*="bg-[#1f8f4e]"] { background-color: rgb(var(--theme-color-onlinefixed)) !important; }
+[class*="bg-[#c8a227]"] { background-color: rgb(var(--theme-color-nonpc)) !important; }
+[class*="bg-[#2a70c9]"] { background-color: rgb(var(--theme-color-vr)) !important; }
+[class*="bg-[#7f1d1d]"] { background-color: rgb(var(--theme-color-danger-surface)) !important; }
+[class*="hover\\:bg-[#3a6285]"]:hover { background-color: rgb(var(--theme-surface-control-hover)) !important; }
+[class*="hover\\:bg-[#3a89c5]"]:hover { background-color: rgb(var(--theme-surface-accent-hover)) !important; }
+[class*="text-[#c8def2]"] { color: rgb(var(--theme-color-selected-text)) !important; }
+[class*="text-[#4fd673]"] { color: rgb(var(--theme-color-success)) !important; }
+[class*="text-[#6ec1ff]"] { color: rgb(var(--theme-color-info)) !important; }
+[class*="text-[#ff4747]"] { color: rgb(var(--theme-color-danger)) !important; }
+[class*="border-[#2a475e]"] { border-color: rgb(var(--theme-border-default)) !important; }
+[class*="ring-[#2a475e]"] { --tw-ring-color: rgb(var(--theme-border-default)) !important; }
+[class*="ring-[#86c6ff]"] { --tw-ring-color: rgb(var(--theme-border-accent)) !important; }
+[class*="ring-sky-400"] { --tw-ring-color: rgb(var(--theme-surface-accent)) !important; }
+[class*="ring-[#86c6ff]"] { --tw-ring-color: rgb(var(--theme-surface-accent)) !important; }
+[class*="bg-sky-400"] { background-color: rgb(var(--theme-toggle-enabled)) !important; }
+[class*="bg-sky-400"] svg { color: rgb(var(--theme-color-white)) !important; }
+[class*="ring-sky-400"] [class*="text-sky-300"] { color: rgb(var(--theme-surface-accent)) !important; }
+[class*="p-2"][class*="text-sky-300"] { color: rgb(var(--theme-surface-accent)) !important; }
+[class*="divide-steam-700"] > :not([hidden]) ~ :not([hidden]) { border-color: rgb(var(--theme-border-subtle)) !important; }
+
+/* Primary actions stay readable against the Catppuccin accent. */
+.theme-primary-action,
+.theme-primary-action svg { color: rgb(17 17 27) !important; }
+.theme-primary-action { background-color: rgb(var(--theme-surface-accent)) !important; }
+.theme-primary-action:hover { background-color: rgb(var(--theme-surface-accent-hover)) !important; }
+
+/* GameConfigPanel section surfaces. */
+[class*="bg-[#182a41]"] { background-color: rgb(var(--theme-surface-detail-panel)) !important; }
+[class*="bg-[#15263b]"] { background-color: rgb(var(--theme-surface-detail-panel-alt)) !important; }
+[class*="bg-[#16263b]"] { background-color: rgb(var(--theme-surface-detail-panel)) !important; }
+[class*="bg-[#1a2d42]"] { background-color: rgb(var(--theme-surface-detail-panel-alt)) !important; }
+[class*="bg-[#0f1b2a]"] { background-color: rgb(var(--theme-surface-detail)) !important; }
+[class*="bg-[#172437]"] { background-color: rgb(var(--theme-surface-detail-panel-alt)) !important; }
+[class*="bg-[#1d3047]"] { background-color: rgb(var(--theme-surface-detail-panel)) !important; }
+[class*="bg-[#172a3d]"] { background-color: rgb(var(--theme-surface-detail-control-hover)) !important; }
+
+/* Direct overrides for gradient and utility combinations that otherwise retain blue defaults. */
+[class*="from-white"][class*="via-steam-100"][class*="to-steam-300"] {
+  --tw-gradient-from: rgb(var(--theme-steam-100)) var(--tw-gradient-from-position) !important;
+  --tw-gradient-via: rgb(203 166 247) var(--tw-gradient-via-position) !important;
+  --tw-gradient-to: rgb(245 194 231) var(--tw-gradient-to-position) !important;
+}
+[class*="from-steam-900"][class*="via-[#0e1725]"][class*="to-[#18263b]"] {
+  background-image: linear-gradient(to bottom right, rgb(var(--theme-steam-900)), rgb(var(--theme-fade-background)), rgb(var(--theme-surface-detail-panel-alt))) !important;
+}
+[class*="from-steam-900"][class*="via-[#0f1b2a]"][class*="to-[#172437]"] {
+  background-image: linear-gradient(to right, rgb(var(--theme-steam-900)), rgb(var(--theme-surface-detail)), rgb(var(--theme-surface-detail-panel-alt))) !important;
+}
+[class*="from-steam-800"][class*="via-[#1a2b43]"][class*="to-steam-800"] {
+  background-image: linear-gradient(to right, rgb(var(--theme-steam-800) / 0.68), rgb(var(--theme-surface-detail-panel) / 0.68), rgb(var(--theme-steam-800) / 0.68)) !important;
+}
+[class*="from-steam-800"][class*="via-[#1d3047]"][class*="to-steam-800"] {
+  background-image: linear-gradient(to right, rgb(var(--theme-steam-800) / 0.68), rgb(var(--theme-surface-detail-panel) / 0.68), rgb(var(--theme-steam-800) / 0.68)) !important;
+}
+[class*="from-[#203349]"][class*="to-[#172636]"] {
+  background-image: linear-gradient(to bottom, rgb(var(--theme-surface-menu)), rgb(var(--theme-surface-menu-end))) !important;
+  background-color: rgb(var(--theme-surface-menu)) !important;
+}

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @config "../../tailwind.config.ts";
+@import "../themes/default.css";
 
 * {
   @apply selection:bg-steam-600 selection:text-white;
@@ -20,28 +21,55 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* Route legacy component color literals through the active theme. */
+[class*="bg-[#1a344b]"] { background-color: rgb(var(--theme-surface-navigation-active)) !important; }
+[class*="hover\\:bg-[#3a89c5]"]:hover { background-color: rgb(var(--theme-surface-navigation-hover)) !important; }
+[class*="bg-[#0f1a2a]"] { background-color: rgb(var(--theme-surface-detail-panel-muted)) !important; }
+[class*="bg-[#16263b]"] { background-color: rgb(var(--theme-surface-detail-panel)) !important; }
+[class*="bg-[#13253b]"] { background-color: rgb(var(--theme-surface-detail-panel-alt)) !important; }
+[class*="bg-[#112033]"] { background-color: rgb(var(--theme-surface-detail-panel-muted)) !important; }
+[class*="bg-[#13263a]"] { background-color: rgb(var(--theme-surface-detail-panel-alt)) !important; }
+[class*="bg-[#2f4f70]"] { background-color: rgb(var(--theme-surface-detail-control)) !important; }
+[class*="hover\\:bg-[#3a648d]"]:hover { background-color: rgb(var(--theme-surface-detail-control-hover)) !important; }
+[class*="bg-[#2f455f]"] { background-color: rgb(var(--theme-surface-detail-control)) !important; }
+[class*="hover\\:bg-[#3c5978]"]:hover { background-color: rgb(var(--theme-surface-detail-control-hover)) !important; }
+[class*="bg-[#2a4f75]"] { background-color: rgb(var(--theme-surface-config-control)) !important; }
+[class*="hover\\:bg-[#36648f]"]:hover { background-color: rgb(var(--theme-surface-config-control-hover)) !important; }
+[class*="bg-[#203349]"] { background-color: rgb(var(--theme-surface-menu)) !important; }
+[class*="bg-[#172636]"] { background-color: rgb(var(--theme-surface-menu-end)) !important; }
+[class*="text-[#a8a8a8]"] { color: rgb(var(--theme-text-detail-muted)) !important; }
+
+[class*="from-[#0e1725]"] { --tw-gradient-from: rgb(var(--theme-fade-background)) var(--tw-gradient-from-position) !important; }
+[class*="to-[#18263b]"] { --tw-gradient-to: rgb(var(--theme-surface-detail-panel-alt)) var(--tw-gradient-to-position) !important; }
+[class*="via-[#1a2b43]"] { --tw-gradient-via: rgb(var(--theme-surface-detail-panel)) var(--tw-gradient-via-position) !important; }
+[class*="from-[#0f1b2a]"] { --tw-gradient-from: rgb(var(--theme-surface-detail)) var(--tw-gradient-from-position) !important; }
+[class*="to-[#172437]"] { --tw-gradient-to: rgb(var(--theme-surface-detail-panel-alt)) var(--tw-gradient-to-position) !important; }
+[class*="via-[#1d3047]"] { --tw-gradient-via: rgb(var(--theme-surface-detail-panel)) var(--tw-gradient-via-position) !important; }
+[class*="from-[#203349]"] { --tw-gradient-from: rgb(var(--theme-surface-menu)) var(--tw-gradient-from-position) !important; }
+[class*="to-[#172636]"] { --tw-gradient-to: rgb(var(--theme-surface-menu-end)) var(--tw-gradient-to-position) !important; }
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: var(--theme-scrollbar-width);
+  height: var(--theme-scrollbar-width);
 }
 
 ::-webkit-scrollbar-track {
-  background: rgb(5, 30, 52);
+  background: rgb(var(--theme-scrollbar-track));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(27, 77, 124);
-  border-radius: 4px;
+  background: rgb(var(--theme-scrollbar-thumb));
+  border-radius: var(--theme-scrollbar-radius);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(45, 120, 180);
+  background: rgb(var(--theme-scrollbar-thumb-hover));
 }
 
 @keyframes game-card-fade-up {
   0% {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(var(--theme-card-animation-distance));
   }
   100% {
     opacity: 1;
@@ -52,7 +80,7 @@ input[type="number"] {
 .game-card-enter {
   opacity: 0;
   animation-name: game-card-fade-up;
-  animation-duration: 360ms;
+  animation-duration: var(--theme-card-animation-duration);
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   animation-fill-mode: forwards;
 }

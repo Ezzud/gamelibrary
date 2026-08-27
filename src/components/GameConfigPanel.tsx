@@ -427,12 +427,12 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 							<div className="mb-6">
 								<label
 									className={`flex items-center gap-2 font-semibold mb-2 transition-colors ${
-									launchWithSteam ? 'text-steam-500' : 'text-steam-300'
+									(launchWithSteam && steamId !== null) ? 'text-steam-500' : 'text-steam-300'
 									}`}
 								>
 									<TerminalSquare
 									className={`w-4 h-4 ${
-										launchWithSteam ? 'text-steam-500' : 'text-steam-300'
+										(launchWithSteam && steamId !== null) ? 'text-steam-500' : 'text-steam-300'
 									}`}
 									/>
 									Launch Arguments
@@ -440,7 +440,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 
 								<p
 									className={`text-sm mb-3 transition-colors ${
-									launchWithSteam ? 'text-steam-400' : 'text-steam-400'
+									(launchWithSteam && steamId !== null) ? 'text-steam-400' : 'text-steam-400'
 									}`}
 								>
 									Additional command-line arguments to pass when launching the game
@@ -449,11 +449,11 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 								<textarea
 									value={launchArgs}
 									onChange={(e) => setLaunchArgs(e.target.value)}
-									disabled={launchWithSteam}
+									disabled={launchWithSteam && steamId !== null}
 									placeholder="e.g., -windowed -high -quality ultra"
 									className={`w-full rounded-lg p-3 font-mono text-sm resize-none h-24 transition-all
 									${
-										launchWithSteam
+										(launchWithSteam && steamId !== null)
 										? 'bg-[#0f1a2a]/60 text-steam-500 cursor-not-allowed opacity-60'
 										: 'bg-[#0f1a2a]/95 text-white focus:outline-none focus:ring-2 focus:ring-steam-500/70'
 									}
@@ -561,7 +561,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 							<button
 								onClick={handleSaveConfig}
 								disabled={isSaving}
-								className="w-full bg-[#2f5f8d] hover:bg-[#3a73aa] disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.99] flex items-center justify-center gap-2 shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
+								className="theme-primary-action w-full bg-steam-600 hover:bg-steam-500 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.99] flex items-center justify-center gap-2 shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
 							>
 								{isSaving ? (
 									<Loader className="w-5 h-5 animate-spin" />

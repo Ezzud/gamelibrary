@@ -106,6 +106,7 @@ export const testGameLibraryApi = async (baseUrl?: string) => {
 	const controller = new AbortController();
 	const timeoutId = window.setTimeout(() => controller.abort(), 5000);
 	try {
+		let pingRequestStart = Date.now();
 		const normalizedBaseUrl = normalizeApiBaseUrl(baseUrl || DEFAULT_GAME_LIBRARY_API_URL) || DEFAULT_GAME_LIBRARY_API_URL;
 		const response = await fetch(buildApiUrl(normalizedBaseUrl, '/health?t=' + Date.now()), {
 			signal: controller.signal,
@@ -119,6 +120,7 @@ export const testGameLibraryApi = async (baseUrl?: string) => {
 			success: true,
 			data: {
 				version: typeof data.version === 'string' ? data.version : null,
+				pingRequest: Date.now() - pingRequestStart,
 				pingMs: typeof data.pingMs === 'number' ? data.pingMs : typeof data.ping === 'number' ? data.ping : null,
 			},
 		};
@@ -136,7 +138,7 @@ export const initIGDB = async (credentials?: IGDBCredentials): Promise<boolean> 
 	if (runtime.connectionMode === 'api' && !credentials) {
 		const health = await testGameLibraryApi(runtime.apiBaseUrl);
 		if (health.success) {
-			Logger.success('GameLibrary API initialized successfully');
+			Logger.success('GameLibrary API initialized successfully (' + health.data?.version + (typeof health.data?.pingRequest === 'number' ? `, ${health.data.pingRequest}ms` : '') + ').');
 			return true;
 		}
 

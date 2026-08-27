@@ -643,7 +643,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 								<button
 									onClick={handleLaunch}
 									disabled={isLaunching || isMissing || isGameRunning}
-									className="w-65 bg-[#1f8f4e] hover:bg-[#27a45a] disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
+									className="theme-primary-action w-65 bg-steam-600 hover:bg-steam-500 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
 								>
 									{isLaunching || isGameRunning ? (
 										<Loader className="w-5 h-5 animate-spin" />

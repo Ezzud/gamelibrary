@@ -21,6 +21,7 @@ const defaultConfig: Config = {
     twitchClientId: '',
     twitchClientSecret: '',
     cardHoverEffect: 'zoom',
+    theme: 'default',
     discordRpc: defaultDiscordRpcConfig,
     igdbConnectionMode: 'api',
     igdbApiBaseUrl: 'https://gamelibrary.ezzud.fr/api',
@@ -337,6 +338,7 @@ async function loadConfig() {
             twitchClientId: typeof parsed?.twitchClientId === 'string' ? parsed.twitchClientId : '',
             twitchClientSecret: typeof parsed?.twitchClientSecret === 'string' ? parsed.twitchClientSecret : '',
             cardHoverEffect: typeof parsed?.cardHoverEffect === 'string' ? parsed.cardHoverEffect : 'zoom',
+            theme: typeof parsed?.theme === 'string' && parsed.theme.trim().length > 0 ? parsed.theme.trim() : 'default',
             igdbConnectionMode: resolveInitialIGDBConnectionMode(parsed),
             igdbApiBaseUrl: typeof parsed?.igdbApiBaseUrl === 'string' && parsed.igdbApiBaseUrl.trim().length > 0
                 ? normalizeApiBaseUrl(parsed.igdbApiBaseUrl)
@@ -377,6 +379,20 @@ export async function setCardHoverEffect(cardHoverEffect: string) {
     };
     await saveConfig(nextConfig);
     Logger.info('Card hover effect saved to app config.');
+}
+
+export async function setTheme(theme: string) {
+    const config = await loadConfig();
+    const nextConfig: Config = {
+        ...config,
+        theme: theme.trim() || 'default',
+    };
+    await saveConfig(nextConfig);
+    Logger.info(`Theme set to ${nextConfig.theme}`);
+}
+
+export async function resetTheme() {
+    await setTheme('default');
 }
 
 export async function setDiscordRpcConfig(patch: Partial<DiscordRpcConfig>) {

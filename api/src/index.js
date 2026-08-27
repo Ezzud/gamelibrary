@@ -10,6 +10,8 @@ const TWITCH_CLIENT_ID = (process.env.TWITCH_CLIENT_ID || '').trim()
 const TWITCH_CLIENT_SECRET = (process.env.TWITCH_CLIENT_SECRET || '').trim()
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token'
 const IGDB_BASE_URL = 'https://api.igdb.com/v4'
+const GITHUB_RELEASES_LATEST_URL = 'https://github.com/Ezzud/gamelibrary/releases/latest'
+const GITHUB_RELEASE_DOWNLOAD_BASE_URL = 'https://github.com/Ezzud/gamelibrary/releases/download'
 const workspacePackageJsonUrl = new URL('../package.json', import.meta.url)
 const workspacePackageJson = JSON.parse(await readFile(workspacePackageJsonUrl, 'utf8'))
 const API_VERSION = (workspacePackageJson.version || '0.0.0').trim()
@@ -364,6 +366,37 @@ app.get('/health', (req, res) => {
 		version: API_VERSION,
 		pingMs: Date.now() - req.startTime,
 	})
+})
+
+app.get('/updater/:distribution', async (req, res) => {
+	const distribution = String(req.params.distribution || '').trim().toLowerCase()
+	const distributionSuffixes = {
+		nsis: '',
+		linux: '-linux',
+		macos: '-macos',
+	}
+
+	if (!Object.prototype.hasOwnProperty.call(distributionSuffixes, distribution)) {
+		return res.status(404).json({ error: 'Unknown updater distribution' })
+	}
+
+	try {
+		const latestResponse = await fetch(GITHUB_RELEASES_LATEST_URL, { redirect: 'manual' })
+		const location = latestResponse.headers.get('location') || ''
+		const tagMatch = location.match(/\/tag\/(v[^/?#]+)$/i)
+		const baseTag = tagMatch?.[1].match(/^v\d+\.\d+\.\d+/i)?.[0]
+
+		if (!baseTag) {
+			throw new Error('GitHub latest release did not redirect to a version tag')
+		}
+
+		const releaseTag = `${baseTag}${distributionSuffixes[distribution]}`
+		const updaterUrl = `${GITHUB_RELEASE_DOWNLOAD_BASE_URL}/${encodeURIComponent(releaseTag)}/latest.json`
+		return res.redirect(302, updaterUrl)
+	} catch (error) {
+		logger.error(`Failed to resolve updater manifest for ${distribution}:`, error)
+		return res.status(502).json({ error: 'Unable to resolve the latest release' })
+	}
 })
 
 app.post('/igdb/search', async (req, res) => {
