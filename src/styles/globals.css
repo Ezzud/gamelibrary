@@ -10,6 +10,114 @@ body {
   @apply bg-steam-900 text-white;
 }
 
+/* Shared compatibility rules for legacy literal utilities. */
+.theme-primary-action,
+.theme-primary-action svg {
+  color: rgb(var(--theme-color-black)) !important;
+}
+
+.theme-primary-action {
+  background-color: rgb(var(--theme-surface-accent)) !important;
+}
+
+.theme-primary-action:hover {
+  background-color: rgb(var(--theme-surface-accent-hover)) !important;
+}
+
+.search-options-menu {
+  background-color: rgb(var(--theme-surface-menu)) !important;
+  background-image: linear-gradient(
+    to bottom,
+    rgb(var(--theme-surface-menu)),
+    rgb(var(--theme-surface-menu-end))
+  ) !important;
+}
+
+[class*="bg-[#2f79b1]"] { background-color: rgb(var(--theme-surface-accent)) !important; }
+[class*="hover\\:bg-[#3a89c5]"]:hover { background-color: rgb(var(--theme-surface-accent-hover)) !important; }
+[class*="ring-[#86c6ff]"] { --tw-ring-color: rgb(var(--theme-border-accent)) !important; }
+[class*="bg-[#2b4157]"] { background-color: rgb(var(--theme-border-subtle)) !important; }
+[class*="bg-[#182a41]"] { background-color: rgb(var(--theme-surface-detail-panel)) !important; }
+[class*="bg-[#15263b]"] { background-color: rgb(var(--theme-surface-detail-panel-alt)) !important; }
+[class*="bg-[#1a2d42]"] { background-color: rgb(var(--theme-surface-detail-panel-alt)) !important; }
+[class*="bg-[#0f1a2a]"] { background-color: rgb(var(--theme-surface-detail-panel-muted)) !important; }
+[class*="hover\\:bg-[#172a3d]"]:hover { background-color: rgb(var(--theme-surface-detail-control-hover)) !important; }
+
+[class*="from-steam-900"][class*="via-[#0f1b2a]"][class*="to-[#172437]"],
+[class*="from-steam-900"][class*="via-[#0e1725]"][class*="to-[#18263b]"] {
+  background-image: linear-gradient(
+    to bottom right,
+    rgb(var(--theme-steam-900)),
+    rgb(var(--theme-fade-background)),
+    rgb(var(--theme-surface-detail-panel-alt))
+  ) !important;
+}
+
+[class*="from-steam-800"][class*="via-[#1d3047]"][class*="to-steam-800"],
+[class*="from-steam-800"][class*="via-[#1a2b43]"][class*="to-steam-800"] {
+  background-image: linear-gradient(
+    to right,
+    rgb(var(--theme-steam-800) / 0.68),
+    rgb(var(--theme-surface-detail-panel) / 0.68),
+    rgb(var(--theme-steam-800) / 0.68)
+  ) !important;
+}
+
+.launch-file-picker-overlay {
+  background-color: rgb(var(--theme-color-black) / 0.62);
+}
+
+.launch-file-picker-panel {
+  background-color: rgb(var(--theme-surface-panel));
+  border: 1px solid rgb(var(--theme-border-default));
+  color: rgb(var(--theme-text-primary));
+}
+
+.launch-file-picker-header,
+.launch-file-picker-footer {
+  border-color: rgb(var(--theme-border-subtle));
+}
+
+.launch-file-picker-header {
+  border-bottom: 1px solid rgb(var(--theme-border-subtle));
+}
+
+.launch-file-picker-footer {
+  border-top: 1px solid rgb(var(--theme-border-subtle));
+}
+
+.launch-file-picker-title {
+  color: rgb(var(--theme-text-primary));
+}
+
+.launch-file-picker-muted {
+  color: rgb(var(--theme-text-muted));
+}
+
+.launch-file-picker-option,
+.launch-file-picker-secondary-button {
+  background-color: rgb(var(--theme-surface-control));
+  color: rgb(var(--theme-text-primary));
+}
+
+.launch-file-picker-option:hover,
+.launch-file-picker-secondary-button:hover {
+  background-color: rgb(var(--theme-surface-control-hover));
+}
+
+.launch-file-picker-primary-button {
+  background-color: rgb(var(--theme-surface-accent));
+  color: rgb(var(--theme-color-black));
+}
+
+.launch-file-picker-primary-button:hover:not(:disabled) {
+  background-color: rgb(var(--theme-surface-accent-hover));
+}
+
+.launch-file-picker-radio {
+  accent-color: rgb(var(--theme-surface-accent));
+}
+
 /* Hide number input spinners */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

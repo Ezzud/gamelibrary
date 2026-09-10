@@ -934,6 +934,27 @@ export async function getGameThumbnailPath(gameId: string): Promise<string | nul
     return null;
 }
 
+export async function removeGameCustomImage(gameId: string, imageType: 'cover' | 'thumbnail') {
+    const config = await loadGameConfig(gameId);
+    const configKey = imageType === 'cover' ? 'localCoverPath' : 'localBannerPath';
+
+    try {
+        const removedCount = await invoke<number>('remove_game_custom_image', {
+            gameId,
+            imageType,
+        });
+
+        await saveGameConfig(gameId, {
+            ...(config || {}),
+            [configKey]: undefined,
+        } as GameConfig);
+        Logger.info(`Removed ${removedCount} custom ${imageType} file(s) for game ID ${gameId}.`);
+    } catch (err) {
+        Logger.error(`Failed to remove custom ${imageType} image for game ID ${gameId}:`, err);
+        throw err;
+    }
+}
+
 /**
  * Copy a file to the game's style cache directory with the specified name
  * Params: gameId (string), sourceFilePath (string), fileName ('cover' or 'thumbnail')

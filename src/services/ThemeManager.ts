@@ -1,6 +1,8 @@
 import catpuccinThemeUrl from '../themes/catpuccin.css?url'
 import defaultThemeUrl from '../themes/default.css?url'
 import ezzudFavoriteThemeUrl from '../themes/ezzud-favorite.css?url'
+import forestThemeUrl from '../themes/forest.css?url'
+import galacticThemeUrl from '../themes/galactic.css?url'
 import { resetTheme } from './ConfigManager'
 import { Logger } from '../utils/Logger'
 
@@ -11,6 +13,8 @@ const themeUrls: Record<string, string> = {
 	default: defaultThemeUrl,
 	catpuccin: catpuccinThemeUrl,
 	'ezzud-favorite': ezzudFavoriteThemeUrl,
+	forest: forestThemeUrl,
+	galactic: galacticThemeUrl,
 }
 
 const normalizeThemeName = (themeName: string | null | undefined) => {

@@ -1273,6 +1273,60 @@ fn copy_file(source: String, destination: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn remove_game_custom_image(
+    app: tauri::AppHandle,
+    game_id: String,
+    image_type: String,
+) -> Result<u32, String> {
+    if game_id.is_empty() || game_id.contains('/') || game_id.contains('\\') || game_id.contains("..") {
+        return Err("Invalid game ID.".to_string());
+    }
+
+    let file_prefix = match image_type.as_str() {
+        "cover" => "cover.",
+        "thumbnail" => "thumbnail.",
+        _ => return Err("Invalid custom image type.".to_string()),
+    };
+
+    let style_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data directory: {}", e))?
+        .join("GameLibrary")
+        .join("games")
+        .join(&game_id)
+        .join("cache")
+        .join("style");
+
+    if !style_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut removed_count = 0;
+    let entries = fs::read_dir(&style_dir)
+        .map_err(|e| format!("Failed to read custom image directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to inspect custom image file: {}", e))?;
+        let path = entry.path();
+        let is_matching_file = path.is_file()
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name.to_ascii_lowercase().starts_with(file_prefix))
+                .unwrap_or(false);
+
+        if is_matching_file {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Failed to remove custom image {}: {}", path.display(), e))?;
+            removed_count += 1;
+        }
+    }
+
+    Ok(removed_count)
+}
+
+#[tauri::command]
 async fn check_for_updates_cmd(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let updater = app
         .updater()
@@ -1426,6 +1480,7 @@ pub fn run() {
             download_file_with_progress,
             unzip_file,
             copy_file,
+            remove_game_custom_image,
             exit_app,
             discord_rpc::discord_rpc_update_presence
         ])

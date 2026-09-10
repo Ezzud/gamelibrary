@@ -1094,7 +1094,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 								{isPlatformMenuOpen && (
 									<div
-										className="absolute left-0 top-11 z-20 min-w-40 w-full rounded-lg border border-steam-600/90 bg-linear-to-b from-[#203349] to-[#172636] ring-1 ring-steam-700/70 p-1"
+										className="search-options-menu absolute left-0 top-11 z-20 min-w-40 w-full rounded-lg border border-steam-600/90 bg-linear-to-b from-[#203349] to-[#172636] ring-1 ring-steam-700/70 p-1"
 										onClick={(event) => event.stopPropagation()}
 										onContextMenu={(event) => event.stopPropagation()}
 									>
@@ -1154,7 +1154,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 								{isTagMenuOpen && (
 									<div
-										className="absolute left-0 top-11 z-20 min-w-40 w-full rounded-lg border border-steam-600/90 bg-linear-to-b from-[#203349] to-[#172636] ring-1 ring-steam-700/70 p-1 max-h-64 overflow-auto"
+										className="search-options-menu absolute left-0 top-11 z-20 min-w-40 w-full rounded-lg border border-steam-600/90 bg-linear-to-b from-[#203349] to-[#172636] ring-1 ring-steam-700/70 p-1 max-h-64 overflow-auto"
 										onClick={(event) => event.stopPropagation()}
 										onContextMenu={(event) => event.stopPropagation()}
 									>
@@ -1213,7 +1213,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 								{isSortMenuOpen && (
 									<div
-										className="absolute right-0 top-11 z-20 min-w-40 rounded-lg border border-steam-600/90 bg-linear-to-b from-[#203349] to-[#172636] ring-1 ring-steam-700/70 p-1"
+										className="search-options-menu absolute right-0 top-11 z-20 min-w-40 rounded-lg border border-steam-600/90 bg-linear-to-b from-[#203349] to-[#172636] ring-1 ring-steam-700/70 p-1"
 										onClick={(event) => event.stopPropagation()}
 										onContextMenu={(event) => event.stopPropagation()}
 									>

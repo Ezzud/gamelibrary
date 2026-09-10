@@ -2,7 +2,7 @@
   "name": "gamelibrary-api",
   "private": true,
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js"

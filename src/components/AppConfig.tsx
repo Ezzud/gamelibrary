@@ -61,18 +61,33 @@ import {
 } from '../services/ConfigManager'
 import { applyTheme, getAvailableThemes } from '../services/ThemeManager'
 import { chooseFolder } from '../services/GameScanner'
-import { testGameLibraryApi } from '../services/GameDataManager'
+import { resetAndRefetchGameIGDBData, testGameLibraryApi } from '../services/GameDataManager'
 import { Logger } from '../utils/Logger'
 import { getVersion } from '@tauri-apps/api/app'
 import type { AppConfigProps, ConfigCategory, DiscordRpcImageMode, IGDBConnectionMode, UpdateCheckStatus } from '../types/appTypes'
 
 const SCAN_PLATFORMS = ['Steam', 'Custom Folders', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
-const REPO_BRANCH = 'master'
-const APP_NAME = 'gamelibrary'
 const APP_AUTHOR = 'Ezzud'
 const DEFAULT_GAME_LIBRARY_API_URL = 'https://gamelibrary.ezzud.fr/api'
 const normalizeApiBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
+const getOperatingSystem = () => {
+	if (typeof navigator === 'undefined') {
+		return 'Unknown'
+	}
+
+	const userAgent = navigator.userAgent
+	if (/Windows/i.test(userAgent)) {
+		return 'Windows'
+	}
+	if (/Macintosh|Mac OS X/i.test(userAgent)) {
+		return 'macOS'
+	}
+	if (/Linux/i.test(userAgent)) {
+		return 'Linux'
+	}
+	return 'Unknown'
+}
 
 const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 
@@ -149,10 +164,11 @@ const AppConfig = ({
 	const [ignoredFolders, setIgnoredFolders] = useState<string[]>([])
 	const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set(['Steam']))
 	const [isClearingCache, setIsClearingCache] = useState(false)
+	const [isClearingMetadata, setIsClearingMetadata] = useState(false)
 	const [isClearingPlayHistory, setIsClearingPlayHistory] = useState(false)
 	const [isRemovingLibrary, setIsRemovingLibrary] = useState(false)
 	const [isRemovingDuplicates, setIsRemovingDuplicates] = useState(false)
-	const [confirmAction, setConfirmAction] = useState<'clear-cache' | 'clear-play-history' | 'remove-library' | null>(null)
+	const [confirmAction, setConfirmAction] = useState<'clear-cache' | 'clear-metadata' | 'clear-play-history' | 'remove-library' | null>(null)
 	const [maintenanceStatus, setMaintenanceStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 	const [credentialsClientId, setCredentialsClientId] = useState('')
 	const [credentialsClientSecret, setCredentialsClientSecret] = useState('')
@@ -192,7 +208,7 @@ const AppConfig = ({
 	const [updateDownloadProgress, setUpdateDownloadProgress] = useState<number | null>(null)
 	const [aboutAppLocation, setAboutAppLocation] = useState<string>('Loading...')
 	const [aboutDataLocation, setAboutDataLocation] = useState<string>('Loading...')
-	const isAnyMaintenanceActionRunning = isClearingCache || isClearingPlayHistory || isRemovingLibrary || isRemovingDuplicates
+	const isAnyMaintenanceActionRunning = isClearingCache || isClearingMetadata || isClearingPlayHistory || isRemovingLibrary || isRemovingDuplicates
 
 	const categories = useMemo(
 		() => [
@@ -543,6 +559,42 @@ const AppConfig = ({
 			setMaintenanceStatus({ type: 'error', message: 'Failed to clear game cache data.' })
 		} finally {
 			setIsClearingCache(false)
+			setConfirmAction(null)
+		}
+	}
+
+	const handleClearAllMetadata = async () => {
+		if (isClearingMetadata || isScanning || isRefetchingTags || isAnyMaintenanceActionRunning) {
+			return
+		}
+
+		setMaintenanceStatus(null)
+		setIsClearingMetadata(true)
+		try {
+			const gameList = await loadGameList()
+			const games = gameList.games || []
+			const failedGames: string[] = []
+
+			for (const game of games) {
+				try {
+					await resetAndRefetchGameIGDBData(game.id, game.name)
+				} catch (error) {
+					failedGames.push(game.name)
+					Logger.error(`Failed to clear and refetch metadata for ${game.name}:`, error)
+				}
+			}
+
+			await onRefreshGames()
+			if (failedGames.length > 0) {
+				setMaintenanceStatus({ type: 'error', message: `Metadata refetch failed for ${failedGames.length} game${failedGames.length === 1 ? '' : 's'}.` })
+			} else {
+				setMaintenanceStatus({ type: 'success', message: `Metadata cleared and refetched for ${games.length} game${games.length === 1 ? '' : 's'}.` })
+			}
+		} catch (error) {
+			Logger.error('Failed to clear and refetch all game metadata:', error)
+			setMaintenanceStatus({ type: 'error', message: 'Failed to clear and refetch game metadata.' })
+		} finally {
+			setIsClearingMetadata(false)
 			setConfirmAction(null)
 		}
 	}
@@ -1184,7 +1236,7 @@ const AppConfig = ({
 											aria-expanded={isThemeMenuOpen}
 											aria-label="Select theme"
 										>
-													<span>{selectedTheme === 'catpuccin' ? 'Catppuccin' : selectedTheme === 'ezzud-favorite' ? "Ezzud's Favorite" : 'Default'}</span>
+													<span>{selectedTheme === 'catpuccin' ? 'Catppuccin' : selectedTheme === 'ezzud-favorite' ? "Ezzud's Favorite" : selectedTheme === 'forest' ? 'Forest' : selectedTheme === 'galactic' ? 'Galactic' : 'Default'}</span>
 											<ChevronDown className={`h-4 w-4 text-steam-300 transition-transform ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
 										</button>
 										{isThemeMenuOpen && (
@@ -1201,7 +1253,7 @@ const AppConfig = ({
 														role="option"
 														aria-selected={selectedTheme === theme}
 													>
-															{theme === 'catpuccin' ? 'Catppuccin' : theme === 'ezzud-favorite' ? "Ezzud's Favorite" : 'Default'}
+															{theme === 'catpuccin' ? 'Catppuccin' : theme === 'ezzud-favorite' ? "Ezzud's Favorite" : theme === 'forest' ? 'Forest' : theme === 'galactic' ? 'Galactic' : 'Default'}
 													</button>
 												))}
 											</div>
@@ -1450,6 +1502,46 @@ const AppConfig = ({
 								>
 									<Tags className="w-4 h-4" />
 									<span>{isRefetchingTags ? 'Refetching Tags...' : 'Refetch Special Tags'}</span>
+								</button>
+
+								<button
+									type="button"
+									onClick={() => setConfirmAction('clear-metadata')}
+									disabled={isScanning || isRefetchingTags || isAnyMaintenanceActionRunning}
+									className="px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2 bg-[#1f3a56] hover:bg-[#2a4f75] text-[#eaf4ff]"
+								>
+									<RefreshCw className="w-4 h-4" />
+									<span>{isClearingMetadata ? 'Refetching Metadata...' : 'Clear All Metadata'}</span>
+									{confirmAction === 'clear-metadata' && (
+										<span className="inline-flex items-center gap-1 ml-1">
+											<button
+												type="button"
+												onClick={(event) => {
+													event.stopPropagation()
+													void handleClearAllMetadata()
+												}}
+												disabled={isScanning || isAnyMaintenanceActionRunning}
+												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+												aria-label="Confirm clear all metadata"
+												title="Confirm"
+											>
+												{isClearingMetadata ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+											</button>
+											<button
+												type="button"
+												onClick={(event) => {
+													event.stopPropagation()
+													setConfirmAction(null)
+												}}
+												disabled={isScanning || isAnyMaintenanceActionRunning}
+												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+												aria-label="Cancel clear all metadata"
+												title="Cancel"
+											>
+												<X className="w-3.5 h-3.5" />
+											</button>
+										</span>
+									)}
 								</button>
 
 								<button
@@ -1983,12 +2075,16 @@ const AppConfig = ({
 							<div className="rounded-lg bg-steam-900/45 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
 								<div className="space-y-2 text-sm">
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">App name</p>
-										<p className="text-white font-semibold tracking-wide">{APP_NAME}</p>
+										<p className="text-steam-400 text-xs">Author</p>
+										<p className="text-white font-semibold tracking-wide">
+											{APP_AUTHOR}{' ('}
+											<a href="https://ezzud.fr" target="_blank" rel="noopener noreferrer" className="text-sky-300 hover:text-sky-200 underline font-normal">Website</a>
+											{')'}
+										</p>
 									</div>
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">Author</p>
-										<p className="text-white font-semibold tracking-wide">{APP_AUTHOR}</p>
+										<p className="text-steam-400 text-xs">OS Type</p>
+										<p className="text-white font-semibold tracking-wide">{getOperatingSystem()}</p>
 									</div>
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
 										<p className="text-steam-400 text-xs">App version</p>
@@ -2000,12 +2096,16 @@ const AppConfig = ({
 							<div className="rounded-lg bg-steam-900/45 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
 								<div className="space-y-2 text-sm">
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">Branch followed</p>
-										<p className="text-white font-semibold tracking-wide">{REPO_BRANCH}</p>
+										<p className="text-steam-400 text-xs">Website</p>
+										<a href="https://gamelibrary.ezzud.fr" target="_blank" rel="noopener noreferrer" className="text-sky-300 hover:text-sky-200 underline break-all">gamelibrary.ezzud.fr</a>
 									</div>
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
 										<p className="text-steam-400 text-xs">Repository URL</p>
 										<a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex text-sky-300 hover:text-sky-200 underline break-all">{GITHUB_REPO_URL}</a>
+									</div>
+									<div className="rounded-md bg-steam-900/45 px-3 py-2">
+										<p className="text-steam-400 text-xs">Contact email</p>
+										<a href="mailto:contact@ezzud.fr" className="text-sky-300 hover:text-sky-200 underline break-all">contact@ezzud.fr</a>
 									</div>
 								</div>
 							</div>

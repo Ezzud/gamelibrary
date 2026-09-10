@@ -318,7 +318,7 @@ function App() {
                 acc.push(entry)
                 return acc
             }, [])
-            .slice(0, 7)
+            .slice(0, 10)
 
         const cardsPromises = uniqueLatestByGame
             .map(async (entry: any) => {

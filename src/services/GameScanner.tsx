@@ -8,13 +8,75 @@ import type { GameCacheConfig, GameConfig, GameListEntry, ScanProgressCallback, 
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const SteamPaths = [
-	"Program Files (x86)/Steam",
-	"Program Files/Steam",
-	"Steam"
-];
-const SteamLibraryPath = "SteamLibrary/steamapps/common";
-const SteamPath = "steamapps/common";
+const platformPaths = {
+	steam: {
+		roots: {
+			windows: ["Program Files (x86)/Steam", "Program Files/Steam", "Steam"],
+			mac: ["Applications/Steam.app", "Library/Application Support/Steam"],
+			linux: [".steam/root", ".steam/steam", ".local/share/Steam"]
+		},
+		libraries: {
+			windows: ["SteamLibrary/steamapps/common"],
+			mac: ["Library/Application Support/Steam/steamapps/common", "SteamLibrary/steamapps/common"],
+			linux: [
+				".steam/root/steamapps/common",
+				".steam/steam/steamapps/common",
+				".local/share/Steam/steamapps/common",
+				"SteamLibrary/steamapps/common"
+			]
+		},
+		common: {
+			windows: ["steamapps/common"],
+			mac: ["steamapps/common"],
+			linux: ["steamapps/common"]
+		}
+	},
+	gog: {
+		galaxyDefault: {
+			windows: ["Program Files (x86)/GOG Galaxy/Games", "Program Files/GOG Galaxy/Games", "GOG Galaxy/Games"],
+			mac: ["Applications/GOG Galaxy.app", "Library/Application Support/GOG.com/Galaxy/Applications"],
+			linux: []
+		},
+		galaxyOther: {
+			windows: ["GOG Galaxy/Games"],
+			mac: ["Library/Application Support/GOG.com/Galaxy/Applications"],
+			linux: []
+		},
+		standalone: {
+			windows: ["GOG Games"],
+			mac: ["GOG Games"],
+			linux: ["GOG Games", "Games/Heroic"]
+		}
+	},
+	xbox: {
+		roots: {
+			windows: ["XboxGames"],
+			mac: [],
+			linux: []
+		}
+	},
+	ea: {
+		roots: {
+			windows: ["Program Files (x86)/EA Games", "Program Files/EA Games", "EA Games"],
+			mac: ["Applications/EA Games", "EA Games"],
+			linux: ["Games/Heroic/Prefixes/default/EA App/drive_c/Program Files/EA Games"]
+		}
+	},
+	epic: {
+		roots: {
+			windows: ["Program Files (x86)/Epic Games", "Program Files/Epic Games", "Epic Games"],
+			mac: ["Epic Games", "Library/Application Support/Epic/EpicGamesLauncher"],
+			linux: ["Games/Heroic", "Games/Epic Games"]
+		}
+	},
+	battlenet: {
+		roots: {
+			windows: ["Program Files (x86)/Battle.net/Games", "Program Files/Battle.net/Games", "Battle.net/Games"],
+			mac: ["Applications/Blizzard", "Applications/Battle.net"],
+			linux: []
+		}
+	}
+} as const;
 const blacklistedGames = [
 	"Steam Controller Configs",
 	"SteamVR",
@@ -46,34 +108,6 @@ const nonGameLaunchFilePatterns = [
 	/^eula/i,
 	/^launcher\s*installer/i,
 ]
-const GOGGalaxyDefaultPaths = [
-	"Program Files (x86)/GOG Galaxy/Games",
-	"Program Files/GOG Galaxy/Games",
-	"GOG Galaxy/Games"
-]
-const GOGGalaxyOtherPaths = [
-	"GOG Galaxy/Games"
-]
-const GOGGamesPaths = [
-	"GOG Games"
-];
-const XboxGamesPath = "XboxGames";
-const EAGamesPaths = [
-	"Program Files (x86)/EA Games",
-	"Program Files/EA Games",
-	"EA Games"
-];
-const EpicGamesPaths = [
-	"Program Files (x86)/Epic Games",
-	"Program Files/Epic Games",
-	"Epic Games"
-];
-const BattleNetGamesPaths = [
-	"Program Files (x86)/Battle.net/Games",
-	"Program Files/Battle.net/Games",
-	"Battle.net/Games"
-];
-
 const inFlightRegistrationPaths = new Set<string>();
 
 function normalizePathForCompare(value: string) {
@@ -507,12 +541,12 @@ export async function fetchGOGGames() {
 	};
 
 	const mainDrive = await getMainDriveLetter();
-	for (const basePath of GOGGalaxyDefaultPaths) {
+	for (const basePath of platformPaths.gog.galaxyDefault.windows) {
 		const fullPath = `${mainDrive}:/${basePath}`;
 		await scanLibraryRoot(fullPath);
 	}
 
-	const allDrivePaths = [...GOGGalaxyOtherPaths, ...GOGGamesPaths];
+	const allDrivePaths = [...platformPaths.gog.galaxyOther.windows, ...platformPaths.gog.standalone.windows];
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 		for (const basePath of allDrivePaths) {
 			const fullPath = `${drive}:/${basePath}`;
@@ -925,9 +959,9 @@ export async function fetchAllSteamGames() {
 		games.push({ id: null, ...game });
 	};
 
-	for (const basePath of SteamPaths) {
+	for (const basePath of platformPaths.steam.roots.windows) {
 		for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-			const fullPath = `${drive}:/${basePath}/${SteamPath}`;
+				const fullPath = `${drive}:/${basePath}/${platformPaths.steam.common.windows[0]}`;
 			try {
 				const pathExists = await exists(fullPath);
 				if (pathExists) {
@@ -970,7 +1004,7 @@ export async function fetchAllSteamGames() {
 	}
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		const libraryPath = `${drive}:/${SteamLibraryPath}`;
+		const libraryPath = `${drive}:/${platformPaths.steam.libraries.windows[0]}`;
 		try {
 			const libraryExists = await exists(libraryPath);
 			if (libraryExists) {
@@ -1370,7 +1404,7 @@ export async function fetchAllXboxGames() {
 	};
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		const libraryPath = `${drive}:/${XboxGamesPath}`;
+		const libraryPath = `${drive}:/${platformPaths.xbox.roots.windows[0]}`;
 		try {
 			const libraryExists = await exists(libraryPath);
 			if (!libraryExists) {
@@ -1452,7 +1486,7 @@ export async function fetchAllEAGames() {
 	};
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		for (const basePath of EAGamesPaths) {
+		for (const basePath of platformPaths.ea.roots.windows) {
 			const libraryPath = `${drive}:/${basePath}`;
 			try {
 				const libraryExists = await exists(libraryPath);
@@ -1535,7 +1569,7 @@ export async function fetchEpicGames() {
 	};
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		for (const basePath of EpicGamesPaths) {
+		for (const basePath of platformPaths.epic.roots.windows) {
 			const libraryPath = `${drive}:/${basePath}`;
 			try {
 				const libraryExists = await exists(libraryPath);
@@ -1611,7 +1645,7 @@ export async function fetchBattleNetGames() {
 	};
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		for (const basePath of BattleNetGamesPaths) {
+		for (const basePath of platformPaths.battlenet.roots.windows) {
 			const libraryPath = `${drive}:/${basePath}`;
 			try {
 				const libraryExists = await exists(libraryPath);

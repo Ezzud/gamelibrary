@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import { ArrowLeft, Save, Loader, FolderOpen, TerminalSquare, FolderCog, FileCog, Info, Rocket, X, RefreshCw, Image as ImageIcon, Dock, RectangleEllipsis } from 'lucide-react'
 import { dirname } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-dialog'
-import { loadGameConfig, saveGameConfig, getGameCachePath, copyFileToGameCache, getGameCoverPath, getGameThumbnailPath } from '../services/ConfigManager'
+import { loadGameConfig, saveGameConfig, getGameCachePath, copyFileToGameCache, getGameCoverPath, getGameThumbnailPath, removeGameCustomImage } from '../services/ConfigManager'
 import { openGameFolder } from '../services/GameLauncher'
 import { resetAndRefetchGameIGDBData } from '../services/GameDataManager'
 import { getAllLaunchFiles } from '../services/GameScanner'
 import type { GameConfigPanelProps } from '../types/appTypes'
-import { readFile, remove } from '@tauri-apps/plugin-fs'
+import { readFile } from '@tauri-apps/plugin-fs'
 
 /**
  * GameConfigPanel component - allows configuration of game launch settings
@@ -318,31 +318,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 
 	const handleClearLocalImage = async (imageType: 'cover' | 'banner') => {
 		try {
-			const currentConfig = await loadGameConfig(game.id)
-			const configKey = imageType === 'cover' ? 'localCoverPath' : 'localBannerPath'
-
-			await saveGameConfig(game.id, {
-				...currentConfig,
-				[configKey]: undefined,
-			})
-
-			let imgPath = currentConfig[configKey];
-			if(!imgPath) {
-				imgPath = imageType === 'cover' ? localCoverPath : localBannerPath
-				if(!imgPath) {
-					imgPath = imageType === 'cover' ? await getGameCoverPath(game.id) : await getGameThumbnailPath(game.id)
-				}
-			}
-
-			// Delete cached image file
-			const cachedFilePath = imgPath || (imageType === 'cover' ? localCoverPath : localBannerPath);
-			if (cachedFilePath) {
-				try {
-					await remove(cachedFilePath)
-				} catch (error) {
-					console.error(`Failed to delete cached ${imageType} image:`, error)
-				}
-			}
+			await removeGameCustomImage(game.id, imageType === 'cover' ? 'cover' : 'thumbnail')
 
 			// Update local state
 			if (imageType === 'cover') {
