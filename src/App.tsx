@@ -7,6 +7,7 @@ import AppConfig from './components/AppConfig'
 import GameLibrary from './components/GameLibrary'
 import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
+import ControllerManager from './services/ControllerManager'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
 import ToastSystem, { useToastSystem } from './components/ToastSystem'
 import { clearDiscordPresence, syncDiscordPresence } from './services/DiscordRPC'
@@ -105,6 +106,7 @@ function App() {
     const didRunStartupScanRef = useRef(false)
     const appWindowReducedRef = useRef(false)
     const appWindowReducedByCloseRef = useRef(false)
+    const controllerLaunchedGameRef = useRef(false)
     const reduceWhenClosingNoticeShownRef = useRef(false)
     const autoDetectScanInFlightRef = useRef(false)
     const autoDetectedGameIdsRef = useRef<Set<string>>(new Set())
@@ -397,11 +399,10 @@ function App() {
             return next
         })
 
-        if (!reduceWhilePlaying) {
-            return
-        }
-
         if (isRunning) {
+            if (!reduceWhilePlaying) {
+                return
+            }
             if (!appWindowReducedRef.current) {
                 appWindowReducedRef.current = true
                 setTimeout(() => {
@@ -417,7 +418,21 @@ function App() {
                 void restoreAppWindow()
             }
         }
+
+        if (nextRunningCount === 0 && controllerLaunchedGameRef.current) {
+            controllerLaunchedGameRef.current = false
+            Logger.info('App focused after controller-launched game stopped.')
+            void restoreAppWindow()
+        }
     }
+
+    useEffect(() => {
+        const handleControllerLaunch = () => {
+            controllerLaunchedGameRef.current = true
+        }
+        window.addEventListener('gamelibrary:controller-launch', handleControllerLaunch)
+        return () => window.removeEventListener('gamelibrary:controller-launch', handleControllerLaunch)
+    }, [])
 
     useEffect(() => {
         void syncDiscordPresenceForCurrentState()
@@ -1456,6 +1471,7 @@ function App() {
     }
 
     return (
+        <ControllerManager onGoHome={handleGoHome} onShowToast={showLaunchToast}>
         <div className="flex h-screen bg-steam-900 text-white overflow-hidden">
             <ToastSystem toasts={launchToasts} onDismiss={dismissToast} />
 
@@ -1559,6 +1575,7 @@ function App() {
                 )}
             </div>
         </div>
+        </ControllerManager>
     )
 }
 

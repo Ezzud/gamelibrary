@@ -115,6 +115,9 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 				type="button"
 				onClick={onGoHome}
 				disabled={isHomeActive}
+				data-controller-selectable="true"
+				data-controller-home="true"
+				data-controller-action="home"
 				className={`${!isHomeActive ? 'theme-primary-action font-semibold' : ''} mt-3 mx-3 px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${isHomeActive
 						? 'text-[#c8def2] bg-[#1a344b] font-semibold cursor-default'
 						: 'text-white bg-[#2f79b1] ring-2 ring-[#86c6ff]/50 hover:bg-[#3a89c5]'
@@ -137,6 +140,14 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 							<div
 								key={`${card.gameId}-${card.playedAt}`}
 										className="theme-secondary-surface group rounded-md bg-steam-800/75 hover:bg-steam-700/75 transition-colors p-2"
+									data-controller-selectable="true"
+									data-controller-action="launch"
+									data-controller-sidebar-card="true"
+									onClick={(event) => {
+										if (event.target === event.currentTarget) {
+											onPlayLastPlayed(card.gameId)
+										}
+									}}
 								onContextMenu={(event) => handleLastPlayedContextMenu(event, card.gameId)}
 							>
 								<div className="flex items-start gap-2">
@@ -152,7 +163,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 											<img
 												src={resolvedCardImages[card.gameId]}
 												alt={card.name}
-												className="w-10 h-15 object-cover transition-all duration-200 saturate-75 brightness-90 group-hover:grayscale group-hover:brightness-75"
+														className="controller-selection-sidebar-image w-10 h-15 object-cover transition-all duration-200 saturate-75 brightness-90 group-hover:grayscale group-hover:brightness-75"
 											/>
 										) : (
 											<div className="w-10 h-14 bg-steam-700 inline-flex items-center justify-center">
@@ -160,12 +171,12 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 											</div>
 										)}
 
-										<div className="absolute inset-0 bg-black/25 group-hover:bg-black/40 transition-colors" />
+										<div className="controller-selection-sidebar-overlay absolute inset-0 bg-black/25 group-hover:bg-black/40 transition-colors" />
 										<div className="absolute inset-0 inline-flex items-center justify-center">
 											{isLaunching || isRunning ? (
 												<Loader2 className="w-4 h-4 animate-spin text-white" />
 											) : (
-												<Play className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-150" />
+														<Play className="controller-selection-sidebar-play w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-150" />
 											)}
 										</div>
 									</button>

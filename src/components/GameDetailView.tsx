@@ -507,7 +507,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 				}}
 			/>
 
-			<div className="flex-1 overflow-auto flex flex-col bg-linear-to-br from-steam-900 via-[#0e1725] to-[#18263b] relative">
+			<div className="flex-1 overflow-auto flex flex-col bg-linear-to-br from-steam-900 via-[#0e1725] to-[#18263b] relative" data-controller-detail="true" data-controller-detail-game-id={game.id}>
 				{backgroundThumbnailUrl && (
 					<div
 						className="pointer-events-none absolute inset-x-0 top-0 h-[56vh] bg-cover bg-center opacity-30"
@@ -523,6 +523,8 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 				<div className="relative z-10 p-6 bg-linear-to-r from-steam-800/95 via-[#1a2b43]/95 to-steam-800/95 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
 					<button
 						onClick={onBack}
+						data-controller-selectable="true"
+						data-controller-action="back"
 						className="flex items-center gap-2 text-steam-300 hover:text-white transition-all duration-200 hover:-translate-x-0.5 mb-4"
 					>
 						<ArrowLeft className="w-5 h-5" />
@@ -642,6 +644,9 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 							<div className="flex items-center gap-4">
 								<button
 									onClick={handleLaunch}
+									data-controller-selectable="true"
+									data-controller-action="launch"
+									data-controller-detail-play="true"
 									disabled={isLaunching || isMissing || isGameRunning}
 									className="theme-primary-action w-65 bg-steam-600 hover:bg-steam-500 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.22)]"
 								>
@@ -655,6 +660,8 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 
 								<button
 									onClick={onToggleFavorite}
+									data-controller-selectable="true"
+									data-controller-action="action"
 									className="w-12 h-12 p-0 bg-[#2f455f] hover:bg-[#3c5978] text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.2)]"
 									title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
 									aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}

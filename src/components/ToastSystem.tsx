@@ -88,7 +88,7 @@ const ToastSystem = ({ toasts, onDismiss }: ToastStackProps) => {
 						<div
 							className={`h-full ${getToastProgressBarClass(toast.style)}`}
 							style={{
-								width: toast.started ? '0%' : '100%',
+								width: toast.started ? '100%' : '0%',
 								transition: `width ${toast.durationMs}ms linear`,
 							}}
 						/>

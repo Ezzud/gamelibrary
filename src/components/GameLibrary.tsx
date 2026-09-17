@@ -1046,6 +1046,9 @@ const GameLibrary = (props: GameLibraryProps) => {
 								<button
 									type="button"
 									onClick={handleRefreshLibrary}
+									data-controller-selectable="true"
+									data-controller-action="action"
+									data-controller-top="true"
 									disabled={isLoading || isLoadingGames}
 									className="theme-secondary-surface inline-flex items-center justify-center w-9 h-9 rounded-lg border border-steam-600 bg-steam-700 hover:bg-steam-600 hover:border-steam-500 focus:outline-none disabled:opacity-50 transition-colors shrink-0"
 									aria-label="Refresh game library"
@@ -1065,6 +1068,9 @@ const GameLibrary = (props: GameLibraryProps) => {
 								</button>
 								<input
 									type="text"
+									data-controller-selectable="true"
+									data-controller-action="action"
+									data-controller-top="true"
 									value={searchQuery}
 									onChange={(event) => onSearchQueryChange(event.target.value)}
 									placeholder={`Search by name or path`}
@@ -1072,9 +1078,13 @@ const GameLibrary = (props: GameLibraryProps) => {
 								/>
 							</div>
 
-							<div className="w-full relative" ref={platformMenuRef}>
+							<div className="w-full relative" ref={platformMenuRef} data-controller-menu="true" data-controller-menu-id="platform" data-controller-menu-open={isPlatformMenuOpen ? 'true' : 'false'}>
 								<button
 									type="button"
+									data-controller-selectable="true"
+									data-controller-action="action"
+									data-controller-top="true"
+									data-controller-menu-trigger="platform"
 									onClick={(event) => {
 										event.stopPropagation()
 										setIsPlatformMenuOpen((prev) => !prev)
@@ -1100,6 +1110,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 									>
 										<button
 											type="button"
+											data-controller-selectable="true"
+											data-controller-action="action"
 											onClick={() => {
 												onPlatformFilterChange('All')
 												setIsPlatformMenuOpen(false)
@@ -1112,6 +1124,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 											<button
 												key={platform}
 												type="button"
+													data-controller-selectable="true"
+													data-controller-action="action"
 												onClick={() => {
 													onPlatformFilterChange(platform)
 													setIsPlatformMenuOpen(false)
@@ -1128,9 +1142,13 @@ const GameLibrary = (props: GameLibraryProps) => {
 								)}
 							</div>
 
-							<div className="w-full relative" ref={tagMenuRef}>
+							<div className="w-full relative" ref={tagMenuRef} data-controller-menu="true" data-controller-menu-id="tag" data-controller-menu-open={isTagMenuOpen ? 'true' : 'false'}>
 								<button
 									type="button"
+									data-controller-selectable="true"
+									data-controller-action="action"
+									data-controller-top="true"
+									data-controller-menu-trigger="tag"
 									onClick={(event) => {
 										event.stopPropagation()
 										setIsTagMenuOpen((prev) => !prev)
@@ -1160,6 +1178,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 									>
 										<button
 											type="button"
+											data-controller-selectable="true"
+											data-controller-action="action"
 											onClick={() => {
 												onTagFilterChange('All')
 												setIsTagMenuOpen(false)
@@ -1172,6 +1192,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 											<button
 												key={tag}
 												type="button"
+												data-controller-selectable="true"
+												data-controller-action="action"
 												onClick={() => {
 													onTagFilterChange(tag)
 													setIsTagMenuOpen(false)
@@ -1194,9 +1216,13 @@ const GameLibrary = (props: GameLibraryProps) => {
 								)}
 							</div>
 
-							<div className="w-full flex items-center justify-end gap-2 relative" ref={sortMenuRef}>
+							<div className="w-full flex items-center justify-end gap-2 relative" ref={sortMenuRef} data-controller-menu="true" data-controller-menu-id="sort" data-controller-menu-open={isSortMenuOpen ? 'true' : 'false'}>
 								<button
 									type="button"
+									data-controller-selectable="true"
+									data-controller-action="action"
+									data-controller-top="true"
+									data-controller-menu-trigger="sort"
 									onClick={(event) => {
 										event.stopPropagation()
 										setIsSortMenuOpen((prev) => !prev)
@@ -1219,6 +1245,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 									>
 										<button
 											type="button"
+													data-controller-selectable="true"
+													data-controller-action="action"
 											onClick={() => {
 												onSortFieldChange('name')
 												setIsSortMenuOpen(false)
@@ -1229,6 +1257,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 										</button>
 										<button
 											type="button"
+											data-controller-selectable="true"
+											data-controller-action="action"
 											onClick={() => {
 												onSortFieldChange('platform')
 												setIsSortMenuOpen(false)
@@ -1239,6 +1269,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 										</button>
 										<button
 											type="button"
+											data-controller-selectable="true"
+											data-controller-action="action"
 											onClick={() => {
 												onSortFieldChange('tag')
 												setIsSortMenuOpen(false)
@@ -1249,6 +1281,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 										</button>
 										<button
 											type="button"
+											data-controller-selectable="true"
+											data-controller-action="action"
 											onClick={() => {
 												onSortFieldChange('dateAdded')
 												setIsSortMenuOpen(false)
@@ -1259,6 +1293,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 										</button>
 										<button
 											type="button"
+											data-controller-selectable="true"
+											data-controller-action="action"
 											onClick={() => {
 												onSortFieldChange('lastPlayed')
 												setIsSortMenuOpen(false)
@@ -1272,6 +1308,9 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 								<button
 									type="button"
+									data-controller-selectable="true"
+									data-controller-action="action"
+									data-controller-top="true"
 									onClick={() => onSortDirectionChange(sortDirection === 'asc' ? 'desc' : 'asc')}
 									className="inline-flex items-center justify-center w-9 h-9 rounded-md text-steam-300 hover:text-white hover:bg-steam-600 transition-colors"
 									title={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}

@@ -102,7 +102,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
 	const getHoverEffectClasses = () => {
 		switch (cardHoverEffect) {
 			case 'grow':
-				return 'group-hover:scale-[1.15] origin-center'
+				return 'group-hover:scale-[1.15] controller-grow-card origin-center'
 			case 'shine':
 				return 'shine-card'
 			case 'spin':
@@ -246,6 +246,8 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
 				onClick={onClick}
 				onContextMenu={handleContextMenu}
 				data-game-id={game.id}
+				data-controller-selectable="true"
+				data-controller-action="detail"
 				className={`group relative w-full aspect-2/3 rounded-lg overflow-hidden bg-steam-800 ring-1 ring-inset ring-steam-600/35 shadow-[0_6px_18px_rgba(0,0,0,0.28)] transition-all duration-200 hover:ring-steam-400/55 hover:shadow-[0_10px_28px_rgba(58,98,133,0.28)] cursor-pointer ${getHoverEffectClasses()}`}
 			>
 				{visibleTags.length > 0 && (
@@ -274,7 +276,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
 							src={displayCoverUrl}
 							alt={game.name}
 							onError={handleImageError}
-							className={`w-full h-full object-cover transition-transform duration-200 ${cardHoverEffect === 'zoom' || cardHoverEffect === 'shine' ? 'group-hover:scale-105' : ''} ${isMissing ? 'grayscale opacity-60' : ''}`}
+							className={`controller-selection-image w-full h-full object-cover transition-transform duration-200 ${cardHoverEffect === 'zoom' || cardHoverEffect === 'shine' ? 'group-hover:scale-105 controller-selection-image-hover' : ''} ${isMissing ? 'grayscale opacity-60' : ''}`}
 						/>
 					) : (
 						<div className={`w-full h-full bg-linear-to-br from-steam-700 to-steam-800 flex items-center justify-center ${isMissing ? 'grayscale opacity-60' : ''}`}>
@@ -291,7 +293,7 @@ const GameCard = ({ game, onClick, onPlay, isPlayLoading = false, isRunning = fa
 				</div>
 
 				{/* Overlay */}
-				<div className="absolute inset-0 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:scale-[1.025]">
+				<div className="controller-selection-overlay absolute inset-0 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:scale-[1.025]">
 					<div className="absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-black/85 via-black/35 to-transparent" />
 					<div className="relative z-10 flex h-full flex-col justify-end p-3">
 						<p className="text-white font-semibold text-sm line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{game.name}</p>

@@ -48,6 +48,8 @@
   --theme-border-default: 42 71 94;
   --theme-border-subtle: 43 65 87;
   --theme-border-accent: 134 198 255;
+  --theme-controller-selection: var(--theme-border-accent);
+  --theme-controller-selection-glow: var(--theme-surface-accent);
   --theme-color-success: 79 214 115;
   --theme-color-warning: 250 204 21;
   --theme-color-danger: 255 71 71;

@@ -15,13 +15,15 @@ const LaunchFilePickerModal = ({
 	}
 
 	return (
-		<div className="launch-file-picker-overlay fixed inset-0 z-60 flex items-center justify-center p-4">
+		<div className="launch-file-picker-overlay fixed inset-0 z-60 flex items-center justify-center p-4" data-controller-modal="true">
 			<div className="launch-file-picker-panel w-full max-w-md rounded-lg shadow-2xl">
 				<div className="launch-file-picker-header px-4 py-3 flex items-center justify-between">
 					<h3 className="launch-file-picker-title font-semibold">Choose launch file</h3>
 					<button
 						type="button"
 						onClick={onCancel}
+						data-controller-selectable="true"
+						data-controller-modal-cancel="true"
 						className="launch-file-picker-secondary-button w-7 h-7 rounded transition-colors inline-flex items-center justify-center"
 						aria-label="Close launch file picker"
 					>
@@ -38,6 +40,9 @@ const LaunchFilePickerModal = ({
 						{launchFiles.map((file) => (
 							<label
 								key={file}
+								data-controller-selectable="true"
+								data-controller-action="action"
+								data-controller-launch-file-selected={selectedLaunchFile === file ? 'true' : 'false'}
 								className="launch-file-picker-option flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors"
 							>
 								<input
@@ -58,6 +63,8 @@ const LaunchFilePickerModal = ({
 					<button
 						type="button"
 						onClick={onCancel}
+						data-controller-selectable="true"
+						data-controller-modal-cancel="true"
 						className="launch-file-picker-secondary-button px-3 py-2 rounded text-sm transition-colors"
 					>
 						Cancel
@@ -65,6 +72,8 @@ const LaunchFilePickerModal = ({
 					<button
 						type="button"
 						onClick={onConfirm}
+						data-controller-selectable="true"
+						data-controller-action="launch"
 						disabled={!selectedLaunchFile}
 						className="launch-file-picker-primary-button px-3 py-2 rounded disabled:opacity-50 text-sm transition-colors inline-flex items-center gap-2"
 					>
