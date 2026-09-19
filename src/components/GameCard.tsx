@@ -14,6 +14,18 @@ const pendingTagQueue: string[] = []
 let activeTagLoads = 0
 const MAX_CONCURRENT_TAG_LOADS = 4
 
+export const invalidateSpecialTagsCache = (gameId: string) => {
+	specialTagsCache.delete(gameId)
+	pendingTagSubscribers.delete(gameId)
+}
+
+export const invalidateAllSpecialTagsCache = () => {
+	specialTagsCache.clear()
+	pendingTagSubscribers.clear()
+	pendingTagQueue.splice(0, pendingTagQueue.length)
+	activeTagLoads = 0
+}
+
 const normalizeSpecialTags = (value: unknown): string[] => {
 	if (!Array.isArray(value)) {
 		return []

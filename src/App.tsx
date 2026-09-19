@@ -7,6 +7,7 @@ import AppConfig from './components/AppConfig'
 import GameLibrary from './components/GameLibrary'
 import Sidebar from './components/Sidebar'
 import GameDetailView from './components/GameDetailView'
+import { invalidateAllSpecialTagsCache } from './components/GameCard'
 import ControllerManager from './services/ControllerManager'
 import LaunchFilePickerModal from './components/LaunchFilePickerModal'
 import ToastSystem, { useToastSystem } from './components/ToastSystem'
@@ -599,7 +600,7 @@ function App() {
             const launchStartedAt = Date.now()
 
             let launchPath: string;
-            if(!config.launchWithSteam) {
+            if(config.launchWithSteam === undefined) {
                 Logger.warn(`Set default launchWithSteam to true for game ${game.name} (ID: ${game.id}) because it was undefined.`)
                 config.launchWithSteam = true;
                 await saveGameConfig(game.id, {
@@ -649,7 +650,7 @@ function App() {
                 allLaunchFiles: pickerPendingConfig?.allLaunchFiles || pickerLaunchFiles,
             })
 
-            if(!pickerPendingConfig?.launchWithSteam) {
+            if(pickerPendingConfig?.launchWithSteam === undefined) {
                 Logger.warn(`Set default launchWithSteam to true for game ${pickerGame.name} (ID: ${pickerGame.id}) because it was undefined.`)
                 pickerPendingConfig.launchWithSteam = true;
                 await saveGameConfig(pickerGame.id, {
@@ -1154,10 +1155,6 @@ function App() {
                 }
 
                 setGames(allGames)
-                if (selectedGame) {
-                    const refreshedSelectedGame = allGames.find((item: Game) => item.id === selectedGame.id) || null
-                    setSelectedGame(refreshedSelectedGame)
-                }
                 await refreshLastPlayedCards(allGames)
             } else {
                 Logger.warn('No cached games found, starting with empty library.')
@@ -1192,9 +1189,10 @@ function App() {
             await refetchAllSpecialTags((update) => {
                 setScanProgress(update.percent)
                 setScanStatusMessage(update.message)
-            })
-
-            await loadGames()
+            }, async () => {
+				invalidateAllSpecialTagsCache()
+				await loadGames()
+			})
             setScanProgress(100)
             setScanStatusMessage('Special tags refetch complete.')
         } finally {
@@ -1204,6 +1202,7 @@ function App() {
     }
 
     const handleScanPlatforms = async (platforms: string[]) => {
+        setSelectedGame(null)
         setIsScanning(true)
         setScanProgress(0)
         setScanStatusMessage(`Preparing scan for ${platforms.length} platform(s)...`)
@@ -1356,6 +1355,7 @@ function App() {
             return
         }
 
+        setSelectedGame(null)
         setIsScanning(true)
         setScanProgress(0)
         setScanStatusMessage('Refreshing library: scanning custom folders...')

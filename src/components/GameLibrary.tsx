@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import GameCard from './GameCard'
-import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, Link2, Loader, Play, Plus, RefreshCw, ShieldCheck, Star, Tags, Trash2 } from 'lucide-react'
+import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, FolderOpen, Gamepad2, Link2, Loader, Play, Plus, RefreshCw, ShieldCheck, Star, Tags, Trash2 } from 'lucide-react'
 import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import { launchGame, launchSteamGame, openGameFolder } from '../services/GameLauncher'
@@ -19,6 +19,11 @@ const DEFAULT_METADATA_API_URL = 'https://gamelibrary.ezzud.fr/api'
 const normalizeApiBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
 const dateDataCache: Record<string, { dateAdded: number | null; lastPlayedAt: number | null }> = {}
 const coverDataCache: Record<string, string | null> = {}
+
+const normalizeSpecialTag = (tag: string) => {
+	const normalized = tag.trim().toLowerCase().replace(/[\s-]+/g, '_')
+	return normalized === 'controllersupported' ? 'controller_supported' : normalized
+}
 
 const hasCachedGameData = (games: Game[], cache: Record<string, unknown>) =>
 	games.length === 0 || games.every((game) => Object.prototype.hasOwnProperty.call(cache, game.id))
@@ -79,6 +84,11 @@ const tagVisuals: Record<string, { label: string; className: string; icon: React
 		label: 'VR',
 		className: 'bg-[#2a70c9] text-white',
 		icon: <FaVrCardboard className="w-3.5 h-3.5" />,
+	},
+	controller_supported: {
+		label: 'CONTROLLER SUPPORTED',
+		className: 'bg-[#3b82f6] text-white',
+		icon: <Gamepad2 className="w-3.5 h-3.5" />,
 	},
 }
 
@@ -356,6 +366,41 @@ const GameLibrary = (props: GameLibraryProps) => {
 		void loadDisplayCoverData()
 	}, [games, metadataRefreshKey])
 
+	useEffect(() => {
+		let cancelled = false
+
+		const loadSavedSpecialTags = async () => {
+			if (games.length < 1) {
+				setGameTagsById({})
+				return
+			}
+
+			const entries = await Promise.all(games.map(async (game) => {
+				try {
+					const config = await loadGameConfig(game.id)
+					const tags = Array.isArray((config as any)?.specialTags)
+						? (config as any).specialTags.filter((tag: unknown): tag is string => typeof tag === 'string').map(normalizeSpecialTag)
+						: []
+					return [game.id, tags] as const
+				} catch {
+					return [game.id, []] as const
+				}
+			}))
+
+			if (!cancelled) {
+				setGameTagsById((previous) => ({
+					...previous,
+					...Object.fromEntries(entries),
+				}))
+			}
+		}
+
+		void loadSavedSpecialTags()
+		return () => {
+			cancelled = true
+		}
+	}, [games, metadataRefreshKey])
+
 	const availablePlatforms = Array.from(new Set([...SCAN_PLATFORMS, ...games.map((game) => game.platform)])).filter(Boolean).sort((a, b) => a.localeCompare(b))
 	const availableTags = Array.from(
 		new Set(
@@ -468,7 +513,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 	const handleCardSpecialTagsLoaded = (gameId: string, tags: string[]) => {
 		setGameTagsById((prev) => {
 			const currentTags = prev[gameId] || []
-			const nextTags = tags.map((tag) => tag.toLowerCase())
+			const nextTags = tags.map(normalizeSpecialTag)
 
 			if (
 				currentTags.length === nextTags.length
@@ -734,7 +779,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 			setLaunchingGameId(game.id)
 			const launchStartedAt = Date.now()
 
-			if(!config.launchWithSteam) {
+			if(config.launchWithSteam === undefined) {
 				Logger.warn(`Set default launchWithSteam to true for game ${game.name} (ID: ${game.id}) because it was undefined.`)
 				config.launchWithSteam = true;
 				await saveGameConfig(game.id, {
@@ -786,7 +831,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 				allLaunchFiles: pickerPendingConfig?.allLaunchFiles || pickerLaunchFiles,
 			})
 
-			if(!pickerPendingConfig?.launchWithSteam) {
+			if(pickerPendingConfig?.launchWithSteam === undefined) {
 				Logger.warn(`Set default launchWithSteam to true for game ${pickerGame.name} (ID: ${pickerGame.id}) because it was undefined.`)
 				pickerPendingConfig.launchWithSteam = true;
 				await saveGameConfig(pickerGame.id, {
@@ -1142,7 +1187,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 								)}
 							</div>
 
-							<div className="w-full relative" ref={tagMenuRef} data-controller-menu="true" data-controller-menu-id="tag" data-controller-menu-open={isTagMenuOpen ? 'true' : 'false'}>
+							<div className="w-full min-w-0 relative" ref={tagMenuRef} data-controller-menu="true" data-controller-menu-id="tag" data-controller-menu-open={isTagMenuOpen ? 'true' : 'false'}>
 								<button
 									type="button"
 									data-controller-selectable="true"
@@ -1155,17 +1200,17 @@ const GameLibrary = (props: GameLibraryProps) => {
 										setIsPlatformMenuOpen(false)
 										setIsSortMenuOpen(false)
 									}}
-									className="w-full inline-flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-steam-600 text-sm text-steam-300 hover:text-white hover:bg-steam-600 transition-colors"
+									className="w-full min-w-0 inline-flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-steam-600 text-sm text-steam-300 hover:text-white hover:bg-steam-600 transition-colors"
 									title="Choose tag filter"
 									aria-label="Choose tag filter"
 								>
-									<span className="inline-flex items-center gap-2">
+									<span className="min-w-0 inline-flex items-center gap-2">
 										{selectedTagVisual && (
-											<span className={`w-5 h-5 rounded-md inline-flex items-center justify-center ${selectedTagVisual.className}`}>
+													<span className={`w-5 h-5 shrink-0 rounded-md inline-flex items-center justify-center ${selectedTagVisual.className}`}>
 												{selectedTagVisual.icon}
 											</span>
 										)}
-										<span>{tagFilter === 'All' ? 'All tags' : (selectedTagVisual?.label || tagFilter.toUpperCase())}</span>
+												<span className="min-w-0 truncate">{tagFilter === 'All' ? 'All tags' : (selectedTagVisual?.label || tagFilter.toUpperCase())}</span>
 									</span>
 									<ChevronsUpDown className="w-4 h-4" />
 								</button>
@@ -1200,15 +1245,15 @@ const GameLibrary = (props: GameLibraryProps) => {
 												}}
 												className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${tagFilter === tag ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
 											>
-												<span className="inline-flex items-center gap-2">
+												<span className="min-w-0 inline-flex items-center gap-2">
 													{tagVisuals[tag] ? (
-														<span className={`w-5 h-5 rounded-md inline-flex items-center justify-center ${tagVisuals[tag].className}`}>
+														<span className={`w-5 h-5 shrink-0 rounded-md inline-flex items-center justify-center ${tagVisuals[tag].className}`}>
 															{tagVisuals[tag].icon}
 														</span>
 													) : (
 														<Tags className="w-4 h-4 text-steam-300" />
 													)}
-													<span>{tagVisuals[tag]?.label || tag.toUpperCase()}</span>
+													<span className="min-w-0 truncate">{tagVisuals[tag]?.label || tag.toUpperCase()}</span>
 												</span>
 											</button>
 										))}

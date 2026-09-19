@@ -10,6 +10,7 @@ const TWITCH_CLIENT_ID = (process.env.TWITCH_CLIENT_ID || '').trim()
 const TWITCH_CLIENT_SECRET = (process.env.TWITCH_CLIENT_SECRET || '').trim()
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token'
 const IGDB_BASE_URL = 'https://api.igdb.com/v4'
+const PCGW_API_URL = 'https://www.pcgamingwiki.com/w/api.php'
 const GITHUB_RELEASES_LATEST_URL = 'https://github.com/Ezzud/gamelibrary/releases/latest'
 const GITHUB_RELEASE_DOWNLOAD_BASE_URL = 'https://github.com/Ezzud/gamelibrary/releases/download'
 const workspacePackageJsonUrl = new URL('../package.json', import.meta.url)
@@ -112,6 +113,12 @@ app.use((req, res, next) => {
 const normalizeName = (value) =>
 	value
 		.toLowerCase()
+		.replace(/\biv\b/g, '4')
+		.replace(/\biii\b/g, '3')
+		.replace(/\bii\b/g, '2')
+		.replace(/\bvi\b/g, '6')
+		.replace(/\bv\b/g, '5')
+		.replace(/\bi\b/g, '1')
 		.replace(/[^a-z0-9\s]/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim()
@@ -293,7 +300,8 @@ const searchGame = async (gameName) => {
 			return { success: false, code: 'GAME_NOT_FOUND', data: null }
 		}
 
-		const best = candidates.sort((a, b) => {
+		const exactName = candidates.find((candidate) => normalizeName(candidate?.name || '') === normalizeName(mappedGameName))
+		const best = exactName || candidates.sort((a, b) => {
 			const aScore = scoreNameMatch(mappedGameName, a?.name || '')
 			const bScore = scoreNameMatch(mappedGameName, b?.name || '')
 			if (aScore !== bScore) {
@@ -359,6 +367,153 @@ const getGameDetails = async (gameId) => {
 		logger.error('Failed to fetch IGDB game details:', error)
 		return null
 	}
+}
+
+const pcgwFetch = async (params) => {
+	const query = new URLSearchParams({
+		...params,
+		format: 'json',
+		origin: '*',
+	})
+	const response = await fetch(`${PCGW_API_URL}?${query.toString()}`, {
+		headers: { 'User-Agent': 'GameLibrary/0.5 PCGamingWiki controller support lookup' },
+	})
+	let data = null
+	try {
+		data = await response.json()
+	} catch {
+		data = null
+	}
+
+	const apiErrorCode = String(data?.error?.code || '').toLowerCase()
+	const apiErrorInfo = String(data?.error?.info || '').toLowerCase()
+	const isRateLimited = response.status === 429
+		|| /rate.?limit|ratelimit|throttl/.test(apiErrorCode)
+		|| /rate.?limit|ratelimit|throttl/.test(apiErrorInfo)
+	if (!response.ok || data?.error) {
+		const retryAfterHeader = response.headers.get('retry-after')
+		const responseRetryAfter = Number(data?.error?.retry_after ?? data?.error?.retryAfter)
+		const retryAfterSeconds = Number.isFinite(responseRetryAfter) && responseRetryAfter >= 0
+			? responseRetryAfter
+			: retryAfterHeader && /^\d+(\.\d+)?$/.test(retryAfterHeader)
+			? Number(retryAfterHeader)
+			: retryAfterHeader
+				? Math.max(0, Math.ceil((Date.parse(retryAfterHeader) - Date.now()) / 1000))
+				: null
+		const error = new Error(`PCGamingWiki request failed with status ${response.status}`)
+		error.status = response.status
+		error.rateLimited = isRateLimited
+		error.retryAfter = retryAfterSeconds
+		throw error
+	}
+
+	return data
+}
+
+const normalizeControllerSupport = (wikitext) => {
+	const source = String(wikitext || '').toLowerCase()
+	const values = []
+	const patterns = [
+		/\|\s*controller\s*support\s*=\s*([^\n|}]+)/gi,
+		/\|\s*controller_support\s*=\s*([^\n|}]+)/gi,
+		/\|\s*controller\s*=\s*([^\n|}]+)/gi,
+	]
+	patterns.forEach((pattern) => {
+		for (const match of source.matchAll(pattern)) {
+			const value = match[1]
+				.replace(/\[\[[^\]|]+\|([^\]]+)\]\]/g, '$1')
+				.replace(/\{\{[^}]+\}\}/g, ' ')
+				.replace(/<[^>]+>/g, ' ')
+				.replace(/\s+/g, ' ')
+				.trim()
+			values.push(value)
+		}
+	})
+
+	if (values.some((value) => /^(true|yes|full|full support|native|supported|complete)$/.test(value))) return 'supported'
+	if (values.some((value) => /^(partial|partially supported|limited|limited support|mixed|some support)$/.test(value))) return 'partially_supported'
+	if (values.some((value) => /^(false|no|none|unsupported|not supported)$/.test(value))) return 'unsupported'
+	return 'unsupported'
+}
+
+const decodeHtmlEntities = (value) => value
+	.replace(/&#039;|&#39;/gi, "'")
+	.replace(/&quot;/gi, '"')
+	.replace(/&amp;/gi, '&')
+
+const fetchPcgwPageWikitext = async (title, redirectDepth = 0) => {
+	const data = await pcgwFetch({
+		action: 'query',
+		prop: 'revisions',
+		rvprop: 'content',
+		rvslots: 'main',
+		redirects: '1',
+		titles: title,
+	})
+	const page = Object.values(data?.query?.pages || {})[0]
+	const wikitext = page?.revisions?.[0]?.slots?.main?.['*'] || page?.revisions?.[0]?.['*'] || null
+	if (!wikitext || redirectDepth >= 3) return wikitext
+
+	const redirectTarget = wikitext.match(/^\s*#redirect\s*\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]+)?\]\]/i)?.[1]
+	if (!redirectTarget) return wikitext
+
+	const resolvedTitle = decodeHtmlEntities(redirectTarget.trim())
+	logger.info(`Following PCGamingWiki redirect: ${title} -> ${resolvedTitle}`)
+	return fetchPcgwPageWikitext(resolvedTitle, redirectDepth + 1)
+}
+
+const findPcgwPageTitlesBySteamId = async (steamId) => {
+	if (!steamId) return []
+
+	try {
+		const data = await pcgwFetch({
+			action: 'cargoquery',
+			tables: 'GameData',
+			fields: '_pageName=page',
+			where: `Steam_AppID=${String(steamId).replace(/[^0-9]/g, '')}`,
+			limit: '10',
+		})
+		return (data?.cargoquery || [])
+			.map((entry) => entry?.title?.page || entry?.title?._pageName)
+			.filter(Boolean)
+	} catch (error) {
+		logger.warn(`PCGamingWiki direct Steam AppID lookup failed for ${steamId}:`, error)
+		return []
+	}
+}
+
+const findPcgwPageTitlesByName = async (gameName) => {
+	if (!gameName) return []
+	const titles = []
+	const data = await pcgwFetch({ action: 'query', list: 'search', srsearch: gameName, srlimit: '5' })
+	for (const result of data?.query?.search || []) {
+		if (result?.title && !titles.includes(result.title)) titles.push(result.title)
+	}
+	return titles
+}
+
+const getControllerSupport = async ({ gameName, igdbId, steamId }) => {
+	let resolvedGameName = typeof gameName === 'string' ? gameName.trim() : ''
+	if (!resolvedGameName && igdbId !== undefined && igdbId !== null) {
+		const details = await getGameDetails(Number(igdbId))
+		resolvedGameName = details?.title || ''
+	}
+	if (!resolvedGameName && !steamId) {
+		return { success: false, error: true, error_message: 'Unable to resolve a game name or Steam ID.', retry_after: null, controller_support: 'unsupported' }
+	}
+
+	let titles = steamId ? await findPcgwPageTitlesBySteamId(String(steamId)) : []
+	if (titles.length === 0) {
+		titles = await findPcgwPageTitlesByName(resolvedGameName)
+	}
+	for (const title of titles) {
+		const wikitext = await fetchPcgwPageWikitext(title)
+		if (wikitext) {
+			return { success: true, error: false, error_message: null, retry_after: null, controller_support: normalizeControllerSupport(wikitext) }
+		}
+	}
+
+	return { success: true, error: false, error_message: null, retry_after: null, controller_support: 'unsupported' }
 }
 
 app.get('/health', (req, res) => {
@@ -431,6 +586,32 @@ app.post('/igdb/artwork', async (req, res) => {
 	} catch (error) {
 		logger.error('Failed to fetch IGDB artwork:', error)
 		return res.status(500).json({ url: null })
+	}
+})
+
+app.post('/game/specs', async (req, res) => {
+	const gameName = typeof req.body?.gameName === 'string' ? req.body.gameName.trim() : ''
+	const igdbId = req.body?.igdbId !== undefined && req.body?.igdbId !== null ? Number(req.body.igdbId) : null
+	const steamId = req.body?.steamId !== undefined && req.body?.steamId !== null ? String(req.body.steamId).trim() : ''
+	if (!gameName && (!Number.isFinite(igdbId) || igdbId === null) && !steamId) {
+		return res.status(400).json({ success: false, error: true, error_message: 'At least one of gameName, igdbId, or steamId is required.', controller_support: 'unsupported' })
+	}
+
+	try {
+		const result = await getControllerSupport({ gameName, igdbId, steamId })
+		return res.status(200).json(result)
+	} catch (error) {
+		logger.error('Failed to resolve PCGamingWiki game specs:', error)
+		if (error?.status === 429 || error?.rateLimited) {
+			return res.status(429).json({
+				success: false,
+				error: true,
+				error_message: 'PCGamingWiki rate limit reached.',
+				retry_after: error.retryAfter ?? 60,
+				controller_support: 'unsupported',
+			})
+		}
+		return res.status(502).json({ success: false, error: true, error_message: 'Failed to fetch controller support from PCGamingWiki.', retry_after: null, controller_support: 'unsupported' })
 	}
 })
 

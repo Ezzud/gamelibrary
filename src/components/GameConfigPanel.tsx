@@ -5,7 +5,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { loadGameConfig, saveGameConfig, getGameCachePath, copyFileToGameCache, getGameCoverPath, getGameThumbnailPath, removeGameCustomImage } from '../services/ConfigManager'
 import { openGameFolder } from '../services/GameLauncher'
 import { resetAndRefetchGameIGDBData } from '../services/GameDataManager'
-import { getAllLaunchFiles } from '../services/GameScanner'
+import { findSpecialTagsForGamePath, getAllLaunchFiles } from '../services/GameScanner'
+import { invalidateSpecialTagsCache } from './GameCard'
 import type { GameConfigPanelProps } from '../types/appTypes'
 import { readFile } from '@tauri-apps/plugin-fs'
 
@@ -27,6 +28,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 	const [saveMessage, setSaveMessage] = useState('')
 	const [isSaving, setIsSaving] = useState(false)
 	const [isResettingIGDBData, setIsResettingIGDBData] = useState(false)
+	const [isRefreshingSpecialTags, setIsRefreshingSpecialTags] = useState(false)
 	const [isRefreshingLaunchFiles, setIsRefreshingLaunchFiles] = useState(false)
 	const [isLoading, setIsLoading] = useState(true)
 	const [localCoverPath, setLocalCoverPath] = useState<string | null>(null)
@@ -244,6 +246,28 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 			onShowToast?.(`Failed to reset IGDB data: ${message}`, { durationMs: 5000, style: 'error' })
 		} finally {
 			setIsResettingIGDBData(false)
+		}
+	}
+
+	const handleRefreshSpecialTags = async () => {
+		if (isRefreshingSpecialTags) {
+			return
+		}
+
+		setIsRefreshingSpecialTags(true)
+		try {
+			const currentConfig = await loadGameConfig(game.id)
+			const specialTags = await findSpecialTagsForGamePath(game.path, game.id)
+			await saveGameConfig(game.id, { ...currentConfig, specialTags })
+			invalidateSpecialTagsCache(game.id)
+			await onConfigSaved?.()
+			await loadCurrentGameConfig()
+			onShowToast?.('Special tags refreshed successfully.', { durationMs: 3000, style: 'success' })
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			onShowToast?.(`Failed to refresh special tags: ${message}`, { durationMs: 5000, style: 'error' })
+		} finally {
+			setIsRefreshingSpecialTags(false)
 		}
 	}
 
@@ -554,7 +578,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 									Actions
 								</h3>
 								<p className="text-red-200/90 text-sm mb-4">
-									Reset cached IGDB fields for this game and refetch fresh metadata.
+									Reset cached IGDB metadata or refresh this game&apos;s detected special tags.
 								</p>
 								<button
 									type="button"
@@ -564,6 +588,15 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 								>
 									{isResettingIGDBData ? <Loader className="w-5 h-5 animate-spin" /> : <Info className="w-5 h-5" />}
 									{isResettingIGDBData ? 'Resetting...' : 'Reset IGDB Data'}
+								</button>
+								<button
+									type="button"
+									onClick={() => void handleRefreshSpecialTags()}
+									disabled={isRefreshingSpecialTags || isSaving}
+									className="w-full mt-3 bg-red-700 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+								>
+									{isRefreshingSpecialTags ? <Loader className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+									{isRefreshingSpecialTags ? 'Refreshing...' : 'Refresh Special Tags'}
 								</button>
 							</div>
 						</div>

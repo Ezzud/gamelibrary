@@ -741,7 +741,6 @@ const AppConfig = ({
 		setCredentialsStatus(null)
 		setIsConnectingCredentials(true)
 		try {
-			await handleGameLibraryApiBaseUrlChange(gameLibraryApiBaseUrl)
 			const result = await testGameLibraryApi(gameLibraryApiBaseUrl)
 			if (result.success) {
 				setCredentialsStatus({
@@ -756,6 +755,32 @@ const AppConfig = ({
 			Logger.error('Failed to test GameLibrary API:', error)
 			setCredentialsStatus({ type: 'error', message: 'Failed to connect to GameLibrary API.' })
 		} finally {
+			setIsConnectingCredentials(false)
+		}
+	}
+
+	const handleGameLibraryApiAction = async () => {
+		if (credentialsStatus?.type !== 'success') {
+			await handleTestGameLibraryApi()
+			return
+		}
+
+		if (isConnectingCredentials) {
+			return
+		}
+
+		setIsConnectingCredentials(true)
+		try {
+			await setIGDBApiBaseUrl(gameLibraryApiBaseUrl)
+			await onConfigChanged?.()
+			setCredentialsStatus({ type: 'success', message: 'GameLibrary API configuration saved.' })
+			window.setTimeout(() => {
+				setCredentialsStatus(null)
+				setIsConnectingCredentials(false)
+			}, 2000)
+		} catch (error) {
+			Logger.error('Failed to save GameLibrary API configuration:', error)
+			setCredentialsStatus({ type: 'error', message: 'Failed to save GameLibrary API configuration.' })
 			setIsConnectingCredentials(false)
 		}
 	}
@@ -1138,14 +1163,14 @@ const AppConfig = ({
 											)}
 											<button
 												type="button"
-												onClick={() => void handleTestGameLibraryApi()}
+																onClick={() => void handleGameLibraryApiAction()}
 												disabled={isConnectingCredentials || !gameLibraryApiBaseUrl.trim()}
 												className="inline-flex items-center gap-1 rounded-md bg-[#2a4f75] px-2 py-1 text-xs text-white transition-colors hover:bg-[#36648f] disabled:opacity-50"
-												aria-label="Test GameLibrary API"
-												title="Test GameLibrary API"
+																aria-label={credentialsStatus?.type === 'success' ? 'Save GameLibrary API configuration' : 'Test GameLibrary API'}
+																title={credentialsStatus?.type === 'success' ? 'Save GameLibrary API configuration' : 'Test GameLibrary API'}
 											>
 												<Link2 className="w-4 h-4" />
-												{isConnectingCredentials ? 'Testing...' : 'Test'}
+																{isConnectingCredentials ? (credentialsStatus?.type === 'success' ? 'Saving...' : 'Testing...') : credentialsStatus?.type === 'success' ? 'Save' : 'Test'}
 											</button>
 										</div>
 									</div>
@@ -1264,7 +1289,7 @@ const AppConfig = ({
 											type="button"
 											onClick={() => void handleApplyTheme()}
 											disabled={isApplyingTheme}
-											className="inline-flex items-center gap-2 rounded-md bg-steam-600 px-3 py-2 text-sm text-white transition-colors hover:bg-steam-500 disabled:cursor-not-allowed disabled:opacity-50"
+											className="theme-primary-action inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 										>
 											{isApplyingTheme && <Loader2 className="w-4 h-4 animate-spin" />}
 											Apply
@@ -1705,7 +1730,7 @@ const AppConfig = ({
 								type="button"
 								onClick={handleAddCustomFolder}
 								disabled={isScanning}
-								className="px-3 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+								className="theme-primary-action px-3 py-2 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
 							>
 								<FolderPlus className="w-4 h-4" />
 								Add Folder
@@ -1751,7 +1776,7 @@ const AppConfig = ({
 									type="button"
 									onClick={handleAddIgnoredFolder}
 									disabled={isScanning}
-									className="px-3 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+									className="theme-primary-action px-3 py-2 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
 								>
 									<FolderPlus className="w-4 h-4" />
 									Add Folder
@@ -1826,7 +1851,7 @@ const AppConfig = ({
 							type="button"
 							onClick={handleBeginScan}
 							disabled={isScanning || selectedPlatforms.size < 1}
-							className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+							className="theme-primary-action px-4 py-2 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
 						>
 							<Play className="w-4 h-4" />
 							{isScanning ? 'Scanning...' : 'Begin Scan'}
@@ -2027,7 +2052,7 @@ const AppConfig = ({
 										type="button"
 										onClick={() => void checkForUpdates()}
 										disabled={updateStatus === 'checking'}
-										className="px-4 py-2 rounded-lg bg-steam-600 hover:bg-steam-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+										className="theme-primary-action px-4 py-2 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
 									>
 										{updateStatus === 'checking' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
 										Check Update

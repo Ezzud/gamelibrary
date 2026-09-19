@@ -3,80 +3,16 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { appDataDir } from "@tauri-apps/api/path";
 import { Logger } from "../utils/Logger";
 import { searchGame } from "./GameDataManager";
+import { fetchControllerSupport } from "./GameDataManager";
 import { addGamesToList, saveGameConfig, saveGameInfoCache, loadGameList, loadGameConfig, removeGameFromList, getCustomScanFolders, getIgnoredFolders, loadGameCache } from "./ConfigManager";
 import type { GameCacheConfig, GameConfig, GameListEntry, ScanProgressCallback, SteamData } from "../types/appTypes";
+import { scanMacBattleNetGames, scanMacEAGames, scanMacEpicGames, scanMacGOGGames, scanMacSteamGames } from './MacScanner'
+import { scanLinuxEAGames, scanLinuxEpicGames, scanLinuxGOGGames, scanLinuxSteamGames } from './LinuxScanner'
+import { scanWindowsBattleNetGames, scanWindowsEAGames, scanWindowsEpicGames, scanWindowsGOGGames, scanWindowsSteamGames, scanWindowsXboxGames } from './WindowsScanner'
+import { scannerPaths } from './ScannerPaths'
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const platformPaths = {
-	steam: {
-		roots: {
-			windows: ["Program Files (x86)/Steam", "Program Files/Steam", "Steam"],
-			mac: ["Applications/Steam.app", "Library/Application Support/Steam"],
-			linux: [".steam/root", ".steam/steam", ".local/share/Steam"]
-		},
-		libraries: {
-			windows: ["SteamLibrary/steamapps/common"],
-			mac: ["Library/Application Support/Steam/steamapps/common", "SteamLibrary/steamapps/common"],
-			linux: [
-				".steam/root/steamapps/common",
-				".steam/steam/steamapps/common",
-				".local/share/Steam/steamapps/common",
-				"SteamLibrary/steamapps/common"
-			]
-		},
-		common: {
-			windows: ["steamapps/common"],
-			mac: ["steamapps/common"],
-			linux: ["steamapps/common"]
-		}
-	},
-	gog: {
-		galaxyDefault: {
-			windows: ["Program Files (x86)/GOG Galaxy/Games", "Program Files/GOG Galaxy/Games", "GOG Galaxy/Games"],
-			mac: ["Applications/GOG Galaxy.app", "Library/Application Support/GOG.com/Galaxy/Applications"],
-			linux: []
-		},
-		galaxyOther: {
-			windows: ["GOG Galaxy/Games"],
-			mac: ["Library/Application Support/GOG.com/Galaxy/Applications"],
-			linux: []
-		},
-		standalone: {
-			windows: ["GOG Games"],
-			mac: ["GOG Games"],
-			linux: ["GOG Games", "Games/Heroic"]
-		}
-	},
-	xbox: {
-		roots: {
-			windows: ["XboxGames"],
-			mac: [],
-			linux: []
-		}
-	},
-	ea: {
-		roots: {
-			windows: ["Program Files (x86)/EA Games", "Program Files/EA Games", "EA Games"],
-			mac: ["Applications/EA Games", "EA Games"],
-			linux: ["Games/Heroic/Prefixes/default/EA App/drive_c/Program Files/EA Games"]
-		}
-	},
-	epic: {
-		roots: {
-			windows: ["Program Files (x86)/Epic Games", "Program Files/Epic Games", "Epic Games"],
-			mac: ["Epic Games", "Library/Application Support/Epic/EpicGamesLauncher"],
-			linux: ["Games/Heroic", "Games/Epic Games"]
-		}
-	},
-	battlenet: {
-		roots: {
-			windows: ["Program Files (x86)/Battle.net/Games", "Program Files/Battle.net/Games", "Battle.net/Games"],
-			mac: ["Applications/Blizzard", "Applications/Battle.net"],
-			linux: []
-		}
-	}
-} as const;
 const blacklistedGames = [
 	"Steam Controller Configs",
 	"SteamVR",
@@ -109,6 +45,17 @@ const nonGameLaunchFilePatterns = [
 	/^launcher\s*installer/i,
 ]
 const inFlightRegistrationPaths = new Set<string>();
+
+const getRuntimeOperatingSystem = () => {
+	const browserNavigator = navigator as Navigator & { userAgentData?: { platform?: string } }
+	const platform = `${browserNavigator.userAgentData?.platform || navigator.platform || navigator.userAgent}`.toLowerCase()
+	if (platform.includes('mac')) return 'mac'
+	if (platform.includes('linux')) return 'linux'
+	return 'windows'
+}
+
+const isWindowsRuntime = () => getRuntimeOperatingSystem() === 'windows'
+const registerDiscoveredGames = (games: any[], platform: string, onProgress?: ScanProgressCallback) => registerGames(games, platform, onProgress)
 
 function normalizePathForCompare(value: string) {
 	return value.replace(/\\/g, '/').replace(/\/+$/, '').trim().toLowerCase();
@@ -273,7 +220,48 @@ async function hasOnlineFixInBinariesWin64(gamePath: string): Promise<boolean> {
 	}
 }
 
-export async function findSpecialTagsForGamePath(gamePath: string, gameId: string): Promise<string[]> {
+export async function isControllerSupported(gamePath: string, gameId: string): Promise<boolean> {
+	try {
+		const gameCache = await loadGameCache(gameId);
+		const gameConfig = await loadGameConfig(gameId);
+		const folderName = gamePath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
+		const gameName = gameCache?.title || folderName;
+		const steamId = typeof gameConfig?.steamId === 'string' ? gameConfig.steamId.trim() : '';
+		const forcedIgdbId = typeof gameConfig?.forced_igdb_id === 'number' && Number.isFinite(gameConfig.forced_igdb_id)
+			? gameConfig.forced_igdb_id
+			: null;
+		const lookup = steamId
+			? { steamId, gameName }
+			: forcedIgdbId !== null
+				? { igdbId: forcedIgdbId }
+				: { gameName };
+		let retryAttempts = 0
+		while (true) {
+			const result = await fetchControllerSupport(lookup);
+			if (!result.error) {
+				return result.controller_support === 'supported' || result.controller_support === 'partially_supported';
+			}
+
+			const retryAfterSeconds = result.retry_after
+			if (typeof retryAfterSeconds !== 'number' || !Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) {
+				return false;
+			}
+			retryAttempts += 1
+			if (retryAttempts >= 3) {
+				Logger.warn(`Controller support lookup failed 3 times for ${gamePath}; skipping retry.`)
+				return false
+			}
+
+			Logger.warn(`Controller support lookup rate-limited for ${gamePath}; retrying in ${retryAfterSeconds} seconds.`)
+			await sleep(retryAfterSeconds * 1000)
+		}
+	} catch (error) {
+		Logger.warn(`Unable to determine controller support for ${gamePath}:`, error);
+		return false;
+	}
+}
+
+export async function findSpecialTagsForGamePath(gamePath: string, gameId: string, skipControllerSupport = false): Promise<string[]> {
 	const specialTags: string[] = [];
 	const addSpecialTag = (tag: string) => {
 		if (!specialTags.includes(tag)) {
@@ -286,6 +274,12 @@ export async function findSpecialTagsForGamePath(gamePath: string, gameId: strin
 		const normalizedGamePath = gamePath.replace(/[\\/]+$/, "");
 		const gameFolderName = normalizedGamePath.split(/[\\/]/).pop()?.toLowerCase() || "";
 		const gameCache = await loadGameCache(gameId);
+		const existingConfig = await loadGameConfig(gameId);
+		const existingSpecialTags = Array.isArray(existingConfig?.specialTags) ? existingConfig.specialTags : [];
+		const controllerSupportAlreadyKnown = existingSpecialTags.some(
+			(tag: unknown) => typeof tag === 'string' && tag.trim().toLowerCase().replace(/[\\s-]+/g, '_') === 'controller_supported'
+		);
+		const supportsWindowsLikeHeuristics = getRuntimeOperatingSystem() !== 'mac';
 		const platform = gameCache.platform;
 		switch (platform) {
 			case "Steam":
@@ -309,49 +303,53 @@ export async function findSpecialTagsForGamePath(gamePath: string, gameId: strin
 				break;
 		}
 
-		if (entries.find((e) => !e.isDirectory && e.name.toLowerCase() === "vbs.cmd")) {
+		if (supportsWindowsLikeHeuristics && getRuntimeOperatingSystem() === 'windows' && entries.find((e) => !e.isDirectory && e.name.toLowerCase() === "vbs.cmd")) {
 			addSpecialTag("hypervisor");
 		}
-		if (entries.find((e) => !e.isDirectory && e.name.toLowerCase().endsWith("vr.exe"))) {
+		if (supportsWindowsLikeHeuristics && entries.find((e) => !e.isDirectory && e.name.toLowerCase().endsWith("vr.exe"))) {
 			addSpecialTag("vr");
 		}
-		if (gameFolderName.endsWith("vr")) {
+		if (supportsWindowsLikeHeuristics && gameFolderName.endsWith("vr")) {
 			addSpecialTag("vr");
 		}
 
-		if (entries.find((e) => !e.isDirectory && e.name.toLowerCase() === "onlinefix64.dll")) {
-			addSpecialTag("onlinefixed");
-		}
-		// If game folder contains "OnlineFix64.dll" in Engine\Binaries\ThirdParty\Steamworks\SteamvANYNUMBER\Win64, add tag "onlinefixed"
-		if (await hasSteamworksVersionedWin64File(normalizedGamePath, "OnlineFix64.dll")) {
-			addSpecialTag("onlinefixed");
-		}
-		// If game folder contains "cream_api.ini" in Engine\Binaries\ThirdParty\Steamworks\SteamvANYNUMBER\Win64, add tag "onlinefixed"
-		if (await hasSteamworksVersionedWin64File(normalizedGamePath, "cream_api.ini")) {
-			addSpecialTag("onlinefixed");
+		if(controllerSupportAlreadyKnown) {
+			Logger.info(`Controller support already known for ${gamePath}; skipping check.`);
+			addSpecialTag("controller_supported");
+		} else {
+			if(!skipControllerSupport && await isControllerSupported(normalizedGamePath, gameId)) {
+				addSpecialTag("controller_supported");
+			}
 		}
 
-		if (await hasOnlineFixInBinariesWin64(normalizedGamePath)) {
-			addSpecialTag("onlinefixed");
-		}
-		// If game folder contains "OnlineFix64.dll" in Binaries\, add tag "cracked"
-		const hasOnlineFixAnywhereInBinaries = await hasFileInSubtree(`${normalizedGamePath}/Binaries`, "OnlineFix64.dll", 4);
-		const hasOnlineFixInNestedBinaries = await hasFileInDirectChildBinariesWin64(normalizedGamePath, "OnlineFix64.dll");
-		if (hasOnlineFixAnywhereInBinaries || hasOnlineFixInNestedBinaries) {
-			addSpecialTag("cracked");
-		}
-		// If game folder contains "unsteam.dll " BW\Binaries\Win64, add tag "cracked"
-		if (await fileExistsCaseInsensitive(`${normalizedGamePath}/BW/Binaries/Win64`, "unsteam.dll")) {
-			addSpecialTag("cracked");
-		}
-		// If game folder contains "steam_emu.ini" in Engine\Binaries\ThirdParty\Steamworks\SteamvANYNUMBER\Win64, add tag "cracked"
-		if (await hasSteamworksVersionedWin64File(normalizedGamePath, "steam_emu.ini")) {
-			addSpecialTag("cracked");
-		}
-		// If game folder contains _Redist\fitgirl.md5, add tag "cracked"
-		const redistPath = await resolveChildDirectoryCaseInsensitive(normalizedGamePath, "_Redist");
-		if (redistPath && await hasFileInSubtree(redistPath, "fitgirl.md5", 6)) {
-			addSpecialTag("cracked");
+		if (supportsWindowsLikeHeuristics) {
+			if (entries.find((e) => !e.isDirectory && e.name.toLowerCase() === "onlinefix64.dll")) {
+				addSpecialTag("onlinefixed");
+			}
+			if (await hasSteamworksVersionedWin64File(normalizedGamePath, "OnlineFix64.dll")) {
+				addSpecialTag("onlinefixed");
+			}
+			if (await hasSteamworksVersionedWin64File(normalizedGamePath, "cream_api.ini")) {
+				addSpecialTag("onlinefixed");
+			}
+			if (await hasOnlineFixInBinariesWin64(normalizedGamePath)) {
+				addSpecialTag("onlinefixed");
+			}
+			const hasOnlineFixAnywhereInBinaries = await hasFileInSubtree(`${normalizedGamePath}/Binaries`, "OnlineFix64.dll", 4);
+			const hasOnlineFixInNestedBinaries = await hasFileInDirectChildBinariesWin64(normalizedGamePath, "OnlineFix64.dll");
+			if (hasOnlineFixAnywhereInBinaries || hasOnlineFixInNestedBinaries) {
+				addSpecialTag("cracked");
+			}
+			if (await fileExistsCaseInsensitive(`${normalizedGamePath}/BW/Binaries/Win64`, "unsteam.dll")) {
+				addSpecialTag("cracked");
+			}
+			if (await hasSteamworksVersionedWin64File(normalizedGamePath, "steam_emu.ini")) {
+				addSpecialTag("cracked");
+			}
+			const redistPath = await resolveChildDirectoryCaseInsensitive(normalizedGamePath, "_Redist");
+			if (redistPath && await hasFileInSubtree(redistPath, "fitgirl.md5", 6)) {
+				addSpecialTag("cracked");
+			}
 		}
 	} catch (err) {
 		Logger.error(`Error occurred while finding special tags for ${gamePath}:`, err);
@@ -360,7 +358,10 @@ export async function findSpecialTagsForGamePath(gamePath: string, gameId: strin
 	return specialTags;
 }
 
-export async function refetchAllSpecialTags(onProgress?: ScanProgressCallback) {
+export async function refetchAllSpecialTags(
+	onProgress?: ScanProgressCallback,
+	onControllerSupportComplete?: () => Promise<void> | void,
+) {
 	try {
 		reportProgress(onProgress, 0, 'Preparing special tags refetch...');
 		const gameList = await loadGameList();
@@ -375,11 +376,11 @@ export async function refetchAllSpecialTags(onProgress?: ScanProgressCallback) {
 			const game = games[index];
 			reportProgress(
 				onProgress,
-				mapProgress(index, 0, games.length, 0, 100),
+				mapProgress(index, 0, games.length, 0, 70),
 				`Refetching tags ${index + 1}/${games.length}: ${game.name}`
 			);
 
-			const specialTags = await findSpecialTagsForGamePath(game.path, game.id);
+			const specialTags = await findSpecialTagsForGamePath(game.path, game.id, true);
 			const existingConfig = await loadGameConfig(game.id);
 			const mergedConfig: GameConfig = {
 				customArguments: existingConfig?.customArguments || '',
@@ -394,7 +395,33 @@ export async function refetchAllSpecialTags(onProgress?: ScanProgressCallback) {
 			await saveGameConfig(game.id, mergedConfig);
 		}
 
-		reportProgress(onProgress, 100, 'Special tags refetch complete.');
+		reportProgress(onProgress, 100, 'Special tags refetch complete. Controller support checks continue in background.');
+
+		void (async () => {
+			try {
+				for (let index = 0; index < games.length; index++) {
+					const game = games[index];
+					const existingConfig = await loadGameConfig(game.id);
+					const existingSpecialTags = Array.isArray(existingConfig?.specialTags) ? existingConfig.specialTags : [];
+					const controllerSupportAlreadyKnown = existingSpecialTags.some(
+						(tag: unknown) => typeof tag === 'string' && tag.trim().toLowerCase().replace(/[\s-]+/g, '_') === 'controller_supported'
+					);
+
+					reportProgress(onProgress, mapProgress(index, 0, games.length, 0, 100), `Checking controller support ${index + 1}/${games.length}: ${game.name}`);
+
+					if (!controllerSupportAlreadyKnown && await isControllerSupported(game.path, game.id)) {
+						await saveGameConfig(game.id, {
+							...existingConfig,
+							specialTags: [...existingSpecialTags, 'controller_supported'],
+						});
+					}
+				}
+			} catch (error) {
+				Logger.error('Controller support background refetch failed:', error)
+			} finally {
+				await onControllerSupportComplete?.();
+			}
+		})()
 	} catch (err) {
 		Logger.error('Error occurred while refetching special tags:', err);
 		reportProgress(onProgress, 100, 'Special tags refetch failed.');
@@ -439,26 +466,11 @@ export async function scanAndAddCustomFolderGames(onProgress?: ScanProgressCallb
 }
 
 export async function scanAndAddSteamGames(onProgress?: ScanProgressCallback) {
-	try {
-		reportProgress(onProgress, 0, 'Preparing Steam scan...');
-		reportProgress(onProgress, 15, 'Discovering Steam games...');
-		const games = await fetchAllSteamGames();
-		Logger.info(`Found ${games.length} games in Steam libraries.`);
-		reportProgress(onProgress, 55, `Found ${games.length} Steam games. Registering...`);
-
-		await registerGames(games, "Steam", (update) => {
-			const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
-			reportProgress(onProgress, mappedPercent, update.message);
-		});
-
-		reportProgress(onProgress, 95, 'Assigning Steam IDs');
-		await assignSteamIdsToGames();
-
-		reportProgress(onProgress, 100, 'Steam scan complete.');
-	} catch (err) {
-		Logger.error('Error occurred while scanning and adding Steam games:', err);
-		reportProgress(onProgress, 100, 'Steam scan failed.');
+	if (!isWindowsRuntime()) {
+		if (getRuntimeOperatingSystem() === 'mac') return scanMacSteamGames(registerDiscoveredGames, onProgress)
+		return scanLinuxSteamGames(registerDiscoveredGames, onProgress)
 	}
+	return scanWindowsSteamGames(registerDiscoveredGames, onProgress)
 }
 
 async function getMainDriveLetter() {
@@ -541,12 +553,12 @@ export async function fetchGOGGames() {
 	};
 
 	const mainDrive = await getMainDriveLetter();
-	for (const basePath of platformPaths.gog.galaxyDefault.windows) {
+	for (const basePath of scannerPaths.gog.galaxyDefault.windows) {
 		const fullPath = `${mainDrive}:/${basePath}`;
 		await scanLibraryRoot(fullPath);
 	}
 
-	const allDrivePaths = [...platformPaths.gog.galaxyOther.windows, ...platformPaths.gog.standalone.windows];
+	const allDrivePaths = [...scannerPaths.gog.galaxyOther.windows, ...scannerPaths.gog.standalone.windows];
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 		for (const basePath of allDrivePaths) {
 			const fullPath = `${drive}:/${basePath}`;
@@ -558,23 +570,11 @@ export async function fetchGOGGames() {
 }
 
 export async function scanAndAddGOGGames(onProgress?: ScanProgressCallback) {
-	try {
-		reportProgress(onProgress, 0, 'Preparing GOG scan...');
-		reportProgress(onProgress, 15, 'Discovering GOG games...');
-		const games = await fetchGOGGames();
-		Logger.info(`Found ${games.length} games in GOG libraries.`);
-		reportProgress(onProgress, 55, `Found ${games.length} GOG games. Registering...`);
-
-		await registerGames(games, "GOG", (update) => {
-			const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
-			reportProgress(onProgress, mappedPercent, update.message);
-		});
-
-		reportProgress(onProgress, 100, 'GOG scan complete.');
-	} catch (err) {
-		Logger.error('Error occurred while scanning and adding GOG games:', err);
-		reportProgress(onProgress, 100, 'GOG scan failed.');
+	if (!isWindowsRuntime()) {
+		if (getRuntimeOperatingSystem() === 'mac') return scanMacGOGGames(registerDiscoveredGames, onProgress)
+		return scanLinuxGOGGames(registerDiscoveredGames, onProgress)
 	}
+	return scanWindowsGOGGames(registerDiscoveredGames, onProgress)
 }
 
 export async function getLaunchFileName(gamePath: string) {
@@ -959,9 +959,9 @@ export async function fetchAllSteamGames() {
 		games.push({ id: null, ...game });
 	};
 
-	for (const basePath of platformPaths.steam.roots.windows) {
+	for (const basePath of scannerPaths.steam.roots.windows) {
 		for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-				const fullPath = `${drive}:/${basePath}/${platformPaths.steam.common.windows[0]}`;
+				const fullPath = `${drive}:/${basePath}/${scannerPaths.steam.common.windows[0]}`;
 			try {
 				const pathExists = await exists(fullPath);
 				if (pathExists) {
@@ -1004,7 +1004,7 @@ export async function fetchAllSteamGames() {
 	}
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		const libraryPath = `${drive}:/${platformPaths.steam.libraries.windows[0]}`;
+		const libraryPath = `${drive}:/${scannerPaths.steam.libraries.windows[0]}`;
 		try {
 			const libraryExists = await exists(libraryPath);
 			if (libraryExists) {
@@ -1078,6 +1078,12 @@ export async function assignSteamIdsToGames() {
 		const cache = await loadGameCache(game.id);
 		if(cache.platform === "Steam") {
 			const config = await loadGameConfig(game.id);
+			let nextConfig = { ...config };
+			let configChanged = false;
+			if (nextConfig.launchWithSteam === undefined) {
+				nextConfig.launchWithSteam = true;
+				configChanged = true;
+			}
 			if(!config.steamId) {
 				const gamePath = game.path.replace(/\\/g, '/');
 				const gameExists = await exists(gamePath);
@@ -1089,8 +1095,14 @@ export async function assignSteamIdsToGames() {
 				const steamappsFolder = commonFolder.split('/').slice(0, -1).join('/');
 				const steamIds = await fetchSteamLibraryIds(steamappsFolder);
 				const steamIdEntry = steamIds.find(id => id.installDir.toLowerCase() === gamePath.split('/').pop()?.toLowerCase());
-				saveGameConfig(game.id, { ...config, steamId: steamIdEntry ? steamIdEntry.appId : null });
+				if (steamIdEntry) {
+					nextConfig.steamId = steamIdEntry.appId;
+					configChanged = true;
+				}
+				if (configChanged) await saveGameConfig(game.id, nextConfig);
 				Logger.info(`Assigned Steam ID ${steamIdEntry ? steamIdEntry.appId : 'null'} to game ${game.name} at ${game.path}`)
+			} else if (configChanged) {
+				await saveGameConfig(game.id, nextConfig);
 			}
 		}
 	}
@@ -1230,6 +1242,7 @@ export async function registerGames(games: any[], platform: string, onProgress?:
 				defaultLaunchFile: game.defaultLaunchFile,
 				allLaunchFiles: game.allLaunchFiles,
 				steamId: game.steamId || null,
+				launchWithSteam: platform === 'Steam' ? true : undefined,
 				specialTags: specialTags,
 				searchName: searchName,
 				dateAdded: Date.now(),
@@ -1293,84 +1306,40 @@ export async function chooseFile() {
 }
 
 export async function scanAndAddXboxGames(onProgress?: ScanProgressCallback) {
-	try {
-		reportProgress(onProgress, 0, 'Preparing Xbox scan...');
-		reportProgress(onProgress, 15, 'Discovering Xbox games...');
-		const games = await fetchAllXboxGames();
-		Logger.info(`Found ${games.length} games in Xbox libraries.`);
-		reportProgress(onProgress, 55, `Found ${games.length} Xbox games. Registering...`);
-
-		await registerGames(games, "Xbox", (update) => {
-			const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
-			reportProgress(onProgress, mappedPercent, update.message);
-		});
-
-		reportProgress(onProgress, 100, 'Xbox scan complete.');
-	} catch (err) {
-		Logger.error('Error occurred while scanning and adding Xbox games:', err);
-		reportProgress(onProgress, 100, 'Xbox scan failed.');
+	if (!isWindowsRuntime()) {
+		reportProgress(onProgress, 100, 'Xbox scanning is only available on Windows.')
+		return
 	}
+	return scanWindowsXboxGames(registerDiscoveredGames, onProgress)
 }
 
 export async function scanAndAddEAGames(onProgress?: ScanProgressCallback) {
-	try {
-		reportProgress(onProgress, 0, 'Preparing EA Games scan...');
-		reportProgress(onProgress, 15, 'Discovering EA Games...');
-		const games = await fetchAllEAGames();
-		Logger.info(`Found ${games.length} games in EA Games libraries.`);
-		reportProgress(onProgress, 55, `Found ${games.length} EA Games. Registering...`);
-
-		await registerGames(games, "EA", (update) => {
-			const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
-			reportProgress(onProgress, mappedPercent, update.message);
-		});
-
-		reportProgress(onProgress, 100, 'EA scan complete.');
-	} catch (err) {
-		Logger.error('Error occurred while scanning and adding EA games:', err);
-		reportProgress(onProgress, 100, 'EA scan failed.');
+	if (!isWindowsRuntime()) {
+		if (getRuntimeOperatingSystem() === 'mac') return scanMacEAGames(registerDiscoveredGames, onProgress)
+		return scanLinuxEAGames(registerDiscoveredGames, onProgress)
 	}
+	return scanWindowsEAGames(registerDiscoveredGames, onProgress)
 }
 
 export async function scanAndAddEpicGames(onProgress?: ScanProgressCallback) {
-	try {
-		reportProgress(onProgress, 0, 'Preparing Epic Games scan...');
-		reportProgress(onProgress, 15, 'Discovering Epic Games...');
-		const games = await fetchEpicGames();
-		Logger.info(`Found ${games.length} games in Epic Games libraries.`);
-		reportProgress(onProgress, 55, `Found ${games.length} Epic Games. Registering...`);
-
-		await registerGames(games, "Epic Games", (update) => {
-			const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
-			reportProgress(onProgress, mappedPercent, update.message);
-		});
-
-		reportProgress(onProgress, 100, 'Epic Games scan complete.');
-	} catch (err) {
-		Logger.error('Error occurred while scanning and adding Epic Games:', err);
-		reportProgress(onProgress, 100, 'Epic Games scan failed.');
+	if (!isWindowsRuntime()) {
+		if (getRuntimeOperatingSystem() === 'mac') return scanMacEpicGames(registerDiscoveredGames, onProgress)
+		return scanLinuxEpicGames(registerDiscoveredGames, onProgress)
 	}
+	return scanWindowsEpicGames(registerDiscoveredGames, onProgress)
 }
 
 export async function scanAndAddBattleNetGames(onProgress?: ScanProgressCallback) {
-	try {
-		reportProgress(onProgress, 0, 'Preparing Battle.net scan...');
-		reportProgress(onProgress, 15, 'Discovering Battle.net games...');
-		const games = await fetchBattleNetGames();
-		Logger.info(`Found ${games.length} games in Battle.net libraries.`);
-		reportProgress(onProgress, 55, `Found ${games.length} Battle.net games. Registering...`);
-
-		await registerGames(games, "Battle.net", (update) => {
-			const mappedPercent = mapProgress(update.percent, 0, 100, 55, 95);
-			reportProgress(onProgress, mappedPercent, update.message);
-		});
-
-		reportProgress(onProgress, 100, 'Battle.net scan complete.');
-	} catch (err) {
-		Logger.error('Error occurred while scanning and adding Battle.net games:', err);
-		reportProgress(onProgress, 100, 'Battle.net scan failed.');
+	if (!isWindowsRuntime()) {
+		if (getRuntimeOperatingSystem() === 'mac') {
+			const register = (games: any[], platform: string, progress?: ScanProgressCallback) => registerGames(games, platform, progress)
+			return scanMacBattleNetGames(register, onProgress)
+		}
+		reportProgress(onProgress, 100, 'Battle.net scanning is not available on Linux.')
+		return
 	}
-}
+	return scanWindowsBattleNetGames(registerDiscoveredGames, onProgress)
+	}
 
 export async function fetchAllXboxGames() {
 	const games: any[] = [];
@@ -1404,7 +1373,7 @@ export async function fetchAllXboxGames() {
 	};
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		const libraryPath = `${drive}:/${platformPaths.xbox.roots.windows[0]}`;
+		const libraryPath = `${drive}:/${scannerPaths.xbox.roots.windows[0]}`;
 		try {
 			const libraryExists = await exists(libraryPath);
 			if (!libraryExists) {
@@ -1486,7 +1455,7 @@ export async function fetchAllEAGames() {
 	};
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		for (const basePath of platformPaths.ea.roots.windows) {
+		for (const basePath of scannerPaths.ea.roots.windows) {
 			const libraryPath = `${drive}:/${basePath}`;
 			try {
 				const libraryExists = await exists(libraryPath);
@@ -1569,7 +1538,7 @@ export async function fetchEpicGames() {
 	};
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		for (const basePath of platformPaths.epic.roots.windows) {
+		for (const basePath of scannerPaths.epic.roots.windows) {
 			const libraryPath = `${drive}:/${basePath}`;
 			try {
 				const libraryExists = await exists(libraryPath);
@@ -1645,7 +1614,7 @@ export async function fetchBattleNetGames() {
 	};
 
 	for (const drive of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-		for (const basePath of platformPaths.battlenet.roots.windows) {
+		for (const basePath of scannerPaths.battlenet.roots.windows) {
 			const libraryPath = `${drive}:/${basePath}`;
 			try {
 				const libraryExists = await exists(libraryPath);

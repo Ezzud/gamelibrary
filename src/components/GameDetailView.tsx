@@ -48,7 +48,7 @@ const formatLastPlayed = (playedAt?: string | null) => {
 	}
 
 	const diffMs = Date.now() - playedAtMs
-	if (diffMs < 15 * 60 * 1000) {
+	if (diffMs < 5 * 60 * 1000) {
 		return 'Last played recently'
 	}
 
@@ -123,6 +123,11 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 			className: 'bg-[#2a70c9] text-white',
 			icon: <FaVrCardboard className="w-3.5 h-3.5" />,
 		},
+		controller_supported: {
+			label: 'CONTROLLER SUPPORTED',
+			className: 'bg-[#3b82f6] text-white',
+			icon: <Gamepad2 className="w-3.5 h-3.5" />,
+		},
 	}
 
 	useEffect(() => {
@@ -151,10 +156,18 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 	useEffect(() => {
 		const intervalId = window.setInterval(() => {
 			getGamePlayHistory()
-		}, 15 * 60 * 1000)
+		}, 60 * 1000)
 
 		return () => window.clearInterval(intervalId)
 	}, [game.id])
+
+	const handleGameRunningChange = (gameId: string, isRunning: boolean) => {
+		onGameRunningChange?.(gameId, isRunning)
+		if (!isRunning && gameId === game.id) {
+			void getGamePlayHistory()
+			void getGamePlaytime()
+		}
+	}
 
 	const getGameCache = async () => {
 		if (game.id) {
@@ -284,7 +297,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 		setIsLaunching(true)
 		const launchStartedAt = Date.now()
 		try {
-			if(!config.launchWithSteam) {
+			if(config.launchWithSteam === undefined) {
 				Logger.warn(`Set default launchWithSteam to true for game ${game.name} (ID: ${game.id}) because it was undefined.`)
 				config.launchWithSteam = true;
 				await saveGameConfig(game.id, {
@@ -306,7 +319,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 			} catch (historyError) {
 				console.warn('Game launched but failed to update play history:', historyError)
 			}
-			void trackPlaytimeForProcess(game.id, game.path, launchPath, (running) => onGameRunningChange?.(game.id, running))
+			void trackPlaytimeForProcess(game.id, game.path, launchPath, (running) => handleGameRunningChange(game.id, running))
 		} catch (error) {
 			console.error('Failed to launch game:', error)
 			const message = error instanceof Error ? error.message : String(error)
@@ -338,7 +351,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 				allLaunchFiles: pendingLaunchConfig?.allLaunchFiles || availableLaunchFiles,
 			})
 
-			if(!pendingLaunchConfig?.launchWithSteam) {
+			if(pendingLaunchConfig?.launchWithSteam === undefined) {
                 Logger.warn(`Set default launchWithSteam to true for game ${game.name} (ID: ${game.id}) because it was undefined.`)
                 pendingLaunchConfig.launchWithSteam = true;
                 await saveGameConfig(game.id, {
@@ -360,7 +373,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 			} catch (historyError) {
 				console.warn('Game launched but failed to update play history:', historyError)
 			}
-			void trackPlaytimeForProcess(game.id, game.path, launchPath, (running) => onGameRunningChange?.(game.id, running))
+			void trackPlaytimeForProcess(game.id, game.path, launchPath, (running) => handleGameRunningChange(game.id, running))
 		} catch (error) {
 			console.error('Failed to save launch file preference or launch game:', error)
 			const message = error instanceof Error ? error.message : String(error)
@@ -533,6 +546,24 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 					<h2 className="text-3xl font-bold bg-linear-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{game.name}</h2>
 				</div>
 
+				<div className="relative z-10 px-6 pt-6 flex flex-wrap items-center gap-2 min-h-12">
+					{specialTags
+						.filter((tag) => tagVisuals[tag])
+						.map((tag) => {
+							const visual = tagVisuals[tag]
+							return (
+								<span
+									key={tag}
+									className={`px-2.5 py-1.5 rounded-md text-[11px] font-semibold tracking-wide inline-flex items-center gap-1.5 ${visual.className}`}
+									title={visual.label}
+								>
+									{visual.icon}
+									{visual.label}
+								</span>
+							)
+						})}
+				</div>
+
 				{/* Main Content */}
 				<div className="relative z-10 flex-1 p-6 flex flex-col lg:flex-row gap-6 items-start">
 					{/* Cover Art */}
@@ -623,26 +654,8 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 
 						{/* Action Buttons */}
 						<div className="flex flex-wrap justify-between items-end gap-4 mt-auto w-full">
-							<div className="flex flex-wrap items-center gap-2 min-h-12">
-								{specialTags
-									.filter((tag) => tagVisuals[tag])
-									.map((tag) => {
-										const visual = tagVisuals[tag]
-										return (
-											<span
-												key={tag}
-												className={`px-2.5 py-1.5 rounded-md text-[11px] font-semibold tracking-wide inline-flex items-center gap-1.5 ${visual.className}`}
-												title={visual.label}
-											>
-												{visual.icon}
-												{visual.label}
-											</span>
-										)
-									})}
-							</div>
-
-							<div className="flex items-center gap-4">
-								<button
+											<div className="flex items-center justify-end gap-4 w-full">
+													<button
 									onClick={handleLaunch}
 									data-controller-selectable="true"
 									data-controller-action="launch"

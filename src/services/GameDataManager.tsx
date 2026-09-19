@@ -436,6 +436,34 @@ const getGameDetailsViaApi = async (gameId: number, baseUrl: string) => {
 	return await response.json() as { title: string | null; cover_url: string | null; thumbnail_url: string | null } | null;
 };
 
+export const fetchControllerSupport = async (body: { gameName?: string; igdbId?: number | null; steamId?: string | null }) => {
+	const runtime = await resolveIGDBRuntimeConfig()
+	if (runtime.connectionMode !== 'api') {
+		return { success: false, error: true, error_message: 'Controller support lookup requires the GameLibrary API.', retry_after: null, controller_support: 'unsupported' as const }
+	}
+
+	const response = await fetch(buildApiUrl(runtime.apiBaseUrl, '/game/specs'), {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	})
+	const result = await response.json() as {
+		success: boolean
+		error: boolean
+		error_message: string | null
+		retry_after: number | null
+		controller_support: 'supported' | 'partially_supported' | 'unsupported'
+	}
+	if (!response.ok || result.error) {
+		if (response.status === 429) {
+			return result
+		}
+		throw new Error(result.error_message || `Controller support lookup failed with status ${response.status}`)
+	}
+	Logger.info(`Fetched controller support for game "${body.gameName || 'unknown'}":`, result.controller_support)
+	return result
+}
+
 export const fetchArtworkUrl = async (artworkId: number): Promise<string | null> => {
 	return await fetchArtworkUrlViaTwitch(artworkId);
 };
