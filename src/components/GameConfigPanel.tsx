@@ -19,6 +19,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 	const [launchArgs, setLaunchArgs] = useState('')
 	const [workingDirectory, setWorkingDirectory] = useState(game.path)
 	const [searchName, setSearchName] = useState('')
+	const [displayName, setDisplayName] = useState('')
 	const [defaultLaunchFile, setDefaultLaunchFile] = useState('')
 	const [allLaunchFiles, setAllLaunchFiles] = useState<string[]>([])
 	const [cachePath, setCachePath] = useState('')
@@ -81,6 +82,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 				setAllLaunchFiles(config.allLaunchFiles || [])
 				const hasSearchName = typeof config.searchName === 'string'
 				setSearchName(hasSearchName ? config.searchName : folderName)
+				setDisplayName(typeof config.displayName === 'string' ? config.displayName : '')
 
 				// Load forced_igdb_id from config
 				if (config.forced_igdb_id) {
@@ -132,6 +134,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 				...currentConfig,
 				customArguments: launchArgs,
 				searchName: trimmedSearchName || folderName || game.name,
+				displayName: displayName.trim() || undefined,
 				forced_igdb_id: forcedId,
 				steamId: steamId,
 				launchWithSteam: launchWithSteam,
@@ -371,7 +374,7 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 					<ArrowLeft className="w-5 h-5" />
 					Back
 				</button>
-				<h2 className="text-3xl font-bold bg-linear-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{game.name} - Properties</h2>
+				<h2 className="text-3xl font-bold bg-linear-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{displayName.trim() || game.name} - Properties</h2>
 			</div>
 
 			{/* Configuration Form */}
@@ -462,6 +465,23 @@ const GameConfigPanel = ({ game, onBack, onConfigSaved, onShowToast }: GameConfi
 							</div>
 
 							{/* Working Directory */}
+							<div className="mb-6">
+								<label className="flex items-center gap-2 text-steam-300 font-semibold mb-2">
+									<FileCog className="w-4 h-4 text-steam-300" />
+									Display Name
+								</label>
+								<p className="text-steam-400 text-sm mb-3">
+									Name shown in your library and recent games. Leave blank to use the default game name: {game.name}.
+								</p>
+								<input
+									type="text"
+									value={displayName}
+									onChange={(e) => setDisplayName(e.target.value)}
+									placeholder={game.name}
+									className="w-full bg-[#0f1a2a]/95 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-steam-500/70 text-sm shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+								/>
+							</div>
+
 							<div className="mb-6">
 								<label className="flex items-center gap-2 text-steam-300 font-semibold mb-2">
 									<FolderCog className="w-4 h-4 text-steam-300" />

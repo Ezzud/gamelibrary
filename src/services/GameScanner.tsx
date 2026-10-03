@@ -1048,6 +1048,28 @@ export async function fetchAllSteamGames() {
 	return games;
 }
 
+async function findSteamIdForGamePath(gamePath: string): Promise<string | null> {
+	const normalizedPath = gamePath.replace(/\\/g, '/').replace(/\/+$/, '');
+	const pathParts = normalizedPath.split('/');
+	const commonIndex = pathParts.findIndex((part, index) =>
+		part.toLowerCase() === 'common' && pathParts[index - 1]?.toLowerCase() === 'steamapps'
+	);
+
+	if (commonIndex < 1) {
+		return null;
+	}
+
+	const steamAppsPath = pathParts.slice(0, commonIndex).join('/');
+	const gameFolderName = pathParts[pathParts.length - 1];
+	try {
+		const steamIds = await fetchSteamLibraryIds(steamAppsPath);
+		return steamIds.find((entry) => entry.installDir.toLowerCase() === gameFolderName.toLowerCase())?.appId || null;
+	} catch (error) {
+		Logger.warn(`Unable to read Steam manifests for ${gamePath}:`, error);
+		return null;
+	}
+}
+
 export async function removeDuplicateGames() {
 	const gameList = await loadGameList();
 	const uniqueGames = [];
@@ -1076,7 +1098,7 @@ export async function assignSteamIdsToGames() {
 	const gameList = await loadGameList();
 	for (const game of gameList.games) {
 		const cache = await loadGameCache(game.id);
-		if(cache.platform === "Steam") {
+		if (cache?.platform?.toLowerCase() === "steam" || game.platform?.toLowerCase() === "steam") {
 			const config = await loadGameConfig(game.id);
 			let nextConfig = { ...config };
 			let configChanged = false;
@@ -1091,16 +1113,13 @@ export async function assignSteamIdsToGames() {
 					Logger.warn(`Game path does not exist for ${game.name} at ${game.path}, skipping Steam ID assignment.`);
 					continue;
 				}
-				const commonFolder = gamePath.split('/').slice(0, -1).join('/');
-				const steamappsFolder = commonFolder.split('/').slice(0, -1).join('/');
-				const steamIds = await fetchSteamLibraryIds(steamappsFolder);
-				const steamIdEntry = steamIds.find(id => id.installDir.toLowerCase() === gamePath.split('/').pop()?.toLowerCase());
-				if (steamIdEntry) {
-					nextConfig.steamId = steamIdEntry.appId;
+				const steamId = await findSteamIdForGamePath(gamePath);
+				if (steamId) {
+					nextConfig.steamId = steamId;
 					configChanged = true;
 				}
 				if (configChanged) await saveGameConfig(game.id, nextConfig);
-				Logger.info(`Assigned Steam ID ${steamIdEntry ? steamIdEntry.appId : 'null'} to game ${game.name} at ${game.path}`)
+				Logger.info(`Assigned Steam ID ${steamId || 'null'} to game ${game.name} at ${game.path}`)
 			} else if (configChanged) {
 				await saveGameConfig(game.id, nextConfig);
 			}
@@ -1235,13 +1254,16 @@ export async function registerGames(games: any[], platform: string, onProgress?:
 			// If game folder name ends with "VR", add tag "vr" to game config
 			// If game folder contains a file named "OnlineFix64.dll", add tag "onlinefixed" to game config
 			const specialTags = await findSpecialTagsForGamePath(game.path, game.id);
+			const existingConfig = await loadGameConfig(id);
+		const discoveredSteamId = platform === 'Steam' ? await findSteamIdForGamePath(game.path) : null;
 
 
 			const gameConfig: GameConfig = {
+				...existingConfig,
 				customArguments: '',
 				defaultLaunchFile: game.defaultLaunchFile,
 				allLaunchFiles: game.allLaunchFiles,
-				steamId: game.steamId || null,
+				steamId: game.steamId || discoveredSteamId || existingConfig?.steamId || null,
 				launchWithSteam: platform === 'Steam' ? true : undefined,
 				specialTags: specialTags,
 				searchName: searchName,

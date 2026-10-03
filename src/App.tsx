@@ -24,6 +24,7 @@ import {
     scanAndAddGOGGames,
     scanAndAddSteamGames,
     scanAndAddXboxGames,
+    assignSteamIdsToGames,
 } from './services/GameScanner'
 import { Logger } from './utils/Logger'
 import {
@@ -335,7 +336,8 @@ function App() {
 
                 return {
                     gameId: entry.gameId,
-                    name: game.name,
+                    name: game.displayName?.trim() || game.name,
+                    defaultName: game.name,
                     coverUrl: game.coverUrl,
                     playedAt: entry.playedAt,
                     playtime: playtime,
@@ -894,6 +896,9 @@ function App() {
                 await validateIGDBCredentialsFromConfig()
                 await loadFavoriteGameIds()
                 await loadGames()
+                void assignSteamIdsToGames().catch((error) => {
+                    Logger.error('Failed to repair missing Steam IDs:', error)
+                })
                 Logger.info('Initial game loading complete.')
             } finally {
                 setIsLoadingGames(false)
@@ -1152,6 +1157,12 @@ function App() {
                             Logger.error(`Error fetching IGDB data for game ${game.name}:`, error)
                         }
                     }
+
+                    const displayConfig = await loadGameConfig(game.id)
+                    const configuredDisplayName = typeof displayConfig?.displayName === 'string'
+                        ? displayConfig.displayName.trim()
+                        : ''
+                    game.displayName = configuredDisplayName || undefined
                 }
 
                 setGames(allGames)
@@ -1504,6 +1515,7 @@ function App() {
             <div className="flex-1 flex flex-col relative">
                 {isSettingsOpen && (
                     <AppConfig
+                        games={games}
                         isScanning={isScanning}
                         isRefetchingTags={isRefetchingTags}
                         scanProgress={scanProgress}

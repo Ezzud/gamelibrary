@@ -145,6 +145,7 @@ const getPlatformIcon = (platform: string) => {
 }
 
 const AppConfig = ({
+	games,
 	isScanning = false,
 	isRefetchingTags = false,
 	scanProgress = 0,
@@ -183,6 +184,7 @@ const AppConfig = ({
 	const [isApplyingTheme, setIsApplyingTheme] = useState(false)
 	const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false)
 	const themeMenuRef = useRef<HTMLDivElement | null>(null)
+	const discordRpcGameSearchRef = useRef<HTMLDivElement | null>(null)
 	const [runOnStartup, setRunOnStartupState] = useState(false)
 	const [runReduced, setRunReducedState] = useState(false)
 	const [reduceWhilePlaying, setReduceWhilePlayingState] = useState(true)
@@ -194,6 +196,10 @@ const AppConfig = ({
 	const [discordRpcSmallImage, setDiscordRpcSmallImageState] = useState<DiscordRpcImageMode>('app-icon')
 	const [discordRpcDisplayTimeElapsed, setDiscordRpcDisplayTimeElapsedState] = useState(true)
 	const [discordRpcShowButton, setDiscordRpcShowButtonState] = useState(true)
+	const [discordRpcIgnoredGameIds, setDiscordRpcIgnoredGameIdsState] = useState<string[]>([])
+	const [discordRpcGameSearch, setDiscordRpcGameSearch] = useState('')
+	const [isDiscordRpcGameSearchOpen, setIsDiscordRpcGameSearchOpen] = useState(false)
+	const [discordRpcGameSearchMenuPosition, setDiscordRpcGameSearchMenuPosition] = useState({ top: null as number | null, bottom: null as number | null, left: 0, width: 0 })
 	const [isUpdatingRunOnStartup, setIsUpdatingRunOnStartup] = useState(false)
 	const [isUpdatingRunReduced, setIsUpdatingRunReduced] = useState(false)
 	const [isUpdatingReduceWhilePlaying, setIsUpdatingReduceWhilePlaying] = useState(false)
@@ -311,6 +317,7 @@ const AppConfig = ({
 			setDiscordRpcSmallImageState(config.discordRpc?.smallImage || 'app-icon')
 			setDiscordRpcDisplayTimeElapsedState(config.discordRpc?.displayTimeElapsed !== false)
 			setDiscordRpcShowButtonState(config.discordRpc?.showButton !== false)
+			setDiscordRpcIgnoredGameIdsState(config.discordRpc?.ignoredGameIds || [])
 		}
 
 		void loadCredentials()
@@ -358,6 +365,47 @@ const AppConfig = ({
 			void checkForUpdates()
 		}
 	}, [activeCategory, updateStatus])
+
+	useEffect(() => {
+		if (!isDiscordRpcGameSearchOpen) {
+			return
+		}
+
+		const updateSearchMenuPosition = () => {
+			const searchBox = discordRpcGameSearchRef.current
+			if (!searchBox) {
+				return
+			}
+
+			const bounds = searchBox.getBoundingClientRect()
+			const menuHeight = Math.min(208, window.innerHeight - 16)
+			const spaceBelow = window.innerHeight - bounds.bottom - 4
+			const opensAbove = spaceBelow < menuHeight
+			setDiscordRpcGameSearchMenuPosition({
+				top: opensAbove ? null : bounds.bottom + 4,
+				bottom: opensAbove ? window.innerHeight - bounds.top + 4 : null,
+				left: bounds.left,
+				width: bounds.width,
+			})
+		}
+
+		const handleOutsideSearchClick = (event: MouseEvent) => {
+			const target = event.target
+			if (target instanceof Node && !discordRpcGameSearchRef.current?.contains(target)) {
+				setIsDiscordRpcGameSearchOpen(false)
+			}
+		}
+
+		updateSearchMenuPosition()
+		document.addEventListener('mousedown', handleOutsideSearchClick)
+		window.addEventListener('resize', updateSearchMenuPosition)
+		window.addEventListener('scroll', updateSearchMenuPosition, true)
+		return () => {
+			document.removeEventListener('mousedown', handleOutsideSearchClick)
+			window.removeEventListener('resize', updateSearchMenuPosition)
+			window.removeEventListener('scroll', updateSearchMenuPosition, true)
+		}
+	}, [isDiscordRpcGameSearchOpen])
 
 	useEffect(() => {
 		// Listen for updater events emitted by the backend commands
@@ -983,6 +1031,42 @@ const AppConfig = ({
 		} catch (err) {
 			Logger.error('Failed to toggle Discord RPC button:', err)
 		}
+	}
+
+	const discordRpcIgnoredGames = useMemo(
+		() => games.filter((game) => discordRpcIgnoredGameIds.includes(game.id)),
+		[games, discordRpcIgnoredGameIds]
+	)
+	const discordRpcSearchResults = useMemo(() => {
+		const query = discordRpcGameSearch.trim().toLowerCase()
+		return games
+			.filter((game) => !discordRpcIgnoredGameIds.includes(game.id))
+			.filter((game) => !query || game.name.toLowerCase().includes(query) || (game.displayName || '').toLowerCase().includes(query))
+			.sort((a, b) => (a.displayName || a.name).localeCompare(b.displayName || b.name))
+	}, [games, discordRpcGameSearch, discordRpcIgnoredGameIds])
+
+	const updateDiscordRpcIgnoredGames = async (nextIds: string[]) => {
+		setDiscordRpcIgnoredGameIdsState(nextIds)
+		try {
+			await setDiscordRpcConfig({ ignoredGameIds: nextIds })
+			await onConfigChanged?.()
+		} catch (error) {
+			Logger.error('Failed to save ignored Discord RPC games:', error)
+		}
+	}
+
+	const handleAddDiscordRpcIgnoredGame = async (gameId: string) => {
+		if (discordRpcIgnoredGameIds.includes(gameId)) {
+			return
+		}
+
+		await updateDiscordRpcIgnoredGames([...discordRpcIgnoredGameIds, gameId])
+		setDiscordRpcGameSearch('')
+		setIsDiscordRpcGameSearchOpen(false)
+	}
+
+	const handleRemoveDiscordRpcIgnoredGame = async (gameId: string) => {
+		await updateDiscordRpcIgnoredGames(discordRpcIgnoredGameIds.filter((ignoredId) => ignoredId !== gameId))
 	}
 
 	const getHoverEffectIcon = (effect: string) => {
@@ -1860,7 +1944,7 @@ const AppConfig = ({
 				)}
 
 				{activeCategory === 'DiscordRPC' && (
-					<div className="rounded-xl bg-steam-800 p-5 space-y-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_14px_30px_rgba(0,0,0,0.2)]">
+					<div className="flex max-h-full min-h-0 flex-col overflow-y-auto rounded-xl bg-steam-800 p-5 space-y-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_14px_30px_rgba(0,0,0,0.2)]">
 						<div>
 							<h3 className="text-lg font-semibold flex items-center gap-2">
 								<Link2 className="w-4 h-4 text-steam-300" />
@@ -1869,7 +1953,75 @@ const AppConfig = ({
 							<p className="text-xs text-steam-400 mt-1">Configure Discord Rich Presence behavior.</p>
 						</div>
 
-						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+						<div className="order-2 mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+							<p className="text-sm text-steam-100 mb-3">Ignored Games</p>
+							<div ref={discordRpcGameSearchRef} className="relative">
+								<input
+									type="search"
+									value={discordRpcGameSearch}
+									onFocus={() => setIsDiscordRpcGameSearchOpen(true)}
+									onChange={(event) => {
+										setDiscordRpcGameSearch(event.target.value)
+										setIsDiscordRpcGameSearchOpen(true)
+									}}
+									placeholder="Search games by name"
+									className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
+								/>
+								{isDiscordRpcGameSearchOpen && discordRpcSearchResults.length > 0 && (
+									<div
+										className="fixed z-50 max-h-52 overflow-y-auto rounded-lg border border-steam-600 bg-steam-800 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
+										style={{
+											top: discordRpcGameSearchMenuPosition.top ?? 'auto',
+											bottom: discordRpcGameSearchMenuPosition.bottom ?? 'auto',
+											left: discordRpcGameSearchMenuPosition.left,
+											width: discordRpcGameSearchMenuPosition.width,
+										}}
+									>
+										{discordRpcSearchResults.map((game) => (
+											<button
+												key={game.id}
+												type="button"
+												onClick={() => void handleAddDiscordRpcIgnoredGame(game.id)}
+												className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-steam-700"
+											>
+												{game.coverUrl || game.thumbnailUrl ? (
+													<img src={game.coverUrl || game.thumbnailUrl} alt="" className="h-10 w-7 shrink-0 rounded object-cover" />
+												) : (
+													<div className="h-10 w-7 shrink-0 rounded bg-steam-600" />
+												)}
+												<span className="truncate text-sm text-steam-100">{game.displayName?.trim() || game.name}</span>
+											</button>
+										))}
+									</div>
+								)}
+							</div>
+
+							{discordRpcIgnoredGames.length > 0 && (
+								<div className="mt-3 space-y-2">
+									{discordRpcIgnoredGames.map((game) => (
+										<div key={game.id} className="flex items-center gap-3 rounded-md bg-steam-800 px-2 py-2">
+											{game.coverUrl || game.thumbnailUrl ? (
+												<img src={game.coverUrl || game.thumbnailUrl} alt="" className="h-10 w-7 shrink-0 rounded object-cover" />
+											) : (
+												<div className="h-10 w-7 shrink-0 rounded bg-steam-600" />
+											)}
+												<span className="min-w-0 flex-1 truncate text-sm text-steam-100">{game.displayName?.trim() || game.name}</span>
+											<button
+												type="button"
+												onClick={() => void handleRemoveDiscordRpcIgnoredGame(game.id)}
+												className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-600/80 text-white transition-colors hover:bg-red-500"
+													aria-label={`Remove ${game.displayName?.trim() || game.name} from ignored Discord RPC games`}
+												title="Remove ignored game"
+											>
+												<X className="h-4 w-4" />
+											</button>
+										</div>
+									))}
+								</div>
+							)}
+						</div>
+
+						<div className="order-1 mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
 							<div className="flex items-center justify-between gap-4">
 								<div>
 									<p className="text-sm text-steam-100">Enable Discord Presence</p>

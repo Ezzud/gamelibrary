@@ -12,6 +12,7 @@ const defaultDiscordRpcConfig: DiscordRpcConfig = {
     smallImage: 'app-icon',
     displayTimeElapsed: true,
     showButton: true,
+    ignoredGameIds: [],
 }
 
 const defaultConfig: Config = {
@@ -99,6 +100,9 @@ function resolveDiscordRpcConfig(parsed: any): DiscordRpcConfig {
             : 'app-icon',
         displayTimeElapsed: typeof candidate?.displayTimeElapsed === 'boolean' ? candidate.displayTimeElapsed : true,
         showButton: typeof candidate?.showButton === 'boolean' ? candidate.showButton : true,
+        ignoredGameIds: Array.isArray(candidate?.ignoredGameIds)
+            ? candidate.ignoredGameIds.filter((gameId: unknown): gameId is string => typeof gameId === 'string' && gameId.trim().length > 0)
+            : [],
     }
 }
 

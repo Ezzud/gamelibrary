@@ -1,6 +1,7 @@
 export interface Game {
   id: string
   name: string
+  displayName?: string
   path: string
   platform: string
   coverUrl?: string
@@ -17,6 +18,7 @@ export interface SteamData {
 export interface LastPlayedCard {
   gameId: string
   name: string
+  defaultName?: string
   coverUrl?: string
   playedAt: string
   playtime?: string
@@ -36,6 +38,7 @@ export interface DiscordRpcConfig {
   smallImage: DiscordRpcImageMode
   displayTimeElapsed: boolean
   showButton: boolean
+  ignoredGameIds: string[]
 }
 
 export interface IGDBConnectResult {
@@ -65,6 +68,7 @@ export interface LaunchFilePickerModalProps {
 }
 
 export interface AppConfigProps {
+  games: Game[]
   isScanning?: boolean
   isRefetchingTags?: boolean
   scanProgress?: number
@@ -200,6 +204,7 @@ export interface Config {
 
 export interface GameConfig {
   customArguments: string
+  displayName?: string
   defaultLaunchFile?: string
   allLaunchFiles?: string[]
   steamId?: string | null

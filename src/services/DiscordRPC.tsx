@@ -101,6 +101,12 @@ export const syncDiscordPresence = async (context: {
         }
 
         const activeGame = context.activeGame || null;
+        const activeGameName = activeGame?.displayName?.trim() || activeGame?.name || ''
+        if (activeGame && rpc.ignoredGameIds.includes(activeGame.id)) {
+            Logger.info(`Skipping Discord RPC for ignored game: ${activeGameName}`)
+            await clearDiscordPresence()
+            return
+        }
         let state = '';
         if(activeGame) {
             const playtimeMs = await getPlaytime(activeGame.id);
@@ -118,8 +124,8 @@ export const syncDiscordPresence = async (context: {
         const largeImage = buildImageKey(rpc.largeImage, "large") || buildImageSource(rpc.largeImage, activeGame)
         const smallImage = buildImageKey(rpc.smallImage, "small") || buildImageSource(rpc.smallImage, activeGame)
         const [largeText, smallText] = await Promise.all([
-            buildImageText(rpc.largeImage, activeGame?.name || `GameLibrary v${version}`),
-            buildImageText(rpc.smallImage, activeGame?.name || `GameLibrary v${version}`),
+            buildImageText(rpc.largeImage, activeGameName || `GameLibrary v${version}`),
+            buildImageText(rpc.smallImage, activeGameName || `GameLibrary v${version}`),
         ])
 
         const elapsedStartedAt = activeGame && rpc.displayTimeElapsed ? context.elapsedStartedAt ?? Date.now() : null
@@ -127,7 +133,7 @@ export const syncDiscordPresence = async (context: {
         Logger.info('Starting Discord RPC presence sync.')
         Logger.info(`Updating Discord RPC: ${state || 'idle'}`)
         if (activeGame) {
-            Logger.info(`Discord RPC game: ${activeGame.name}`)
+            Logger.info(`Discord RPC game: ${activeGameName}`)
         }
         Logger.info(`Discord RPC large image: ${largeImage || 'none'}`)
         Logger.info(`Discord RPC small image: ${smallImage || 'none'}`)
@@ -136,7 +142,7 @@ export const syncDiscordPresence = async (context: {
             payload: {
                 enabled: true,
                 appId: DISCORD_APP_ID,
-                name: activeGame?.name || APP_NAME,
+                name: activeGameName || APP_NAME,
                 state: state || null,
                 largeImage: largeImage || null,
                 largeText: largeText || null,

@@ -439,10 +439,11 @@ const GameLibrary = (props: GameLibraryProps) => {
 	const displayedGames = dateLoading ? [] : [...games]
 		.filter((game) => {
 			const normalizedName = game.name.toLowerCase()
+			const normalizedDisplayName = (game.displayName || '').toLowerCase()
 			const normalizedPath = game.path.toLowerCase()
 			const normalizedSearch = searchQuery.trim().toLowerCase()
 
-			if (normalizedSearch && !normalizedName.includes(normalizedSearch) && !normalizedPath.includes(normalizedSearch)) {
+			if (normalizedSearch && !normalizedName.includes(normalizedSearch) && !normalizedDisplayName.includes(normalizedSearch) && !normalizedPath.includes(normalizedSearch)) {
 				return false
 			}
 
@@ -465,9 +466,9 @@ const GameLibrary = (props: GameLibraryProps) => {
 			let result = 0
 
 			if (sortField === 'name') {
-				result = a.name.localeCompare(b.name)
+				result = (a.displayName || a.name).localeCompare(b.displayName || b.name)
 			} else if (sortField === 'platform') {
-				result = (a.platform || '').localeCompare(b.platform || '') || a.name.localeCompare(b.name)
+				result = (a.platform || '').localeCompare(b.platform || '') || (a.displayName || a.name).localeCompare(b.displayName || b.name)
 			} else if (sortField === 'dateAdded') {
 				const aDateAdded = gameDateAddedById[a.id] ?? null
 				const bDateAdded = gameDateAddedById[b.id] ?? null
@@ -479,14 +480,14 @@ const GameLibrary = (props: GameLibraryProps) => {
 				} else if (bDateAdded !== null) {
 					result = 1
 				} else {
-					result = a.name.localeCompare(b.name)
+					result = (a.displayName || a.name).localeCompare(b.displayName || b.name)
 				}
 			} else if (sortField === 'lastPlayed') {
 				const aLastPlayed = gameLastPlayedById[a.id] ?? null
 				const bLastPlayed = gameLastPlayedById[b.id] ?? null
 
 				if (aLastPlayed === null && bLastPlayed === null) {
-					result = a.name.localeCompare(b.name)
+					result = (a.displayName || a.name).localeCompare(b.displayName || b.name)
 				} else if (aLastPlayed === null) {
 					result = 1
 				} else if (bLastPlayed === null) {
@@ -501,7 +502,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 			} else {
 				const aFirstTag = ((gameTagsById[a.id] || [])[0] || '').toLowerCase()
 				const bFirstTag = ((gameTagsById[b.id] || [])[0] || '').toLowerCase()
-				result = aFirstTag.localeCompare(bFirstTag) || a.name.localeCompare(b.name)
+				result = aFirstTag.localeCompare(bFirstTag) || (a.displayName || a.name).localeCompare(b.displayName || b.name)
 			}
 
 			return sortDirection === 'asc' ? result : result * -1
