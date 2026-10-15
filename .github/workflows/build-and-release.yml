@@ -262,8 +262,12 @@ jobs:
             const target = join(output, targetName);
             copyFileSync(installer, target);
             const signature = `${installer}.sig`;
-            if (!existsSync(signature)) throw new Error(`Missing signature for ${installer}`);
-            copyFileSync(signature, `${target}.sig`);
+            if (targetName.endsWith('.dmg')) {
+              if (existsSync(signature)) copyFileSync(signature, `${target}.sig`);
+            } else {
+              if (!existsSync(signature)) throw new Error(`Missing signature for ${installer}`);
+              copyFileSync(signature, `${target}.sig`);
+            }
 
             const key = platform === 'Windows'
               ? 'windows-x86_64'
