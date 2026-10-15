@@ -527,8 +527,8 @@ app.get('/updater/:distribution', async (req, res) => {
 	const distribution = String(req.params.distribution || '').trim().toLowerCase()
 	const distributionSuffixes = {
 		nsis: '',
-		linux: '-linux',
-		macos: '-macos',
+		linux: '',
+		macos: '',
 	}
 
 	if (!Object.prototype.hasOwnProperty.call(distributionSuffixes, distribution)) {

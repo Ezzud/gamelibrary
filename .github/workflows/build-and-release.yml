@@ -133,7 +133,10 @@ jobs:
             RANGE="HEAD"
           fi
 
-          LOG=$(git log --pretty=format:'- %s (%an) (#%h)' "$RANGE")
+          LOG=$(git log --pretty=format:'%s%x09%an%x09%h' "$RANGE" | while IFS=$'\t' read -r SUBJECT AUTHOR HASH; do
+            SUBJECT=$(printf '%s' "$SUBJECT" | sed -E 's/^[[:space:]]*-[[:space:]]*//')
+            printf -- '- %s (%s) (#%s)\n' "$SUBJECT" "$AUTHOR" "$HASH"
+          done)
           if [ -z "$LOG" ]; then
             LOG="No commits found."
           fi
@@ -149,7 +152,6 @@ jobs:
       - detect_version_change
       - prepare_release
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     timeout-minutes: 90
     if: needs.prepare_release.outputs.tag_exists == 'false'
     permissions:
@@ -167,15 +169,12 @@ jobs:
           - platform: Windows
             os: windows-latest
             config: src-tauri/tauri.nsis.conf.json
-            tag_suffix: ''
           - platform: Linux
             os: ubuntu-latest
             config: src-tauri/tauri.linux.conf.json
-            tag_suffix: '-linux'
           - platform: macOS
             os: macos-latest
             config: src-tauri/tauri.macos.conf.json
-            tag_suffix: '-macos'
 
     steps:
       - name: Checkout
@@ -210,17 +209,132 @@ jobs:
       - name: Sync version files
         run: pnpm run sync:version
 
-      - name: Build and release ${{ matrix.platform }} bundle
-        uses: tauri-apps/tauri-action@v0.6.2
+      - name: Build ${{ matrix.platform }} bundle
+        shell: bash
+        run: pnpm tauri build --config src-tauri/tauri.conf.json --config ${{ matrix.config }}
+
+      - name: Stage ${{ matrix.platform }} release assets
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.detect_version_change.outputs.current_version }}
+          PLATFORM: ${{ matrix.platform }}
+          RELEASE_TAG: v${{ needs.detect_version_change.outputs.current_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+
+          node --input-type=module <<'NODE'
+          import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+
+          const platform = process.env.PLATFORM;
+          const bundleRoot = 'src-tauri/target/release/bundle';
+          const output = 'release-assets';
+          const files = [];
+
+          function findFiles(directory) {
+            if (!existsSync(directory)) return;
+            for (const entry of readdirSync(directory, { withFileTypes: true })) {
+              const path = join(directory, entry.name);
+              if (entry.isDirectory()) findFiles(path);
+              else files.push(path);
+            }
+          }
+
+          findFiles(bundleRoot);
+          const installers = platform === 'Windows'
+            ? [['GameLibrary_x64-setup.exe', files.find((file) => file.endsWith('-setup.exe'))]]
+            : platform === 'Linux'
+              ? [
+                  ['GameLibrary_amd64.AppImage', files.find((file) => file.endsWith('.AppImage'))],
+                  ['GameLibrary_amd64.deb', files.find((file) => file.endsWith('.deb'))],
+                  ['GameLibrary_x86_64.rpm', files.find((file) => file.endsWith('.rpm'))],
+                ]
+              : [
+                  ['GameLibrary_aarch64.app.tar.gz', files.find((file) => file.endsWith('.app.tar.gz'))],
+                  ['GameLibrary_aarch64.dmg', files.find((file) => file.endsWith('.dmg'))],
+                ];
+
+          if (installers.some(([, installer]) => !installer)) throw new Error(`Missing installer for ${platform}`);
+
+          const platformEntries = {};
+          installers.forEach(([targetName, installer]) => {
+            const target = join(output, targetName);
+            copyFileSync(installer, target);
+            const signature = `${installer}.sig`;
+            if (!existsSync(signature)) throw new Error(`Missing signature for ${installer}`);
+            copyFileSync(signature, `${target}.sig`);
+
+            const key = platform === 'Windows'
+              ? 'windows-x86_64'
+              : platform === 'Linux'
+                ? targetName.endsWith('.AppImage') ? 'linux-x86_64' : targetName.endsWith('.deb') ? 'linux-x86_64-deb' : 'linux-x86_64-rpm'
+                : targetName.endsWith('.app.tar.gz') ? 'darwin-aarch64' : null;
+            if (key) {
+              platformEntries[key] = {
+                signature: readFileSync(`${target}.sig`, 'utf8').trim(),
+                url: `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/${process.env.RELEASE_TAG}/${targetName}`,
+              };
+            }
+          });
+
+          writeFileSync(join(output, 'platform.json'), JSON.stringify({ version: process.env.VERSION, platforms: platformEntries }, null, 2));
+          NODE
+
+      - name: Upload ${{ matrix.platform }} build artifact
+        uses: actions/upload-artifact@v4
         with:
-          tagName: v${{ needs.detect_version_change.outputs.current_version }}${{ matrix.tag_suffix }}
-          releaseName: GameLibrary v${{ needs.detect_version_change.outputs.current_version }}${{ matrix.tag_suffix }}
-          releaseBody: ${{ needs.prepare_release.outputs.changelog }}
-          releaseDraft: false
-          prerelease: false
-          assetNamePattern: '[name]_[arch][setup][ext]'
-          args: --config src-tauri/tauri.conf.json --config ${{ matrix.config }}
-          includeUpdaterJson: true
-          updaterJsonPreferNsis: true
+          name: release-assets-${{ matrix.platform }}
+          path: release-assets
+
+  publish_release:
+    name: Publish unified release
+    needs:
+      - detect_version_change
+      - prepare_release
+      - build_platform
+    runs-on: ubuntu-latest
+    if: needs.prepare_release.outputs.tag_exists == 'false'
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.detect_version_change.outputs.current_version }}
+      RELEASE_TAG: v${{ needs.detect_version_change.outputs.current_version }}
+      RELEASE_NOTES: ${{ needs.prepare_release.outputs.changelog }}
+
+    steps:
+      - name: Download platform build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: false
+
+      - name: Merge updater manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+          const manifests = readdirSync('release-assets', { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => JSON.parse(readFileSync(`release-assets/${entry.name}/platform.json`, 'utf8')));
+          if (manifests.length !== 3) throw new Error(`Expected 3 platform manifests, found ${manifests.length}`);
+          const platforms = Object.assign({}, ...manifests.map((manifest) => manifest.platforms));
+          writeFileSync('release-assets/latest.json', JSON.stringify({ version: process.env.VERSION, notes: process.env.RELEASE_NOTES, pub_date: new Date().toISOString(), platforms }, null, 2));
+          NODE
+
+          find release-assets -type f -name platform.json -delete
+
+      - name: Create release and upload installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RELEASE_NOTES" > release-notes.md
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "GameLibrary $VERSION" \
+            --notes-file release-notes.md \
+            $(find release-assets -type f -print)
