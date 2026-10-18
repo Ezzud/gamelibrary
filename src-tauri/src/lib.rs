@@ -623,7 +623,7 @@ fn read_game_config(app: &tauri::AppHandle, game_id: &str) -> StoredGameConfig {
 fn find_launch_file(game_path: &Path, configured_file: Option<String>) -> Result<PathBuf, String> {
     if let Some(file_name) = configured_file {
         let configured_path = game_path.join(&file_name);
-        if configured_path.exists() {
+        if configured_path.is_file() || is_macos_app_bundle(&configured_path) {
             return Ok(configured_path);
         }
     }
@@ -639,6 +639,10 @@ fn find_launch_file(game_path: &Path, configured_file: Option<String>) -> Result
     for entry in entries {
         let entry = entry.map_err(|err| format!("Failed to read directory entry: {}", err))?;
         let path = entry.path();
+        if is_macos_app_bundle(&path) {
+            return Ok(path);
+        }
+
         if !path.is_file() {
             continue;
         }
@@ -649,7 +653,7 @@ fn find_launch_file(game_path: &Path, configured_file: Option<String>) -> Result
             .unwrap_or_default()
             .to_ascii_lowercase();
 
-        if extension == "exe" || extension == "bat" || extension == "cmd" {
+        if is_supported_launch_extension(&extension) || is_unix_executable(&path) {
             return Ok(path);
         }
     }
@@ -658,6 +662,36 @@ fn find_launch_file(game_path: &Path, configured_file: Option<String>) -> Result
         "No launchable file found in {}",
         game_path.display()
     ))
+}
+
+fn is_macos_app_bundle(path: &Path) -> bool {
+    cfg!(target_os = "macos")
+        && path.is_dir()
+        && path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
+}
+
+fn is_supported_launch_extension(extension: &str) -> bool {
+    if cfg!(target_os = "windows") {
+        return matches!(extension, "exe" | "bat" | "cmd");
+    }
+
+    matches!(extension, "exe" | "sh" | "appimage")
+}
+
+#[cfg(unix)]
+fn is_unix_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::metadata(path)
+        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_unix_executable(_path: &Path) -> bool {
+    false
 }
 
 #[cfg(target_os = "windows")]
@@ -819,9 +853,21 @@ fn launch_game(
         .unwrap_or_default()
         .to_ascii_lowercase();
 
-    let launch_result = if extension == "bat" || extension == "cmd" {
+    let launch_result = if cfg!(target_os = "windows") && (extension == "bat" || extension == "cmd") {
         Command::new("cmd")
             .arg("/C")
+            .arg(&launch_file)
+            .args(&args)
+            .current_dir(&game_path)
+            .spawn()
+    } else if cfg!(target_os = "macos") && extension == "app" {
+        Command::new("open")
+            .arg(&launch_file)
+            .args(&args)
+            .current_dir(&game_path)
+            .spawn()
+    } else if !cfg!(target_os = "windows") && extension == "sh" {
+        Command::new("sh")
             .arg(&launch_file)
             .args(&args)
             .current_dir(&game_path)
@@ -854,6 +900,8 @@ fn launch_game(
 
             let label = if extension == "bat" || extension == "cmd" {
                 "script"
+            } else if extension == "app" {
+                "application"
             } else {
                 "executable"
             };
@@ -920,10 +968,7 @@ async fn wait_for_process_exit(
                     let path = normalize_path(path);
 
                     path == target
-                        || is_process_in_game_folder(
-                            Path::new(&path),
-                            Path::new(&game_root_norm),
-                        )
+                        || is_process_in_game_folder(&path, &game_root_norm)
                 })
             });
 
@@ -966,10 +1011,7 @@ async fn wait_for_process_exit(
                     let proc_path = normalize_path(path);
 
                     proc_path == target
-                        || is_process_in_game_folder(
-                            Path::new(&proc_path),
-                            Path::new(&game_root_norm),
-                        )
+                        || is_process_in_game_folder(&proc_path, &game_root_norm)
                 })
             });
 
@@ -1011,42 +1053,41 @@ async fn wait_for_process_exit(
     })?
 }
 
-fn is_process_in_game_folder(
-    process_path: &Path,
-    game_root: &Path,
-) -> bool {
-    process_path.starts_with(game_root)
+fn is_process_in_game_folder(process_path: &str, game_root: &str) -> bool {
+    !game_root.is_empty()
+        && process_path.starts_with(game_root)
         && process_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+            .as_bytes()
+            .get(game_root.len())
+            .is_some_and(|separator| *separator == b'/')
 }
 
-    #[tauri::command]
-    async fn list_running_processes() -> Result<Vec<String>, String> {
-        tauri::async_runtime::spawn_blocking(move || {
-            let mut system = System::new();
-            system.refresh_processes();
+#[tauri::command]
+async fn list_running_processes() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut system = System::new();
+        system.refresh_processes();
 
-            let mut running_processes = system
-                .processes()
-                .values()
-                .filter_map(|process| process.exe().map(normalize_path))
-                .filter(|path| path.ends_with(".exe"))
-                .collect::<Vec<String>>();
+        let mut running_processes = system
+            .processes()
+            .values()
+            .filter_map(|process| process.exe().map(normalize_path))
+            .collect::<Vec<String>>();
 
-            running_processes.sort();
-            running_processes.dedup();
+        running_processes.sort();
+        running_processes.dedup();
 
-            Ok(running_processes)
-        })
-        .await
-        .map_err(|err| format!("Failed to list running processes: {}", err))?
-    }
+        Ok(running_processes)
+    })
+    .await
+    .map_err(|err| format!("Failed to list running processes: {}", err))?
+}
 
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy()
-        .replace('/', "\\")
-        .trim_start_matches(r"\\?\")
+        .replace('\\', "/")
+        .trim_start_matches("//?/")
+        .trim_end_matches('/')
         .to_ascii_lowercase()
 }
 

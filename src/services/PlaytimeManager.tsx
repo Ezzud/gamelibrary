@@ -49,7 +49,11 @@ const saveStore = async (store: PlaytimeStore) => {
 
 export const getPlaytime = async (gameId: string) => {
 	const store = await loadStore()
-	return store.games[gameId]?.totalMs ?? 0
+	const storedPlaytimeMs = store.games[gameId]?.totalMs ?? 0
+	const activeSession = activeSessions.get(gameId)
+	const activePlaytimeMs = activeSession ? Math.max(0, Date.now() - activeSession.startedAtMs) : 0
+
+	return storedPlaytimeMs + activePlaytimeMs
 }
 
 export const formatPlaytime = (totalMs: number) => {

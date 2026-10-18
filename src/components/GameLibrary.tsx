@@ -4,7 +4,7 @@ import { ArrowDownNarrowWide, ArrowUpWideNarrow, CheckCircle2, ChevronsUpDown, F
 import { FaGamepad, FaLockOpen, FaMicrochip, FaSteam, FaTwitch, FaUsers, FaVrCardboard, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
 import { launchGame, launchSteamGame, openGameFolder } from '../services/GameLauncher'
-import { trackPlaytimeForProcess } from '../services/PlaytimeManager'
+import { getPlaytime, trackPlaytimeForProcess } from '../services/PlaytimeManager'
 import { addCustomScanFolder, addIgnoredFolder, addPlayHistoryEntry, getCustomScanFolders, getPlayHistory, loadGameConfig, loadGameCache, removeCustomScanFolder, removeGameFromList, saveGameConfig, getAppConfig, getGameCoverPath, setIGDBApiBaseUrl, setIGDBConnectionMode } from '../services/ConfigManager'
 import { chooseFolder, fetchCustomGame, registerGames } from '../services/GameScanner'
 import { Logger } from '../utils/Logger'
@@ -180,6 +180,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 	const [gameTagsById, setGameTagsById] = useState<Record<string, string[]>>({})
 	const [gameDateAddedById, setGameDateAddedById] = useState<Record<string, number | null>>({})
 	const [gameLastPlayedById, setGameLastPlayedById] = useState<Record<string, number | null>>({})
+	 const [gamePlaytimeById, setGamePlaytimeById] = useState<Record<string, number>>({})
 	const [gameCoversById, setGameCoversById] = useState<Record<string, string | null>>({})
 	const [metadataRefreshKey, setMetadataRefreshKey] = useState(0)
 	const [isAddingManualGame, setIsAddingManualGame] = useState(false)
@@ -277,6 +278,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 			if (games.length < 1) {
 				setGameDateAddedById({})
 				setGameLastPlayedById({})
+				setGamePlaytimeById({})
 				setDateLoading(false)
 				return
 			}
@@ -284,7 +286,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 			const pairs = await Promise.all(games.map(async (game) => {
 				const cached = dateDataCache[game.id]
 				if (cached) {
-					return [game.id, cached] as const
+					const playtimeMs = await getPlaytime(game.id)
+					return [game.id, { ...cached, playtimeMs }] as const
 				}
 
 					try {
@@ -295,18 +298,20 @@ const GameLibrary = (props: GameLibraryProps) => {
 							const playedAt = parseDateAdded(play.playedAt)
 							return playedAt !== null && (latest === null || playedAt > latest) ? playedAt : latest
 						}, null)
+						const playtimeMs = await getPlaytime(game.id)
 						const data = { dateAdded, lastPlayedAt }
 						dateDataCache[game.id] = data
-						return [game.id, data] as const
+						return [game.id, { ...data, playtimeMs }] as const
 					} catch {
 						const data = { dateAdded: null, lastPlayedAt: null }
 						dateDataCache[game.id] = data
-						return [game.id, data] as const
+						return [game.id, { ...data, playtimeMs: 0 }] as const
 					}
 			}))
 
 			setGameDateAddedById(Object.fromEntries(pairs.map(([gameId, data]) => [gameId, data.dateAdded])))
 			setGameLastPlayedById(Object.fromEntries(pairs.map(([gameId, data]) => [gameId, data.lastPlayedAt])))
+			setGamePlaytimeById(Object.fromEntries(pairs.map(([gameId, data]) => [gameId, data.playtimeMs])))
 			setGameTagsById((prev) => {
 				const validIds = new Set(games.map((game) => game.id))
 				const next = Object.fromEntries(Object.entries(prev).filter(([gameId]) => validIds.has(gameId)))
@@ -499,6 +504,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 				}
 
 				return result
+			} else if (sortField === 'playtime') {
+				result = (gamePlaytimeById[a.id] ?? 0) - (gamePlaytimeById[b.id] ?? 0)
 			} else {
 				const aFirstTag = ((gameTagsById[a.id] || [])[0] || '').toLowerCase()
 				const bFirstTag = ((gameTagsById[b.id] || [])[0] || '').toLowerCase()
@@ -592,6 +599,9 @@ const GameLibrary = (props: GameLibraryProps) => {
 		}
 		if (field === 'lastPlayed') {
 			return 'Last Played'
+		}
+		if (field === 'playtime') {
+			return 'Playtime'
 		}
 		return 'Tag'
 	}
@@ -1348,6 +1358,18 @@ const GameLibrary = (props: GameLibraryProps) => {
 											className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${sortField === 'lastPlayed' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
 										>
 											Last Played
+										</button>
+										<button
+											type="button"
+											data-controller-selectable="true"
+											data-controller-action="action"
+											onClick={() => {
+												onSortFieldChange('playtime')
+												setIsSortMenuOpen(false)
+											}}
+											className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${sortField === 'playtime' ? 'bg-steam-700 text-white hover:bg-steam-600' : 'text-steam-300 hover:bg-steam-600 hover:text-white'}`}
+										>
+											Playtime
 										</button>
 									</div>
 								)}

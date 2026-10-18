@@ -28,7 +28,7 @@ export type IGDBConnectionStatus = 'checking' | 'missing' | 'invalid' | 'connect
 export type IGDBConnectionMode = 'api' | 'twitch'
 export type ConfigCategory = 'General' | 'Appearance' | 'Library' | 'Scanning' | 'DiscordRPC' | 'Update' | 'About'
 export type UpdateCheckStatus = 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'
-export type SortField = 'name' | 'platform' | 'tag' | 'dateAdded' | 'lastPlayed'
+export type SortField = 'name' | 'platform' | 'tag' | 'dateAdded' | 'lastPlayed' | 'playtime'
 export type DiscordRpcImageMode = 'app-icon' | 'game-icon' | 'none'
 
 export interface DiscordRpcConfig {

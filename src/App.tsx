@@ -59,6 +59,7 @@ import type { ConfigCategory, Game, IGDBConnectionStatus, LastPlayedCard, SortFi
 const MIN_LAUNCH_LOADING_MS = 5000
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
 const AUTO_DETECT_POLL_INTERVAL_MS = 5000
+const DISCORD_PLAYTIME_UPDATE_INTERVAL_MS = 5 * 60 * 1000
 
 const METADATA_HEALTH_RETRY_MS = 10 * 60 * 1000
 const DEFAULT_METADATA_API_URL = 'https://gamelibrary.ezzud.fr/api'
@@ -442,6 +443,18 @@ function App() {
     }, [selectedGame, isSettingsOpen, runningGameIds, autoDetectScanReady, autoDetectGames])
 
     useEffect(() => {
+        if (runningGameIds.size === 0) {
+            return
+        }
+
+        const intervalId = window.setInterval(() => {
+            void syncDiscordPresenceForCurrentState()
+        }, DISCORD_PLAYTIME_UPDATE_INTERVAL_MS)
+
+        return () => window.clearInterval(intervalId)
+    }, [runningGameIds])
+
+    useEffect(() => {
         latestGamesRef.current = games
     }, [games])
 
@@ -475,7 +488,7 @@ function App() {
                 : []
 
             if (normalizedProcesses.length < 1) {
-                Logger.info('Auto-detect scan found no running executable paths.')
+                Logger.info('Auto-detect scan found no running process paths.')
                 return
             }
 
@@ -488,9 +501,6 @@ function App() {
 
             for (const processPath of normalizedProcesses) {
                 const normalizedProcessPath = normalizePathForCompare(processPath)
-                if (!normalizedProcessPath.endsWith('.exe')) {
-                    continue
-                }
 
                 const matchedGame = candidates.find((game) => {
                     return (
