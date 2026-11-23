@@ -631,6 +631,17 @@ export async function getAllLaunchFiles(gamePath: string) {
 			}
 		}
 
+		// bbport-windows sub-folder
+		const bbportWindowsSubFolder = entries.find(e => e.isDirectory && e.name.toLowerCase() === 'bbport-windows');
+		if (bbportWindowsSubFolder) {
+			try {
+				const subEntries = await readDir(`${gamePath}/bbport-windows`);
+				processEntries(subEntries, 'bbport-windows/');
+			} catch (subErr) {
+				Logger.warn(`Could not read 'bbport-windows' sub-folder in ${gamePath}:`, subErr);
+			}
+		}
+
 		// Check all subfolder if there is a .exe in X/Binaries/Win64
 		const subfolders = entries.filter(e => e.isDirectory);
 		for (const subfolder of subfolders) {
