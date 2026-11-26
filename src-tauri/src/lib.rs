@@ -853,29 +853,37 @@ fn launch_game(
         .unwrap_or_default()
         .to_ascii_lowercase();
 
+    // Explorer starts an executable with its containing folder as the current
+    // directory. Match that behavior so launchers in subfolders can resolve
+    // their sibling files and relative paths correctly.
+    let launch_working_dir = launch_file
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(&game_path);
+
     let launch_result = if cfg!(target_os = "windows") && (extension == "bat" || extension == "cmd") {
         Command::new("cmd")
             .arg("/C")
             .arg(&launch_file)
             .args(&args)
-            .current_dir(&game_path)
+            .current_dir(launch_working_dir)
             .spawn()
     } else if cfg!(target_os = "macos") && extension == "app" {
         Command::new("open")
             .arg(&launch_file)
             .args(&args)
-            .current_dir(&game_path)
+            .current_dir(launch_working_dir)
             .spawn()
     } else if !cfg!(target_os = "windows") && extension == "sh" {
         Command::new("sh")
             .arg(&launch_file)
             .args(&args)
-            .current_dir(&game_path)
+            .current_dir(launch_working_dir)
             .spawn()
     } else {
         Command::new(&launch_file)
             .args(&args)
-            .current_dir(&game_path)
+            .current_dir(launch_working_dir)
             .spawn()
     };
 
@@ -889,7 +897,7 @@ fn launch_game(
                     launch_with_elevation(
                         &launch_file,
                         &args,
-                        &game_path,
+                        launch_working_dir,
                     )?;
 
                     return Ok(

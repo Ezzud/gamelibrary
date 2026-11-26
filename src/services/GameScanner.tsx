@@ -6,10 +6,10 @@ import { searchGame } from "./GameDataManager";
 import { fetchControllerSupport } from "./GameDataManager";
 import { addGamesToList, saveGameConfig, saveGameInfoCache, loadGameList, loadGameConfig, removeGameFromList, getCustomScanFolders, getIgnoredFolders, loadGameCache } from "./ConfigManager";
 import type { GameCacheConfig, GameConfig, GameListEntry, ScanProgressCallback, SteamData } from "../types/appTypes";
-import { scanMacBattleNetGames, scanMacEAGames, scanMacEpicGames, scanMacGOGGames, scanMacSteamGames } from './MacScanner'
-import { scanLinuxEAGames, scanLinuxEpicGames, scanLinuxGOGGames, scanLinuxSteamGames } from './LinuxScanner'
-import { scanWindowsBattleNetGames, scanWindowsEAGames, scanWindowsEpicGames, scanWindowsGOGGames, scanWindowsSteamGames, scanWindowsXboxGames } from './WindowsScanner'
-import { scannerPaths } from './ScannerPaths'
+import { scanMacBattleNetGames, scanMacEAGames, scanMacEpicGames, scanMacGOGGames, scanMacSteamGames } from './scanners/MacScanner'
+import { scanLinuxEAGames, scanLinuxEpicGames, scanLinuxGOGGames, scanLinuxSteamGames } from './scanners/LinuxScanner'
+import { scanWindowsBattleNetGames, scanWindowsEAGames, scanWindowsEpicGames, scanWindowsGOGGames, scanWindowsSteamGames, scanWindowsXboxGames } from './scanners/WindowsScanner'
+import { scannerPaths } from './scanners/ScannerPaths'
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
