@@ -1088,9 +1088,25 @@ const GameLibrary = (props: GameLibraryProps) => {
 					</div>
 					{isLoading && (
 						<div className="flex items-center gap-3">
-							<div className="flex flex-col items-end text-right w-64">
-								<span className="text-sm text-steam-300">Scanning... {scanProgress}%</span>
-								<span className="text-xs text-steam-400 truncate w-full" title={scanStatusMessage}>{scanStatusMessage}</span>
+							<div className="flex w-64 flex-col gap-1.5">
+								<div className="flex items-center justify-between gap-2">
+									<span className="truncate text-xs text-steam-300" title={t(scanStatusMessage)}>{t(scanStatusMessage)}</span>
+									<span className="shrink-0 text-xs tabular-nums text-steam-300">{Math.round(scanProgress)}%</span>
+								</div>
+								<div
+									role="progressbar"
+									aria-label={t('scan.progress')}
+									aria-valuemin={0}
+									aria-valuemax={100}
+									aria-valuenow={scanProgress}
+									aria-valuetext={`${Math.round(scanProgress)}%`}
+									className="h-2 w-full overflow-hidden rounded-full bg-steam-700"
+								>
+									<div
+										className="h-full rounded-full transition-[width] duration-200 ease-out"
+										style={{ width: `${Math.max(0, Math.min(100, scanProgress))}%`, backgroundColor: 'rgb(var(--theme-surface-accent))' }}
+									/>
+								</div>
 							</div>
 							<Loader className="w-5 h-5 animate-spin text-steam-400" />
 						</div>

@@ -55,11 +55,13 @@ import { applyTheme } from './services/ThemeManager'
 import { getVersion } from '@tauri-apps/api/app'
 import { Loader2 } from 'lucide-react'
 import type { ConfigCategory, Game, IGDBConnectionStatus, LastPlayedCard, SortField } from './types/appTypes'
+import { useLanguage } from './lang/LanguageContext'
 
 const MIN_LAUNCH_LOADING_MS = 5000
 const GITHUB_REPO_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/Ezzud/gamelibrary/releases/latest'
 const AUTO_DETECT_POLL_INTERVAL_MS = 5000
 const DISCORD_PLAYTIME_UPDATE_INTERVAL_MS = 5 * 60 * 1000
+const roundScanProgress = (value: number) => Number(Math.max(0, Math.min(100, value)).toFixed(1))
 
 const METADATA_HEALTH_RETRY_MS = 10 * 60 * 1000
 const DEFAULT_METADATA_API_URL = 'https://gamelibrary.ezzud.fr/api'
@@ -106,6 +108,7 @@ const restoreAppWindow = async () => {
  * Returns: JSX.Element - main app layout
  */
 function App() {
+    const { t } = useLanguage()
     const didRunStartupScanRef = useRef(false)
     const appWindowReducedRef = useRef(false)
     const appWindowReducedByCloseRef = useRef(false)
@@ -927,7 +930,7 @@ function App() {
 
                 try {
                     await scanAndAddCustomFolderGames((update) => {
-                        const mappedPercent = Math.round(update.percent * 0.6)
+                        const mappedPercent = roundScanProgress(update.percent * 0.6)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
@@ -958,61 +961,65 @@ function App() {
                     }
 
                     if (optionalScans.length < 1) {
-                        setScanProgress(100)
-                        setScanStatusMessage('Load scan complete')
+                        setScanProgress(95)
+                        setScanStatusMessage(t('scan.finalizing'))
                     }
 
                     for (let index = 0; index < optionalScans.length; index++) {
                         const platform = optionalScans[index]
-                        const rangeStart = Math.round(60 + (index / optionalScans.length) * 40)
-                        const rangeEnd = Math.round(60 + ((index + 1) / optionalScans.length) * 40)
+                        const rangeStart = 60 + (index / optionalScans.length) * 35
+                        const rangeEnd = 60 + ((index + 1) / optionalScans.length) * 35
 
                         setScanStatusMessage(`Scanning ${platform} games...`)
                         if (platform === 'Steam') {
                             await scanAndAddSteamGames((update) => {
-                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                                 setScanProgress(mappedPercent)
                                 setScanStatusMessage(`${update.message}`)
                             })
                         } else if (platform === 'GOG') {
                             await scanAndAddGOGGames((update) => {
-                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                                 setScanProgress(mappedPercent)
                                 setScanStatusMessage(`${update.message}`)
                             })
                         } else if (platform === 'Xbox') {
                             await scanAndAddXboxGames((update) => {
-                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                                 setScanProgress(mappedPercent)
                                 setScanStatusMessage(`${update.message}`)
                             })
                         } else if (platform === 'EA') {
                             await scanAndAddEAGames((update) => {
-                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                                 setScanProgress(mappedPercent)
                                 setScanStatusMessage(`${update.message}`)
                             })
                         } else if (platform === 'Epic Games') {
                             await scanAndAddEpicGames((update) => {
-                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                                 setScanProgress(mappedPercent)
                                 setScanStatusMessage(`${update.message}`)
                             })
                         } else if (platform === 'Battle.net') {
                             await scanAndAddBattleNetGames((update) => {
-                                const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                                const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                                 setScanProgress(mappedPercent)
                                 setScanStatusMessage(`${update.message}`)
                             })
                         }
                     }
                 } finally {
+                    setScanProgress(95)
+                    setScanStatusMessage(t('scan.finalizing'))
                     const afterList = await loadGameList()
                     const afterIds = new Set((afterList?.games || []).map((game: { id: string }) => game.id))
                     const hasNewGames = [...afterIds].some((id) => !beforeIds.has(id))
                     if (hasNewGames) {
                         await loadGames()
                     }
+                    setScanProgress(100)
+                    setScanStatusMessage(t('scan.complete'))
                     setIsScanning(false)
                 }
             })()
@@ -1212,10 +1219,12 @@ function App() {
                 setScanStatusMessage(update.message)
             }, async () => {
 				invalidateAllSpecialTagsCache()
+				setScanProgress(95)
+				setScanStatusMessage(t('scan.finalizing'))
 				await loadGames()
+				setScanProgress(100)
+				setScanStatusMessage(t('scan.tagsComplete'))
 			})
-            setScanProgress(100)
-            setScanStatusMessage('Special tags refetch complete.')
         } finally {
             setIsRefetchingTags(false)
             setIsScanning(false)
@@ -1232,55 +1241,55 @@ function App() {
         try {
             for (let index = 0; index < platforms.length; index++) {
                 const platform = platforms[index]
-                const rangeStart = Math.round((index / platforms.length) * 100)
-                const rangeEnd = Math.round(((index + 1) / platforms.length) * 100)
+                const rangeStart = (index / platforms.length) * 90
+                const rangeEnd = ((index + 1) / platforms.length) * 90
 
                 switch (platform) {
                     case 'Steam':
                         await scanAndAddSteamGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
                     case 'Custom Folders':
                         await scanAndAddCustomFolderGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
                     case 'GOG':
                         await scanAndAddGOGGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
                     case 'Xbox':
                         await scanAndAddXboxGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
                     case 'EA':
                         await scanAndAddEAGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
                     case 'Epic Games':
                         await scanAndAddEpicGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
                         break
                     case 'Battle.net':
                         await scanAndAddBattleNetGames((update) => {
-                            const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                            const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                             setScanProgress(mappedPercent)
                             setScanStatusMessage(`[${index + 1}/${platforms.length}] ${update.message}`)
                         })
@@ -1293,10 +1302,12 @@ function App() {
                 }
             }
 
+            setScanProgress(95)
+            setScanStatusMessage(t('scan.finalizing'))
             await loadGames()
             Logger.info('Multi-platform scan complete.')
             setScanProgress(100)
-            setScanStatusMessage('Scan complete.')
+            setScanStatusMessage(t('scan.complete'))
         } finally {
             setIsScanning(false)
         }
@@ -1313,14 +1324,16 @@ function App() {
             setScanStatusMessage(`Found ${games.length} games. Registering...`)
 
             await registerGames(games, 'Custom', (update) => {
-                const mappedPercent = Math.round(20 + (update.percent * 70) / 100)
+                const mappedPercent = roundScanProgress(20 + (update.percent * 70) / 100)
                 setScanProgress(mappedPercent)
                 setScanStatusMessage(update.message)
             })
 
+            setScanProgress(95)
+            setScanStatusMessage(t('scan.finalizing'))
             await loadGames()
             setScanProgress(100)
-            setScanStatusMessage('Custom folder scan complete.')
+            setScanStatusMessage(t('scan.complete'))
         } catch (error) {
             Logger.error(`Failed to scan newly added custom folder ${folderPath}:`, error)
             setScanStatusMessage('Custom folder scan failed.')
@@ -1383,7 +1396,7 @@ function App() {
 
         try {
             await scanAndAddCustomFolderGames((update) => {
-                const mappedPercent = Math.round(update.percent * 0.6)
+                const mappedPercent = roundScanProgress(update.percent * 0.6)
                 setScanProgress(mappedPercent)
                 setScanStatusMessage(`${update.message}`)
             })
@@ -1412,56 +1425,60 @@ function App() {
             }
 
             if (optionalScans.length < 1) {
-                setScanProgress(100)
-                setScanStatusMessage('Refresh scan complete')
+                setScanProgress(95)
+                setScanStatusMessage(t('scan.finalizing'))
             }
 
             for (let index = 0; index < optionalScans.length; index++) {
                 const platform = optionalScans[index]
-                const rangeStart = Math.round(60 + (index / optionalScans.length) * 40)
-                const rangeEnd = Math.round(60 + ((index + 1) / optionalScans.length) * 40)
+                const rangeStart = 60 + (index / optionalScans.length) * 35
+                const rangeEnd = 60 + ((index + 1) / optionalScans.length) * 35
 
                 setScanStatusMessage(`Refreshing library: scanning ${platform} games...`)
                 if (platform === 'Steam') {
                     await scanAndAddSteamGames((update) => {
-                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
                 } else if (platform === 'GOG') {
                     await scanAndAddGOGGames((update) => {
-                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
                 } else if (platform === 'Xbox') {
                     await scanAndAddXboxGames((update) => {
-                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
                 } else if (platform === 'EA') {
                     await scanAndAddEAGames((update) => {
-                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
                 } else if (platform === 'Epic Games') {
                     await scanAndAddEpicGames((update) => {
-                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
                 } else if (platform === 'Battle.net') {
                     await scanAndAddBattleNetGames((update) => {
-                        const mappedPercent = Math.round(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
+                        const mappedPercent = roundScanProgress(rangeStart + ((rangeEnd - rangeStart) * update.percent) / 100)
                         setScanProgress(mappedPercent)
                         setScanStatusMessage(`${update.message}`)
                     })
                 }
             }
 
+            setScanProgress(95)
+            setScanStatusMessage(t('scan.finalizing'))
             await loadGames()
+            setScanProgress(100)
+            setScanStatusMessage(t('scan.complete'))
         } finally {
             setIsScanning(false)
         }

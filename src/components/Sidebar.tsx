@@ -28,7 +28,9 @@ const formatLastPlayed = (playedAt: string, t: (key: string) => string) => {
 	for (const unit of units) {
 		if (diffMs >= unit.ms) {
 			const value = Math.floor(diffMs / unit.ms)
-			return t('playtime.lastPlayedAgo').replace('{value}', String(value)).replace('{unit}', t(`playtime.${unit.label}`)).replace('{plural}', value > 1 ? 's' : '')
+			const unitLabel = t(`playtime.${unit.label}`)
+			const plural = value > 1 && unitLabel !== 'mois' ? 's' : ''
+			return t('playtime.lastPlayedAgo').replace('{value}', String(value)).replace('{unit}', unitLabel).replace('{plural}', plural)
 		}
 	}
 

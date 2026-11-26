@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { appDataDir, appLocalDataDir } from '@tauri-apps/api/path'
@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { FaSteam, FaXbox } from 'react-icons/fa'
 import { SiBattledotnet, SiEpicgames, SiGogdotcom, SiEa } from 'react-icons/si'
+import * as CountryFlags from 'country-flag-icons/react/3x2'
 import {
 	addCustomScanFolder,
 	addIgnoredFolder,
@@ -63,7 +64,7 @@ import { applyTheme, getAvailableThemes } from '../services/ThemeManager'
 import { chooseFolder } from '../services/GameScanner'
 import { resetAndRefetchGameIGDBData, testGameLibraryApi } from '../services/GameDataManager'
 import { Logger } from '../utils/Logger'
-import { useLanguage } from '../lang/LanguageContext'
+import { AVAILABLE_LANGUAGES, useLanguage } from '../lang/LanguageContext'
 import { getVersion } from '@tauri-apps/api/app'
 import type { AppConfigProps, ConfigCategory, DiscordRpcImageMode, IGDBConnectionMode, UpdateCheckStatus } from '../types/appTypes'
 
@@ -72,6 +73,21 @@ const GITHUB_REPO_URL = 'https://github.com/Ezzud/gamelibrary'
 const APP_AUTHOR = 'Ezzud'
 const DEFAULT_GAME_LIBRARY_API_URL = 'https://gamelibrary.ezzud.fr/api'
 const normalizeApiBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
+const getSystemCountryCode = () => {
+	if (typeof navigator === 'undefined') return ''
+	try {
+		return new Intl.Locale(navigator.languages?.[0] || navigator.language || 'en-US').maximize().region || ''
+	} catch {
+		return ''
+	}
+}
+const CountryFlag = ({ countryCode }: { countryCode: string }) => {
+	const Flag = (CountryFlags as unknown as Record<string, (props: { title?: string; 'aria-hidden'?: boolean | 'true' | 'false'; className?: string }) => ReactElement>)[countryCode]
+	return Flag
+		? <Flag title={countryCode} aria-hidden="true" className="h-4 w-6 rounded-sm object-cover" />
+		: <Globe aria-hidden="true" className="h-4 w-4 text-steam-300" />
+}
+const SystemCountryFlag = () => <CountryFlag countryCode={getSystemCountryCode()} />
 const getOperatingSystem = () => {
 	if (typeof navigator === 'undefined') {
 		return 'Unknown'
@@ -161,7 +177,8 @@ const AppConfig = ({
 	onConfigChanged,
 	onShowToast,
 }: AppConfigProps) => {
-	const { t, selectedLanguage, setLanguage } = useLanguage()
+	const { t, selectedLanguage, appliedLanguagePreference, setLanguage } = useLanguage()
+	const selectedLanguageOption = AVAILABLE_LANGUAGES.find((option) => option.code === selectedLanguage)
 	const [activeCategory, setActiveCategory] = useState<ConfigCategory>(initialCategory)
 	const [customFolders, setCustomFolders] = useState<string[]>([])
 	const [ignoredFolders, setIgnoredFolders] = useState<string[]>([])
@@ -185,7 +202,9 @@ const AppConfig = ({
 	const [appliedTheme, setAppliedTheme] = useState('default')
 	const [isApplyingTheme, setIsApplyingTheme] = useState(false)
 	const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false)
+	const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false)
 	const themeMenuRef = useRef<HTMLDivElement | null>(null)
+	const languageMenuRef = useRef<HTMLDivElement | null>(null)
 	const discordRpcGameSearchRef = useRef<HTMLDivElement | null>(null)
 	const [runOnStartup, setRunOnStartupState] = useState(false)
 	const [runReduced, setRunReducedState] = useState(false)
@@ -1170,13 +1189,31 @@ const AppConfig = ({
 			<section className="flex-1 p-6 overflow-auto">
 				<div className="mb-6 rounded-xl bg-steam-800/60 px-4 py-3 flex items-center justify-between shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_10px_25px_rgba(0,0,0,0.18)]">
 					<div className="flex items-center gap-2">
-						<Sparkles className="w-4 h-4 text-steam-300" />
-						<p className="text-sm text-steam-200">Active category: {activeCategory}</p>
 					</div>
-					<div className="text-right">
-						<div className="text-xs text-steam-400">Scanning: {isScanning ? `${scanProgress}%` : 'Idle'}</div>
-						<div className="text-xs text-steam-500">{scanStatusMessage}</div>
-					</div>
+					{isScanning && (
+						<div className="w-64">
+							<div className="flex flex-col gap-1.5">
+								<div className="flex items-center justify-between gap-2">
+											<span className="truncate text-xs text-steam-300" title={t(scanStatusMessage)}>{t(scanStatusMessage)}</span>
+									<span className="shrink-0 text-xs tabular-nums text-steam-300">{Math.round(scanProgress)}%</span>
+								</div>
+								<div
+									role="progressbar"
+									aria-label={t('scan.progress')}
+									aria-valuemin={0}
+									aria-valuemax={100}
+									aria-valuenow={scanProgress}
+									aria-valuetext={`${Math.round(scanProgress)}%`}
+									className="h-2 w-full overflow-hidden rounded-full bg-steam-700"
+								>
+									<div
+										className="h-full rounded-full transition-[width] duration-200 ease-out"
+										style={{ width: `${Math.max(0, Math.min(100, scanProgress))}%`, backgroundColor: 'rgb(var(--theme-surface-accent))' }}
+									/>
+								</div>
+							</div>
+						</div>
+					)}
 				</div>
 
 				{(activeCategory === 'General' || activeCategory === 'Appearance') && (
@@ -1324,6 +1361,73 @@ const AppConfig = ({
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
 							<div className="flex items-center justify-between gap-4">
 								<div className="flex items-center gap-2">
+									<Globe className="w-4 h-4 text-steam-300" />
+									<div>
+										<p className="text-sm text-steam-100">{t('settings.language')}</p>
+										<p className="mt-1 text-xs text-steam-400">{t('language.restartHint')}</p>
+									</div>
+								</div>
+								<div className="flex items-center gap-2">
+									<div
+										ref={languageMenuRef}
+										className="relative"
+										onBlur={(event) => {
+											if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsLanguageMenuOpen(false)
+										}}
+									>
+										<button
+											type="button"
+											onClick={() => setIsLanguageMenuOpen((previous) => !previous)}
+											className="inline-flex w-60 items-center justify-between gap-3 rounded-md border border-steam-600 bg-steam-700 py-2 pl-3 pr-2 text-left text-sm text-white transition-colors hover:bg-steam-600 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
+											aria-haspopup="listbox"
+											aria-expanded={isLanguageMenuOpen}
+											aria-label={t('settings.language')}
+										>
+											<span className="flex min-w-0 items-center gap-2 truncate">
+													<CountryFlag countryCode={selectedLanguageOption?.countryCode || getSystemCountryCode()} />
+												<span className="truncate">{selectedLanguageOption ? t(selectedLanguageOption.labelKey) : t('language.systemDefault')}</span>
+											</span>
+											<ChevronDown className={`h-4 w-4 shrink-0 text-steam-300 transition-transform ${isLanguageMenuOpen ? 'rotate-180' : ''}`} />
+										</button>
+										{isLanguageMenuOpen && (
+											<div className="absolute right-0 top-full z-30 mt-1 max-h-56 w-60 overflow-y-auto rounded-md border border-steam-600 bg-steam-800 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.35)]" role="listbox" aria-label={t('settings.language')}>
+												<button
+													type="button"
+													onClick={() => { void setLanguage(''); setIsLanguageMenuOpen(false) }}
+													className={`flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm transition-colors ${selectedLanguage === '' ? 'bg-steam-600 text-white' : 'text-steam-200 hover:bg-steam-700 hover:text-white'}`}
+													role="option"
+													aria-selected={selectedLanguage === ''}
+												>
+													<SystemCountryFlag />
+													<span>{t('language.systemDefault')}</span>
+												</button>
+												{AVAILABLE_LANGUAGES.map((option) => (
+													<button
+														key={option.code}
+														type="button"
+														onClick={() => { void setLanguage(option.code); setIsLanguageMenuOpen(false) }}
+														className={`flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm transition-colors ${selectedLanguage === option.code ? 'bg-steam-600 text-white' : 'text-steam-200 hover:bg-steam-700 hover:text-white'}`}
+														role="option"
+														aria-selected={selectedLanguage === option.code}
+													>
+														<CountryFlag countryCode={option.countryCode} />
+														<span>{t(option.labelKey)}</span>
+													</button>
+												))}
+											</div>
+										)}
+									</div>
+									{selectedLanguage !== appliedLanguagePreference && (
+										<button type="button" onClick={() => window.location.reload()} className="theme-primary-action inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition-colors">
+											{t('language.apply')}
+										</button>
+									)}
+								</div>
+							</div>
+						</div>
+						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+							<div className="flex items-center justify-between gap-4">
+								<div className="flex items-center gap-2">
 									<Palette className="w-4 h-4 text-steam-300" />
 									<div>
 										<p className="text-sm text-steam-100">{t("AppConfig.appTheme")}</p>
@@ -1419,13 +1523,6 @@ const AppConfig = ({
 
 						{activeCategory === 'General' && (
 						<>
-							<div className="mb-6 rounded-xl bg-steam-800/60 p-4">
-								<label htmlFor="app-language" className="text-sm text-steam-100">{t('settings.language')}</label>
-								<select id="app-language" className="mt-2 w-full rounded bg-steam-700 p-2 text-white" value={selectedLanguage} onChange={(event) => void setLanguage(event.target.value)}>
-									<option value="">{t('language.systemDefault')}</option>
-									<option value="en-us">{t('language.english')}</option>
-								</select>
-							</div>
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
 							<p className="text-sm text-steam-100 mb-3">{t("AppConfig.startup")}</p>
 							<div className="flex items-center justify-between gap-4">

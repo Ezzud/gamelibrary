@@ -1,17 +1,24 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import enUs from './en-us'
+import frFr from './fr-fr'
 import { getAppConfig, setLanguage as saveLanguage } from '../services/ConfigManager'
 
 type LanguageContextValue = {
   language: string
   selectedLanguage: string
+  appliedLanguagePreference: string
   setLanguage: (language: string) => Promise<void>
   t: (langlinepath: string) => string
 }
 
+export const AVAILABLE_LANGUAGES = [
+  { code: 'en-us', labelKey: 'language.english', countryCode: 'US' },
+  { code: 'fr-fr', labelKey: 'language.french', countryCode: 'FR' },
+] as const
+
 const LanguageContext = createContext<LanguageContextValue | null>(null)
 const englishFallback: Record<string, string> = enUs
-const supportedLanguages: Record<string, Record<string, string>> = { 'en-us': englishFallback }
+const supportedLanguages: Record<string, Record<string, string>> = { 'en-us': englishFallback, 'fr-fr': frFr }
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -52,6 +59,7 @@ function systemLanguage() {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [selectedLanguage, setSelectedLanguage] = useState('')
+  const [appliedLanguagePreference, setAppliedLanguagePreference] = useState('')
   const [language, setResolvedLanguage] = useState(systemLanguage())
 
   useEffect(() => {
@@ -60,6 +68,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       if (!active) return
       const selected = config.language || ''
       setSelectedLanguage(selected)
+      setAppliedLanguagePreference(selected)
       setResolvedLanguage(selected || systemLanguage())
       activeLanguage = selected || systemLanguage()
     }).catch(() => undefined)
@@ -69,8 +78,6 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const setLanguage = useCallback(async (value: string) => {
     await saveLanguage(value)
     setSelectedLanguage(value)
-    setResolvedLanguage(value || systemLanguage())
-    activeLanguage = value || systemLanguage()
   }, [])
 
   const t = useCallback((langlinepath: string) => {
@@ -79,7 +86,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     return selected?.[langlinepath] ?? englishFallback[langlinepath] ?? translateText(langlinepath, language)
   }, [language])
 
-  const value = useMemo(() => ({ language, selectedLanguage, setLanguage, t }), [language, selectedLanguage, setLanguage, t])
+  const value = useMemo(() => ({ language, selectedLanguage, appliedLanguagePreference, setLanguage, t }), [language, selectedLanguage, appliedLanguagePreference, setLanguage, t])
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
 }
 

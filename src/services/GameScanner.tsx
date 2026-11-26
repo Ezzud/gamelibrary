@@ -80,7 +80,7 @@ function reportProgress(onProgress: ScanProgressCallback | undefined, percent: n
 		return;
 	}
 
-	const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+	const safePercent = Number(Math.max(0, Math.min(100, percent)).toFixed(1));
 	onProgress({ percent: safePercent, message: translateText(message) });
 }
 
@@ -377,7 +377,7 @@ export async function refetchAllSpecialTags(
 			const game = games[index];
 			reportProgress(
 				onProgress,
-				mapProgress(index, 0, games.length, 0, 70),
+				mapProgress(index + 1, 0, games.length, 0, 70),
 				`Refetching tags ${index + 1}/${games.length}: ${game.name}`
 			);
 
@@ -396,9 +396,9 @@ export async function refetchAllSpecialTags(
 			await saveGameConfig(game.id, mergedConfig);
 		}
 
-		reportProgress(onProgress, 100, 'Special tags refetch complete. Controller support checks continue in background.');
+		reportProgress(onProgress, 70, 'Special tags refreshed. Checking controller support...');
 
-		void (async () => {
+		await (async () => {
 			try {
 				for (let index = 0; index < games.length; index++) {
 					const game = games[index];
@@ -408,7 +408,7 @@ export async function refetchAllSpecialTags(
 						(tag: unknown) => typeof tag === 'string' && tag.trim().toLowerCase().replace(/[\s-]+/g, '_') === 'controller_supported'
 					);
 
-					reportProgress(onProgress, mapProgress(index, 0, games.length, 0, 100), `Checking controller support ${index + 1}/${games.length}: ${game.name}`);
+					reportProgress(onProgress, mapProgress(index + 1, 0, games.length, 70, 95), `Checking controller support ${index + 1}/${games.length}: ${game.name}`);
 
 					if (!controllerSupportAlreadyKnown && await isControllerSupported(game.path, game.id)) {
 						await saveGameConfig(game.id, {
@@ -420,7 +420,9 @@ export async function refetchAllSpecialTags(
 			} catch (error) {
 				Logger.error('Controller support background refetch failed:', error)
 			} finally {
+				reportProgress(onProgress, 95, 'Finalizing scan');
 				await onControllerSupportComplete?.();
+				reportProgress(onProgress, 100, 'Special tags refetch complete.');
 			}
 		})()
 	} catch (err) {
@@ -439,6 +441,7 @@ export async function scanAndAddCustomFolderGames(onProgress?: ScanProgressCallb
 		}
 		const ignoredFolders = await getIgnoredFolders();
 		const isIgnoredPath = createIgnoredPathMatcher(ignoredFolders);
+		const foldersToRegister: Array<{ folder: string; games: any[] }> = [];
 
 		for (let index = 0; index < allCustomFolders.length; index++) {
 			const folder = allCustomFolders[index];
@@ -446,17 +449,24 @@ export async function scanAndAddCustomFolderGames(onProgress?: ScanProgressCallb
 				Logger.info(`Skipping ignored custom scan folder: ${folder}`);
 				continue;
 			}
-			const rangeStart = mapProgress(index, 0, allCustomFolders.length, 0, 100);
-			const rangeEnd = mapProgress(index + 1, 0, allCustomFolders.length, 0, 100);
-
-			reportProgress(onProgress, rangeStart, `Scanning folder ${index + 1}/${allCustomFolders.length}: ${folder}`);
+			reportProgress(onProgress, mapProgress(index, 0, allCustomFolders.length, 0, 20), `Scanning folder ${index + 1}/${allCustomFolders.length}: ${folder}`);
 			const games = await fetchAllCustomFolderGames(folder);
 			Logger.info(`Found ${games.length} games in custom folder: ${folder}`);
+			foldersToRegister.push({ folder, games });
+			reportProgress(onProgress, mapProgress(index + 1, 0, allCustomFolders.length, 0, 20), `Found ${games.length} games in folder ${index + 1}/${allCustomFolders.length}: ${folder}`);
+		}
 
-			await registerGames(games, "Custom", (update) => {
-				const mappedPercent = mapProgress(update.percent, 0, 100, rangeStart, rangeEnd);
-				reportProgress(onProgress, mappedPercent, `[${index + 1}/${allCustomFolders.length}] ${update.message}`);
-			});
+		const totalGames = foldersToRegister.reduce((total, entry) => total + entry.games.length, 0);
+		if (totalGames > 0) {
+			let completedGames = 0;
+			for (const [index, entry] of foldersToRegister.entries()) {
+				await registerGames(entry.games, 'Custom', (update) => {
+					const completedInFolder = (update.percent / 100) * entry.games.length;
+					const metadataPercent = mapProgress(completedGames + completedInFolder, 0, totalGames, 20, 100);
+					reportProgress(onProgress, metadataPercent, `Folder ${index + 1}/${foldersToRegister.length}: ${update.message}`);
+				});
+				completedGames += entry.games.length;
+			}
 		}
 
 		reportProgress(onProgress, 100, 'Custom folder scan complete.');
@@ -1188,7 +1198,6 @@ export async function registerGames(games: any[], platform: string, onProgress?:
 	try {
 		for (let index = 0; index < games.length; index++) {
 			const game = games[index];
-			reportProgress(onProgress, mapProgress(index, 0, games.length, 0, 100), `Registering ${index + 1}/${games.length}: ${game.name}`);
 			const normalizedPath = game.path?.replace(/[\\/]+$/, '') || '';
 			const folderName = normalizedPath.split(/[\\/]/).pop() || '';
 			const searchName = folderName || game.name;
@@ -1290,6 +1299,7 @@ export async function registerGames(games: any[], platform: string, onProgress?:
 			}
 
 			await sleep(200);
+			reportProgress(onProgress, mapProgress(index + 1, 0, games.length, 0, 100), `Registering ${index + 1}/${games.length}: ${game.name}`);
 		}
 
 		await addGamesToList(games);
