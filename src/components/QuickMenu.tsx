@@ -4,6 +4,7 @@ import { Check, FolderOpen, Gamepad2, Loader2, Play, Settings, Star, Trash2, X }
 import { readFile } from '@tauri-apps/plugin-fs'
 import { formatPlaytime, getPlaytime } from '../services/PlaytimeManager'
 import { getGameThumbnailPath } from '../services/ConfigManager'
+import { useLanguage } from '../lang/LanguageContext'
 
 interface QuickMenuProps {
 	isOpen: boolean
@@ -38,6 +39,7 @@ const QuickMenu = ({
 	onToggleFavorite,
 	onClose,
 }: QuickMenuProps) => {
+	const { t } = useLanguage()
 	const menuRef = useRef<HTMLDivElement | null>(null)
 	const [menuPosition, setMenuPosition] = useState(position)
 	const [isPositioned, setIsPositioned] = useState(false)
@@ -199,14 +201,14 @@ const QuickMenu = ({
 					type="button"
 					onClick={() => void handleFavorite()}
 					className="absolute right-0.5 top-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/15 text-white transition-all duration-150 hover:scale-110 hover:bg-black/25 active:scale-95"
-					aria-label={isFavorite ? 'Remove from favorite' : 'Add to favorite'}
-					title={isFavorite ? 'Remove from favorite' : 'Add to favorite'}
+					aria-label={t(isFavorite ? 'quickMenu.removeFavorite' : 'quickMenu.addFavorite')}
+					title={t(isFavorite ? 'quickMenu.removeFavorite' : 'quickMenu.addFavorite')}
 				>
 					<Star className={`h-4 w-4 ${isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-white'}`} />
 				</button>
 				<div className="px-3 py-2">
 					<p className="truncate text-sm font-semibold text-white" title={gameName}>{gameName}</p>
-					<p className="mt-0.5 text-xs text-steam-400">{totalPlaytime} played in total</p>
+					<p className="mt-0.5 text-xs text-steam-400">{t('playtime.totalPlayed').replace('{playtime}', totalPlaytime)}</p>
 				</div>
 			</div>
 			<div className="flex items-center gap-1 p-1">
@@ -217,14 +219,14 @@ const QuickMenu = ({
 					className="theme-primary-action min-w-0 flex-[1.25] rounded-md bg-steam-600 px-3 py-2 text-left text-sm font-semibold text-white transition-colors duration-150 hover:bg-steam-500 active:bg-steam-400 disabled:cursor-not-allowed disabled:opacity-60 flex items-center gap-2"
 				>
 					{isPlayLoading || isRunning ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-					{isPlayLoading ? 'Launching...' : isRunning ? 'Running' : 'Play'}
+					{isPlayLoading ? t('quickMenu.launching') : isRunning ? t('quickMenu.running') : t('quickMenu.play')}
 				</button>
 				<button
 					type="button"
 					onClick={() => handleAction(onOpenFolder)}
 					className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-steam-700 text-white transition-colors duration-150 hover:bg-steam-600 active:bg-steam-500"
-					aria-label="Open Folder"
-					title="Open Folder"
+					aria-label={t('quickMenu.openFolder')}
+					title={t('quickMenu.openFolder')}
 				>
 					<FolderOpen className="h-5 w-5" />
 				</button>
@@ -232,8 +234,8 @@ const QuickMenu = ({
 					type="button"
 					onClick={() => handleAction(onGameSettings)}
 					className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-steam-700 text-white transition-colors duration-150 hover:bg-steam-600 active:bg-steam-500"
-					aria-label="Game Settings"
-					title="Game Settings"
+					aria-label={t('quickMenu.gameSettings')}
+					title={t('quickMenu.gameSettings')}
 				>
 					<Settings className="h-5 w-5" />
 				</button>
@@ -241,13 +243,13 @@ const QuickMenu = ({
 			<div className="p-1">
 			{isDeleteConfirming ? (
 				<div className="flex h-9 items-center gap-1 rounded-md bg-steam-700 px-2 text-xs text-red-300">
-					<span className="min-w-0 flex-1 whitespace-nowrap">Delete this game?</span>
+					<span className="min-w-0 flex-1 whitespace-nowrap">{t('quickMenu.deletePrompt')}</span>
 					<button
 						type="button"
 						onClick={handleDelete}
 						className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-700 text-white transition-colors hover:bg-red-600 active:bg-red-500"
-						aria-label="Confirm delete"
-						title="Confirm delete"
+						aria-label={t('quickMenu.confirmDelete')}
+						title={t('quickMenu.confirmDelete')}
 					>
 						<Check className="h-4 w-4" />
 					</button>
@@ -255,8 +257,8 @@ const QuickMenu = ({
 						type="button"
 						onClick={() => setIsDeleteConfirming(false)}
 						className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#3a6285] text-white transition-colors hover:bg-[#4d7aa1] active:bg-[#5b8bb2]"
-						aria-label="Cancel delete"
-						title="Cancel delete"
+						aria-label={t('quickMenu.cancelDelete')}
+						title={t('quickMenu.cancelDelete')}
 					>
 						<X className="h-4 w-4" />
 					</button>
@@ -268,7 +270,7 @@ const QuickMenu = ({
 					className="w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-red-300 bg-steam-700 hover:bg-steam-600 active:bg-steam-500 transition-colors duration-150 flex items-center gap-2"
 				>
 					<Trash2 className="h-5 w-5 text-red-400" />
-					Delete
+					{t('common.delete')}
 				</button>
 			)}
 			</div>

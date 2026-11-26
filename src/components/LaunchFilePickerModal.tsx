@@ -1,4 +1,5 @@
 import { Check, X } from 'lucide-react'
+import { useLanguage } from '../lang/LanguageContext'
 import type { LaunchFilePickerModalProps } from '../types/appTypes'
 
 const LaunchFilePickerModal = ({
@@ -10,6 +11,7 @@ const LaunchFilePickerModal = ({
 	onConfirm,
 	onCancel,
 }: LaunchFilePickerModalProps) => {
+	const { t } = useLanguage()
 	if (!isOpen) {
 		return null
 	}
@@ -18,7 +20,7 @@ const LaunchFilePickerModal = ({
 		<div className="launch-file-picker-overlay fixed inset-0 z-60 flex items-center justify-center p-4" data-controller-modal="true">
 			<div className="launch-file-picker-panel w-full max-w-md rounded-lg shadow-2xl">
 				<div className="launch-file-picker-header px-4 py-3 flex items-center justify-between">
-					<h3 className="launch-file-picker-title font-semibold">Choose launch file</h3>
+					<h3 className="launch-file-picker-title font-semibold">{t('launch.chooseFile')}</h3>
 					<button
 						type="button"
 						onClick={onCancel}

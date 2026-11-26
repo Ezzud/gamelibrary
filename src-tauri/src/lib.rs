@@ -77,7 +77,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
-use sysinfo::{System};
+use sysinfo::System;
 use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Emitter;
@@ -387,8 +387,8 @@ async fn set_run_on_startup(enable: bool, reduced: bool) -> Result<bool, String>
                     ""
                 };
                 let plist = format!(r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"> 
-<plist version=\"1.0\"> 
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
+<plist version=\"1.0\">
 <dict>
   <key>Label</key>
   <string>com.ezzud.gamelibrary</string>
@@ -839,8 +839,7 @@ fn launch_game(
 
     let game_config = read_game_config(&app, &game_id);
 
-    let launch_file =
-        find_launch_file(&game_path, game_config.default_launch_file)?;
+    let launch_file = find_launch_file(&game_path, game_config.default_launch_file)?;
 
     let args: Vec<String> = parse_custom_arguments(game_config.custom_arguments)
         .into_iter()
@@ -861,7 +860,8 @@ fn launch_game(
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or(&game_path);
 
-    let launch_result = if cfg!(target_os = "windows") && (extension == "bat" || extension == "cmd") {
+    let launch_result = if cfg!(target_os = "windows") && (extension == "bat" || extension == "cmd")
+    {
         Command::new("cmd")
             .arg("/C")
             .arg(&launch_file)
@@ -894,15 +894,9 @@ fn launch_game(
             #[cfg(target_os = "windows")]
             {
                 if err.raw_os_error() == Some(740) {
-                    launch_with_elevation(
-                        &launch_file,
-                        &args,
-                        launch_working_dir,
-                    )?;
+                    launch_with_elevation(&launch_file, &args, launch_working_dir)?;
 
-                    return Ok(
-                        launch_file.to_string_lossy().to_string()
-                    );
+                    return Ok(launch_file.to_string_lossy().to_string());
                 }
             }
 
@@ -914,24 +908,16 @@ fn launch_game(
                 "executable"
             };
 
-            Err(format!(
-                "Failed to launch game {}: {}",
-                label,
-                err
-            ))
+            Err(format!("Failed to launch game {}: {}", label, err))
         }
     }
 }
 
 #[tauri::command]
-fn launch_steam_game(
-    steam_id: String,
-    _game_id: String,
-) -> Result<String, String> {
+fn launch_steam_game(steam_id: String, _game_id: String) -> Result<String, String> {
     let uri = format!("steam://rungameid/{}", steam_id);
 
-    open::that(&uri)
-        .map_err(|e| format!("Failed to launch Steam game: {}", e))?;
+    open::that(&uri).map_err(|e| format!("Failed to launch Steam game: {}", e))?;
 
     Ok(uri)
 }
@@ -1294,7 +1280,10 @@ async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
             .download_and_install(
                 |chunk_length, content_length| {
                     downloaded += chunk_length as u64;
-                    eprintln!("[updater] downloaded {} from {:?}", downloaded, content_length);
+                    eprintln!(
+                        "[updater] downloaded {} from {:?}",
+                        downloaded, content_length
+                    );
                 },
                 || {
                     eprintln!("[updater] download finished");
@@ -1327,7 +1316,11 @@ fn remove_game_custom_image(
     game_id: String,
     image_type: String,
 ) -> Result<u32, String> {
-    if game_id.is_empty() || game_id.contains('/') || game_id.contains('\\') || game_id.contains("..") {
+    if game_id.is_empty()
+        || game_id.contains('/')
+        || game_id.contains('\\')
+        || game_id.contains("..")
+    {
         return Err("Invalid game ID.".to_string());
     }
 
@@ -1454,8 +1447,15 @@ pub fn run() {
                 .or_else(|| app.app_handle().default_window_icon().cloned());
 
             if let Some(icon) = tray_icon {
-                let open_item = MenuItem::with_id(app, "open_game_library", "Open GameLibrary", true, None::<&str>)?;
-                let exit_item = MenuItem::with_id(app, "exit_game_library", "Exit", true, None::<&str>)?;
+                let open_item = MenuItem::with_id(
+                    app,
+                    "open_game_library",
+                    "Open GameLibrary",
+                    true,
+                    None::<&str>,
+                )?;
+                let exit_item =
+                    MenuItem::with_id(app, "exit_game_library", "Exit", true, None::<&str>)?;
                 let tray_menu = MenuBuilder::new(app)
                     .item(&open_item)
                     .separator()

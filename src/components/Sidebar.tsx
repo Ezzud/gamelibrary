@@ -3,35 +3,36 @@ import { Clock3, Gamepad2, Loader2, Play, Home, Settings } from 'lucide-react'
 import { getGameCoverPath } from '../services/ConfigManager'
 import type { SidebarProps } from '../types/appTypes'
 import { readFile } from '@tauri-apps/plugin-fs'
+import { useLanguage } from '../lang/LanguageContext'
 
-const formatLastPlayed = (playedAt: string) => {
+const formatLastPlayed = (playedAt: string, t: (key: string) => string) => {
 	const playedAtMs = new Date(playedAt).getTime()
 	if (Number.isNaN(playedAtMs)) {
-		return 'Last played'
+		return t('playtime.lastPlayed')
 	}
 
 	const diffMs = Date.now() - playedAtMs
 	if (diffMs < 5 * 60 * 1000) {
-		return 'Recently played'
+		return t('playtime.recentlyPlayed')
 	}
 
 	const units = [
-		{ label: 'year', ms: 365 * 24 * 60 * 60 * 1000 },
-		{ label: 'month', ms: 30 * 24 * 60 * 60 * 1000 },
-		{ label: 'week', ms: 7 * 24 * 60 * 60 * 1000 },
-		{ label: 'day', ms: 24 * 60 * 60 * 1000 },
-		{ label: 'hour', ms: 60 * 60 * 1000 },
-		{ label: 'minute', ms: 60 * 1000 },
+		{ label: 'years', ms: 365 * 24 * 60 * 60 * 1000 },
+		{ label: 'months', ms: 30 * 24 * 60 * 60 * 1000 },
+		{ label: 'weeks', ms: 7 * 24 * 60 * 60 * 1000 },
+		{ label: 'days', ms: 24 * 60 * 60 * 1000 },
+		{ label: 'hours', ms: 60 * 60 * 1000 },
+		{ label: 'minutes', ms: 60 * 1000 },
 	]
 
 	for (const unit of units) {
 		if (diffMs >= unit.ms) {
 			const value = Math.floor(diffMs / unit.ms)
-			return `Last played ${value} ${unit.label}${value > 1 ? 's' : ''} ago`
+			return t('playtime.lastPlayedAgo').replace('{value}', String(value)).replace('{unit}', t(`playtime.${unit.label}`)).replace('{plural}', value > 1 ? 's' : '')
 		}
 	}
 
-	return 'Recently played'
+	return t('playtime.recentlyPlayed')
 }
 
 /**
@@ -40,6 +41,7 @@ const formatLastPlayed = (playedAt: string) => {
  * Returns: JSX.Element - sidebar UI
  */
 const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, lastPlayedCards, onPlayLastPlayed, launchingGameId, runningGameIds }: SidebarProps) => {
+	const { t } = useLanguage()
 	const [, setRefreshTick] = useState(0)
 	const [resolvedCardImages, setResolvedCardImages] = useState<Record<string, string>>({})
 
@@ -107,7 +109,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 			<div className="p-6 space-y-3 bg-steam-900">
 				<div className="flex items-center justify-center gap-3">
 					<Gamepad2 className="w-8 h-8 text-steam-400" />
-					<h1 className="text-xl font-bold">Game Library</h1>
+					<h1 className="text-xl font-bold">{t('sidebar.gameLibrary')}</h1>
 				</div>
 			</div>
 
@@ -124,13 +126,13 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 					}`}
 			>
 				<Home className="w-4 h-4" />
-				Home
+				{t('sidebar.home')}
 			</button>
 
 			<div className="flex-1 overflow-auto px-3 py-3 space-y-2">
 				{lastPlayedCards.length === 0 ? (
 					<div className="rounded-md bg-steam-800/70 px-3 py-3 text-xs text-steam-400">
-						No recently played games yet.
+						{t('sidebar.noRecentGames')}
 					</div>
 				) : (
 					lastPlayedCards.map((card) => {
@@ -156,8 +158,8 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 										onClick={() => onPlayLastPlayed(card.gameId)}
 										disabled={launchingGameId !== null || isRunning}
 										className="relative w-10 h-14 rounded-md overflow-hidden shrink-0 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#6ec1ff]/60"
-										aria-label={`Play ${card.name}`}
-										title={`Play ${card.name}`}
+										aria-label={t('sidebar.playGame').replace('{game}', card.name)}
+										title={t('sidebar.playGame').replace('{game}', card.name)}
 									>
 										{resolvedCardImages[card.gameId] ? (
 											<img
@@ -187,12 +189,12 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 										</div>
 										<div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#4fd673]">
 											<Clock3 className="h-3 w-3" />
-											<span>{isRunning ? 'Currently playing' : formatLastPlayed(card.playedAt)}</span>
+											<span>{isRunning ? t('playtime.currentlyPlaying') : formatLastPlayed(card.playedAt, t)}</span>
 										</div>
 										{card.playtime && (
 											<div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#b1b1b1]">
 												<Gamepad2 className="h-3 w-3" />
-												<span>Total playtime: {card.playtime}</span>
+												<span>{t('playtime.totalPlaytime').replace('{playtime}', card.playtime)}</span>
 											</div>
 										)}
 									</div>
@@ -215,7 +217,7 @@ const Sidebar = ({ onGoHome, onToggleSettings, isHomeActive, isSettingsActive, l
 						}`}
 				>
 					<Settings className="w-4 h-4" />
-					Settings
+					{t('common.settings')}
 				</button>
 			</div>
 		</div>

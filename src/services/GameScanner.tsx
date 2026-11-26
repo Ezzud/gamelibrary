@@ -10,6 +10,7 @@ import { scanMacBattleNetGames, scanMacEAGames, scanMacEpicGames, scanMacGOGGame
 import { scanLinuxEAGames, scanLinuxEpicGames, scanLinuxGOGGames, scanLinuxSteamGames } from './scanners/LinuxScanner'
 import { scanWindowsBattleNetGames, scanWindowsEAGames, scanWindowsEpicGames, scanWindowsGOGGames, scanWindowsSteamGames, scanWindowsXboxGames } from './scanners/WindowsScanner'
 import { scannerPaths } from './scanners/ScannerPaths'
+import { translateText } from '../lang/LanguageContext'
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -80,7 +81,7 @@ function reportProgress(onProgress: ScanProgressCallback | undefined, percent: n
 	}
 
 	const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
-	onProgress({ percent: safePercent, message });
+	onProgress({ percent: safePercent, message: translateText(message) });
 }
 
 function mapProgress(value: number, fromStart: number, fromEnd: number, toStart: number, toEnd: number) {

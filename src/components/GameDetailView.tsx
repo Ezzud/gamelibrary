@@ -26,6 +26,7 @@ import LaunchFilePickerModal from './LaunchFilePickerModal'
 import type { Game, GameDetailViewProps } from '../types/appTypes'
 import { readFile } from '@tauri-apps/plugin-fs';
 import { Logger } from '../utils/Logger'
+import { useLanguage } from '../lang/LanguageContext'
 
 const MIN_LAUNCH_LOADING_MS = 5000
 
@@ -37,38 +38,38 @@ const waitForMinimumLaunchLoading = async (startedAt: number) => {
 	}
 }
 
-const formatLastPlayed = (playedAt?: string | null) => {
+const formatLastPlayed = (playedAt: string | null | undefined, t: (key: string) => string) => {
 	if (!playedAt) {
-		return 'Not played yet'
+		return t('playtime.notPlayed')
 	}
 
 	const playedAtMs = new Date(playedAt).getTime()
 	if (Number.isNaN(playedAtMs)) {
-		return 'Not played yet'
+		return t('playtime.notPlayed')
 	}
 
 	const diffMs = Date.now() - playedAtMs
 	if (diffMs < 5 * 60 * 1000) {
-		return 'Last played recently'
+		return t('playtime.lastPlayedRecently')
 	}
 
 	const units = [
-		{ label: 'year', ms: 365 * 24 * 60 * 60 * 1000 },
-		{ label: 'month', ms: 30 * 24 * 60 * 60 * 1000 },
-		{ label: 'week', ms: 7 * 24 * 60 * 60 * 1000 },
-		{ label: 'day', ms: 24 * 60 * 60 * 1000 },
-		{ label: 'hour', ms: 60 * 60 * 1000 },
-		{ label: 'minute', ms: 60 * 1000 },
+		{ label: 'years', ms: 365 * 24 * 60 * 60 * 1000 },
+		{ label: 'months', ms: 30 * 24 * 60 * 60 * 1000 },
+		{ label: 'weeks', ms: 7 * 24 * 60 * 60 * 1000 },
+		{ label: 'days', ms: 24 * 60 * 60 * 1000 },
+		{ label: 'hours', ms: 60 * 60 * 1000 },
+		{ label: 'minutes', ms: 60 * 1000 },
 	]
 
 	for (const unit of units) {
 		if (diffMs >= unit.ms) {
 			const value = Math.floor(diffMs / unit.ms)
-			return `Last played ${value} ${unit.label}${value > 1 ? 's' : ''} ago`
+			return t('playtime.lastPlayedAgo').replace('{value}', String(value)).replace('{unit}', t(`playtime.${unit.label}`)).replace('{plural}', value > 1 ? 's' : '')
 		}
 	}
 
-	return 'Last played recently'
+	return t('playtime.lastPlayedRecently')
 }
 
 /**
@@ -77,6 +78,7 @@ const formatLastPlayed = (playedAt?: string | null) => {
  * Returns: JSX.Element - detail view layout
  */
 const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToast, onLaunchSuccess, isGameRunning = false, onGameRunningChange, isFavorite = false, onToggleFavorite }: GameDetailViewProps) => {
+	const { t } = useLanguage()
 	const [isLaunching, setIsLaunching] = useState(false)
 	const [showConfig, setShowConfig] = useState(false)
 	const [showLaunchFilePicker, setShowLaunchFilePicker] = useState(false)
@@ -541,7 +543,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 						className="flex items-center gap-2 text-steam-300 hover:text-white transition-all duration-200 hover:-translate-x-0.5 mb-4"
 					>
 						<ArrowLeft className="w-5 h-5" />
-						Back to Library
+						{t('gameDetail.backToLibrary')}
 					</button>
 					<h2 className="text-3xl font-bold bg-linear-to-r from-white via-steam-100 to-steam-300 bg-clip-text text-transparent">{game.name}</h2>
 				</div>
@@ -589,7 +591,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 						<div className="grid grid-cols-2 gap-4 mb-6">
 							{/* Platform */}
 							<div className="bg-[#16263b]/85 rounded-xl p-4 shadow-[0_12px_24px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]">
-								<p className="text-steam-400 text-sm mb-2">PLATFORM</p>
+								<p className="text-steam-400 text-sm mb-2">{t('gameDetail.platform')}</p>
 								<div className="flex items-center gap-2">
 									{getPlatformIcon(gameCache?.platform || game.platform)}
 									<span className="font-semibold">{gameCache?.platform || game.platform}</span>
@@ -598,7 +600,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 
 							{/* Size */}
 							<div className="bg-[#13253b]/85 rounded-xl p-4 shadow-[0_12px_24px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]">
-								<p className="text-steam-400 text-sm mb-2">SIZE</p>
+								<p className="text-steam-400 text-sm mb-2">{t('gameDetail.size')}</p>
 								<div className="flex items-center gap-2">
 									{loadingSize ? (
 										<Loader className="w-5 h-5 animate-spin" />
@@ -613,23 +615,23 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 
 							{/* Location */}
 							<div className="bg-[#112033]/85 rounded-xl p-4 col-span-2 shadow-[0_12px_24px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]">
-								<p className="text-steam-400 text-sm mb-2">LOCATION</p>
+								<p className="text-steam-400 text-sm mb-2">{t('gameDetail.location')}</p>
 								<div className="flex items-center justify-between gap-3">
 									<p className="font-mono text-sm truncate text-steam-100 flex-1">{game.path}</p>
 									<div className="flex items-center gap-2 shrink-0">
 										<button
 											onClick={handleCopyPath}
 											className="w-8 h-8 rounded-md bg-[#2f4f70] hover:bg-[#3a648d] text-steam-100 transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] active:scale-[0.97] inline-flex items-center justify-center"
-											title={copiedPath ? 'Copied' : 'Copy path'}
-											aria-label={copiedPath ? 'Copied' : 'Copy path'}
+											title={t(copiedPath ? 'gameDetail.copied' : 'gameDetail.copyPath')}
+										aria-label={t(copiedPath ? 'gameDetail.copied' : 'gameDetail.copyPath')}
 										>
 											{copiedPath ? <Check className="w-4 h-4 text-green-300" /> : <Copy className="w-4 h-4" />}
 										</button>
 										<button
 											onClick={handleOpenFolder}
 											className="w-8 h-8 rounded-md bg-[#2f4f70] hover:bg-[#3a648d] text-steam-100 transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.03] active:scale-[0.97] inline-flex items-center justify-center"
-											title="Open folder"
-											aria-label="Open folder"
+											title={t('common.openFolder')}
+										aria-label={t('common.openFolder')}
 										>
 											<FolderOpen className="w-4 h-4" />
 										</button>
@@ -639,14 +641,14 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 
 							{/* Play History */}
 							<div className="bg-[#13263a]/85 rounded-xl p-4 col-span-2 shadow-[0_12px_24px_rgba(0,0,0,0.22)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_28px_rgba(0,0,0,0.3)]">
-								<p className="text-steam-400 text-sm mb-3">PLAY HISTORY</p>
+								<p className="text-steam-400 text-sm mb-3">{t('gameDetail.playHistory')}</p>
 								<div className="text-sm">
 									<div className="flex items-center gap-2 text-[#4fd673]">
 										<Gamepad2 className="w-4 h-4" />
 										<span>{gamePlaytime}</span>
 										<div className="mx-10 text-steam-600">|</div>
 										<Clock3 className="w-4 h-4" />
-										<span>{formatLastPlayed(lastPlayedAt)}</span>
+										<span>{formatLastPlayed(lastPlayedAt, t)}</span>
 									</div>
 								</div>
 							</div>
@@ -668,7 +670,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 									) : (
 										<Play className="w-5 h-5" />
 									)}
-									{isLaunching ? 'Launching...' : isGameRunning ? 'Running' : 'Play'}
+									{isLaunching ? t('quickMenu.launching') : isGameRunning ? t('quickMenu.running') : t('quickMenu.play')}
 								</button>
 
 								<button
@@ -676,8 +678,8 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 									data-controller-selectable="true"
 									data-controller-action="action"
 									className="w-12 h-12 p-0 bg-[#2f455f] hover:bg-[#3c5978] text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.2)]"
-									title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-									aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+									title={t(isFavorite ? 'gameDetail.removeFavorites' : 'gameDetail.addFavorites')}
+									aria-label={t(isFavorite ? 'gameDetail.removeFavorites' : 'gameDetail.addFavorites')}
 								>
 									<Star className={`w-5 h-5 ${isFavorite ? 'fill-[#ffd700] text-[#ffd700]' : 'text-[#a8a8a8]'}`} />
 								</button>
@@ -685,8 +687,8 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 								<button
 									onClick={() => setShowConfig(true)}
 									className="w-12 h-12 p-0 bg-[#2f455f] hover:bg-[#3c5978] text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center hover:-translate-y-0.5 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_20px_rgba(0,0,0,0.2)]"
-									title="Settings"
-									aria-label="Settings"
+									title={t('common.settings')}
+									aria-label={t('common.settings')}
 								>
 									<Settings className="w-5 h-5" />
 								</button>
@@ -695,7 +697,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 						{isMissing && (
 							<div className="w-full mt-4">
 								<div className="bg-[#8b1f1f]/90 border border-[#c94343] text-[#ffdada] rounded-lg px-4 py-3 text-center text-base font-semibold shadow-md">
-									<span>Game not found: The game folder has been moved or deleted. </span>
+									<span>{t('gameDetail.notFound')} </span>
 									<button
 										type="button"
 										onClick={() => void handleSelectNewGameFolder()}
@@ -703,7 +705,7 @@ const GameDetailView = ({ game, onBack, onGameUpdated, onLaunchError, onShowToas
 										className="inline-flex items-center gap-2 rounded-md bg-red-950/55 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-900/70 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
 									>
 										{isRelocatingGameFolder && <Loader className="w-4 h-4 animate-spin" />}
-										<span>{isRelocatingGameFolder ? 'Selecting...' : 'Select a new game folder'}</span>
+															<span>{isRelocatingGameFolder ? t('gameDetail.selecting') : t('gameDetail.selectNewFolder')}</span>
 									</button>
 								</div>
 							</div>

@@ -12,6 +12,7 @@ import { testGameLibraryApi } from '../services/GameDataManager'
 import LaunchFilePickerModal from './LaunchFilePickerModal'
 import type { Game, GameLibraryProps, SortField } from '../types/appTypes'
 import { readFile } from '@tauri-apps/plugin-fs'
+import { useLanguage } from '../lang/LanguageContext'
 
 const SCAN_PLATFORMS = ['Steam', 'Epic Games', 'GOG', 'Xbox', 'EA', 'Battle.net']
 const MIN_LAUNCH_LOADING_MS = 5000
@@ -121,6 +122,7 @@ const getPlatformIcon = (platform: string) => {
  * Returns: JSX.Element - game library grid layout
  */
 const GameLibrary = (props: GameLibraryProps) => {
+	const { t } = useLanguage()
 	const {
 		games,
 		favoriteGameIds,
@@ -589,21 +591,21 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 	const getSortLabel = (field: SortField) => {
 		if (field === 'name') {
-			return 'Name'
+			return t('sort.name')
 		}
 		if (field === 'platform') {
-			return 'Platform'
+			return t('sort.platform')
 		}
 		if (field === 'dateAdded') {
-			return 'Date Added'
+			return t('sort.dateAdded')
 		}
 		if (field === 'lastPlayed') {
-			return 'Last Played'
+			return t('sort.lastPlayed')
 		}
 		if (field === 'playtime') {
-			return 'Playtime'
+			return t('sort.playtime')
 		}
-		return 'Tag'
+		return t('sort.tag')
 	}
 
 	const selectedTagVisual = tagFilter !== 'All' ? tagVisuals[tagFilter.toLowerCase()] : null
@@ -1081,7 +1083,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 				<div className="flex items-center justify-between">
 					<div>
 						<div className="flex items-baseline gap-2">
-							<h2 className="text-2xl font-bold">My Games ({games.length === displayedGames.length ? games.length : `${displayedGames.length}/${games.length}`})</h2>
+							<h2 className="text-2xl font-bold">{t('library.myGames')} ({games.length === displayedGames.length ? games.length : `${displayedGames.length}/${games.length}`})</h2>
 						</div>
 					</div>
 					{isLoading && (
@@ -1107,8 +1109,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 									data-controller-top="true"
 									disabled={isLoading || isLoadingGames}
 									className="theme-secondary-surface inline-flex items-center justify-center w-9 h-9 rounded-lg border border-steam-600 bg-steam-700 hover:bg-steam-600 hover:border-steam-500 focus:outline-none disabled:opacity-50 transition-colors shrink-0"
-									aria-label="Refresh game library"
-									title="Refresh game library"
+									aria-label={t('library.refresh')}
+									title={t('library.refresh')}
 								>
 									<RefreshCw className={`w-4 h-4 ${isLoadingGames ? 'animate-spin' : ''}`} />
 								</button>
@@ -1117,8 +1119,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 									onClick={() => void handleAddManualGame()}
 									disabled={isLoading || isAddingManualGame}
 									className="theme-secondary-surface inline-flex items-center justify-center w-9 h-9 rounded-lg border border-steam-600 bg-steam-700 hover:bg-steam-600 hover:border-steam-500 focus:outline-none disabled:opacity-50 transition-colors shrink-0"
-									aria-label="Add game manually"
-									title="Add game manually"
+									aria-label={t('library.addManually')}
+									title={t('library.addManually')}
 								>
 									{isAddingManualGame ? <Loader className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
 								</button>
@@ -1129,7 +1131,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 									data-controller-top="true"
 									value={searchQuery}
 									onChange={(event) => onSearchQueryChange(event.target.value)}
-									placeholder={`Search by name or path`}
+								placeholder={t('library.search')}
 									className="theme-secondary-surface w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
 								/>
 							</div>
@@ -1148,8 +1150,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 										setIsSortMenuOpen(false)
 									}}
 									className="w-full inline-flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-steam-600 text-sm text-steam-300 hover:text-white hover:bg-steam-600 transition-colors"
-									title="Choose platform filter"
-									aria-label="Choose platform filter"
+									title={t("GameLibrary.choosePlatformFilter")}
+									aria-label={t("GameLibrary.choosePlatformFilter")}
 								>
 									<span className="inline-flex items-center gap-2">
 										{platformFilter !== 'All' && getPlatformIcon(platformFilter)}
@@ -1212,8 +1214,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 										setIsSortMenuOpen(false)
 									}}
 									className="w-full min-w-0 inline-flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-steam-600 text-sm text-steam-300 hover:text-white hover:bg-steam-600 transition-colors"
-									title="Choose tag filter"
-									aria-label="Choose tag filter"
+									title={t("GameLibrary.chooseTagFilter")}
+									aria-label={t("GameLibrary.chooseTagFilter")}
 								>
 									<span className="min-w-0 inline-flex items-center gap-2">
 										{selectedTagVisual && (
@@ -1286,11 +1288,11 @@ const GameLibrary = (props: GameLibraryProps) => {
 										setIsTagMenuOpen(false)
 									}}
 									className="inline-flex items-center gap-2 px-2 py-2 rounded-md border border-steam-600 text-sm text-steam-300 hover:text-white hover:bg-steam-600 transition-colors"
-									title="Choose sorting field"
-									aria-label="Choose sorting field"
+									title={t("GameLibrary.chooseSortingField")}
+									aria-label={t("GameLibrary.chooseSortingField")}
 								>
 									<ChevronsUpDown className="w-4 h-4" />
-									<span>Sort: {getSortLabel(sortField)}</span>
+									<span>{t('sort.sort').replace('{label}', getSortLabel(sortField))}</span>
 								</button>
 
 								{isSortMenuOpen && (
@@ -1381,8 +1383,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 									data-controller-top="true"
 									onClick={() => onSortDirectionChange(sortDirection === 'asc' ? 'desc' : 'asc')}
 									className="inline-flex items-center justify-center w-9 h-9 rounded-md text-steam-300 hover:text-white hover:bg-steam-600 transition-colors"
-									title={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}
-									aria-label={sortDirection === 'asc' ? 'Ascending order' : 'Descending order'}
+									title={t(sortDirection === 'asc' ? 'sort.ascending' : 'sort.descending')}
+									aria-label={t(sortDirection === 'asc' ? 'sort.ascending' : 'sort.descending')}
 								>
 									{sortDirection === 'asc' ? <ArrowDownNarrowWide className="w-4 h-4" /> : <ArrowUpWideNarrow className="w-4 h-4" />}
 								</button>
@@ -1392,7 +1394,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 						<div className="mt-2 flex items-center gap-2 text-xs text-steam-300 w-full min-h-8">
 							{hasActiveFilters && (
 								<div className="ml-1 inline-flex h-8 items-center gap-2 rounded-md bg-[#facc15] px-2 py-1 text-[#1f2937] font-medium whitespace-nowrap">
-									<span>Filters are applied</span>
+									<span>{t('library.filtersApplied')}</span>
 									<button
 										type="button"
 										onClick={handleClearFilters}
@@ -1406,7 +1408,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 							{credentialWarningMessage && (
 								<div className="inline-flex h-8 items-center gap-2 rounded-md border border-[#8f1d1d] bg-[#7f1d1d] px-2 py-1 text-white font-medium whitespace-nowrap">
 									<span>{credentialWarningMessage}</span>
-									<span>Go to</span>
+									<span>{t("GameLibrary.goTo")}</span>
 									<button
 										type="button"
 										onClick={onOpenSettings}
@@ -1414,7 +1416,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 									>
 										Settings
 									</button>
-									<span>to update it.</span>
+									<span>{t("GameLibrary.toUpdateIt")}</span>
 								</div>
 							)}
 
@@ -1424,8 +1426,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 									onClick={() => void handleDeleteSelectedGames()}
 									disabled={isDeletingSelected}
 									className="inline-flex h-8 items-center gap-2 rounded-md border border-red-700/70 bg-red-900/65 px-2 py-1 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-800/75 transition-colors ml-auto"
-									title="Delete selected games"
-									aria-label="Delete selected games"
+									title={t("library.deleteSelected")}
+									aria-label={t("library.deleteSelected")}
 								>
 									<Trash2 className="w-3.5 h-3.5" />
 									<span>{isDeletingSelected ? 'Deleting...' : `Delete games (${selectedGameIds.size})`}</span>
@@ -1485,7 +1487,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 				{(isLoadingGames || dateLoading || displayCoverLoading) ? (
 					<div className="flex flex-col items-center justify-center h-96 text-center gap-3">
 						<Loader className="w-10 h-10 animate-spin text-steam-400" />
-						<p className="text-steam-300">Loading games...</p>
+						<p className="text-steam-300">{t('library.loadingGames')}</p>
 					</div>
 				) : games.length === 0 ? (
 					igdbConnectionStatus !== 'connected' && !skipIGDBSetup ? (
@@ -1496,7 +1498,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 										<ShieldCheck className="w-5 h-5 text-sky-300" />
 										Choose your metadata source
 									</p>
-									<p className="text-steam-400 text-sm mt-2">Pick the source you want GameLibrary to use before you scan your first games.</p>
+									<p className="text-steam-400 text-sm mt-2">{t("GameLibrary.metadataSourceDescription")}</p>
 								</div>
 
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1510,8 +1512,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 												<Link2 className="w-4 h-4" />
 											</div>
 											<div>
-												<p className="text-sm font-semibold text-white">GameLibrary API</p>
-												<p className="text-xs text-steam-300 mt-1">No Twitch credentials required</p>
+												<p className="text-sm font-semibold text-white">{t("GameLibrary.gameLibraryAPI")}</p>
+												<p className="text-xs text-steam-300 mt-1">{t("GameLibrary.noTwitchCredentialsRequired")}</p>
 											</div>
 										</div>
 									</button>
@@ -1526,8 +1528,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 												<FaTwitch className="w-4 h-4" />
 											</div>
 											<div>
-												<p className="text-sm font-semibold text-white">Twitch credentials</p>
-												<p className="text-xs text-steam-300 mt-1">Use your own IGDB client credentials</p>
+												<p className="text-sm font-semibold text-white">{t("GameLibrary.twitchCredentials")}</p>
+												<p className="text-xs text-steam-300 mt-1">{t("GameLibrary.useYourOwnIGDBClientCredentials")}</p>
 											</div>
 										</div>
 									</button>
@@ -1537,8 +1539,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 									<div className="mt-4 space-y-3">
 										<div className="rounded-lg bg-steam-900/55 px-4 py-4 space-y-3">
 											<div>
-												<p className="text-sm text-steam-200 font-medium">API setup</p>
-												<p className="text-xs text-steam-400 mt-1">The default GameLibrary API works out of the box, but you can point this app at your own deployment.</p>
+												<p className="text-sm text-steam-200 font-medium">{t("GameLibrary.apiSetup")}</p>
+												<p className="text-xs text-steam-400 mt-1">{t("GameLibrary.apiSetupDescription")}</p>
 											</div>
 											<div className="relative">
 												<input
@@ -1556,8 +1558,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 															onClick={() => void handleResetApiSourceUrl()}
 															disabled={isSavingMetadataSource}
 															className="inline-flex items-center rounded-md bg-red-950/35 px-2 py-1 text-xs text-red-100 transition-colors hover:bg-red-900/45 disabled:opacity-50"
-															aria-label="Reset GameLibrary API URL"
-															title="Reset to default GameLibrary API"
+															aria-label={t("GameLibrary.resetGameLibraryAPIURL")}
+															title={t("Common.resetToDefaultGameLibraryAPI")}
 														>
 															Reset
 														</button>
@@ -1567,15 +1569,15 @@ const GameLibrary = (props: GameLibraryProps) => {
 														onClick={() => void handleUseApiSource()}
 														disabled={isSavingMetadataSource || !gameLibraryApiBaseUrl.trim()}
 														className="inline-flex items-center gap-1 rounded-md bg-[#2a4f75] px-2 py-1 text-xs text-white transition-colors hover:bg-[#36648f] disabled:opacity-50"
-														aria-label="Use GameLibrary API"
-														title="Use GameLibrary API"
+														aria-label={t("GameLibrary.useGameLibraryAPI")}
+														title={t("GameLibrary.useGameLibraryAPI")}
 													>
 														<Link2 className="w-4 h-4" />
 														{isSavingMetadataSource ? 'Testing...' : 'Test'}
 													</button>
 												</div>
 											</div>
-											<p className="text-xs text-steam-400">Selecting the API source will save it to your settings immediately.</p>
+											<p className="text-xs text-steam-400">{t("GameLibrary.apiSourceSavedDescription")}</p>
 										</div>
 										{metadataSourceStatusMessage && (
 											<p className={`text-xs ${metadataSourceStatusTone === 'error' ? 'text-red-300' : 'text-emerald-300'}`}>{metadataSourceStatusMessage}</p>
@@ -1601,7 +1603,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 												}}
 												disabled={isSavingMetadataSource}
 												className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-white hover:text-white font-medium hover:shadow-lg"
-												title="Skip API setup"
+												title={t("GameLibrary.skipAPISetup")}
 											>
 												Skip
 											</button>
@@ -1610,11 +1612,11 @@ const GameLibrary = (props: GameLibraryProps) => {
 								) : (
 									<div className="mt-4 space-y-3">
 										<div className="rounded-lg bg-steam-900/55 px-4 py-4 space-y-2">
-											<p className="text-sm text-steam-200 font-medium">Twitch developer setup</p>
+											<p className="text-sm text-steam-200 font-medium">{t("GameLibrary.twitchDeveloperSetup")}</p>
 											<ol className="text-xs text-steam-400 space-y-1 list-decimal pl-4">
-												<li>Open the Twitch developer console and create an application.</li>
-												<li>Use <span className="text-sky-300">https://localhost</span> as the redirect URL.</li>
-												<li>Paste your Client ID and Client Secret below.</li>
+												<li>{t("GameLibrary.twitchSetupInstructions")}</li>
+												<li>{t("GameLibrary.use") + " "}<span className="text-sky-300">{t("GameLibrary.localhostURL")}</span>{' ' + t("GameLibrary.asTheRedirectURL")}</li>
+												<li>{t("GameLibrary.twitchCredentialsInstructions")}</li>
 											</ol>
 										</div>
 
@@ -1623,7 +1625,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 											value={twitchClientId}
 											onChange={(event) => setTwitchClientId(event.target.value)}
 											disabled={isConnectingIGDB}
-											placeholder="Twitch Client ID"
+											placeholder={t("Common.twitchClientID")}
 											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
 										/>
 										<input
@@ -1631,7 +1633,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 											value={twitchClientSecret}
 											onChange={(event) => setTwitchClientSecret(event.target.value)}
 											disabled={isConnectingIGDB}
-											placeholder="Twitch Client Secret"
+											placeholder={t("Common.twitchClientSecret")}
 											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
 										/>
 										<p className="text-xs text-steam-400">
@@ -1648,7 +1650,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 										</p>
 
 										{igdbConnectionStatus === 'invalid' && !igdbConnectError && (
-											<p className="text-xs text-red-300">Saved credentials are invalid. Please update and reconnect.</p>
+											<p className="text-xs text-red-300">{t("GameLibrary.invalidCredentials")}</p>
 										)}
 
 										{igdbConnectError && (
@@ -1673,7 +1675,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 												}}
 												disabled={isConnectingIGDB}
 												className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-white hover:text-white font-medium hover:shadow-lg"
-												title="Skip Twitch setup"
+												title={t("GameLibrary.skipTwitchSetup")}
 											>
 												Skip
 											</button>
@@ -1686,8 +1688,8 @@ const GameLibrary = (props: GameLibraryProps) => {
 						<div className="min-h-[60vh] flex items-center">
 							<div className="max-w-2xl mx-auto w-full rounded-xl bg-linear-to-b from-steam-800/75 to-steam-900/75 px-4 py-6 shadow-[0_16px_34px_rgba(0,0,0,0.24)]">
 								<div className="text-center mb-4">
-									<p className="text-steam-200 text-xl font-semibold">Start adding games</p>
-									<p className="text-steam-400 text-sm mt-2">Select one or more sources and run a scan.</p>
+									<p className="text-steam-200 text-xl font-semibold">{t("GameLibrary.startAddingGames")}</p>
+									<p className="text-steam-400 text-sm mt-2">{t("GameLibrary.scanSourcesDescription")}</p>
 								</div>
 
 								<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1718,7 +1720,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 								</div>
 
 								<div className="mt-3 rounded-lg bg-steam-900/50 px-3 py-3">
-									<p className="text-xs text-steam-400 mb-2">Custom folder source</p>
+									<p className="text-xs text-steam-400 mb-2">{t("GameLibrary.customFolderSource")}</p>
 									<button
 										type="button"
 										onClick={() => void handleAddCustomFolderInEmptyState()}
@@ -1731,7 +1733,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 									{customFolders.length > 0 && (
 										<div className="mt-3 space-y-2">
-											<p className="text-xs text-steam-400">Configured custom folders</p>
+											<p className="text-xs text-steam-400">{t("GameLibrary.configuredCustomFolders")}</p>
 											<ul className="space-y-1.5 max-h-36 overflow-auto pr-1">
 												{customFolders.map((folder) => (
 													<li
@@ -1747,7 +1749,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 															disabled={isLoading || removingCustomFolderPath === folder}
 															className="w-6 h-6 rounded-md bg-red-700/70 hover:bg-red-600 text-white inline-flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
 															aria-label={`Remove custom folder ${folder}`}
-															title="Remove custom folder"
+															title={t("GameLibrary.removeCustomFolder")}
 														>
 															{removingCustomFolderPath === folder ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
 														</button>
@@ -1774,12 +1776,12 @@ const GameLibrary = (props: GameLibraryProps) => {
 					)
 				) : displayedGames.length === 0 ? dateLoading ? (
 					<div className="flex flex-col items-center justify-center h-96 text-center">
-						<p className="text-steam-300 text-lg">Loading games...</p>
+						<p className="text-steam-300 text-lg">{t("library.loadingGames")}</p>
 					</div>
 				) : (
 					<div className="flex flex-col items-center justify-center h-96 text-center">
-						<p className="text-steam-300 text-lg">No games match your filters</p>
-						<p className="text-steam-500 text-sm mt-2">Try clearing search text or selecting different platform/tag options.</p>
+						<p className="text-steam-300 text-lg">{t('library.noMatchingGames')}</p>
+						<p className="text-steam-500 text-sm mt-2">{t("GameLibrary.clearFiltersHint")}</p>
 					</div>
 				) : (
 					<div className="space-y-6">
@@ -1787,7 +1789,7 @@ const GameLibrary = (props: GameLibraryProps) => {
 							<section className="space-y-3">
 								<div className="flex items-center gap-2 text-lg font-semibold text-white">
 									<Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-									<span>Favorites</span>
+									<span>{t('library.favorites')}</span>
 								</div>
 								{renderGameCards(favoriteGames)}
 							</section>
@@ -1795,10 +1797,10 @@ const GameLibrary = (props: GameLibraryProps) => {
 
 						<section className="space-y-3">
 							<div className="flex items-center gap-2 text-lg font-semibold text-white">
-								<span>All Games</span>
+								<span>{t('library.allGames')}</span>
 							</div>
 							{regularGames.length > 0 ? renderGameCards(regularGames) : (
-								<div className="text-sm text-steam-400">No additional games to show.</div>
+								<div className="text-sm text-steam-400">{t("GameLibrary.noAdditionalGamesToShow")}</div>
 							)}
 						</section>
 					</div>

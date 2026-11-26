@@ -200,6 +200,7 @@ export interface Config {
   autoDetectGames?: boolean
   sortField?: SortField
   sortOrder?: 'asc' | 'desc'
+  language?: string
 }
 
 export interface GameConfig {

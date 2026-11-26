@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ToastItem, ToastOptions, ToastStackProps } from '../types/appTypes'
+import { useLanguage } from '../lang/LanguageContext'
 
 export type { ToastItem, ToastOptions }
 
@@ -17,6 +18,7 @@ const getToastProgressBarClass = (style: ToastItem['style']) => {
 }
 
 export const useToastSystem = () => {
+	const { t } = useLanguage()
 	const [toasts, setToasts] = useState<ToastItem[]>([])
 
 	const showToast = (message: string, options?: ToastOptions) => {
@@ -27,12 +29,12 @@ export const useToastSystem = () => {
 		setToasts((prev) => [
 			{
 				id,
-				message,
+				message: t(message),
 				visible: false,
 				started: false,
 				durationMs,
 				style,
-				actionLabel: options?.actionLabel,
+				actionLabel: options?.actionLabel ? t(options.actionLabel) : undefined,
 				onClick: options?.onClick,
 			},
 			...prev,

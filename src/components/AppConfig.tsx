@@ -63,6 +63,7 @@ import { applyTheme, getAvailableThemes } from '../services/ThemeManager'
 import { chooseFolder } from '../services/GameScanner'
 import { resetAndRefetchGameIGDBData, testGameLibraryApi } from '../services/GameDataManager'
 import { Logger } from '../utils/Logger'
+import { useLanguage } from '../lang/LanguageContext'
 import { getVersion } from '@tauri-apps/api/app'
 import type { AppConfigProps, ConfigCategory, DiscordRpcImageMode, IGDBConnectionMode, UpdateCheckStatus } from '../types/appTypes'
 
@@ -160,6 +161,7 @@ const AppConfig = ({
 	onConfigChanged,
 	onShowToast,
 }: AppConfigProps) => {
+	const { t, selectedLanguage, setLanguage } = useLanguage()
 	const [activeCategory, setActiveCategory] = useState<ConfigCategory>(initialCategory)
 	const [customFolders, setCustomFolders] = useState<string[]>([])
 	const [ignoredFolders, setIgnoredFolders] = useState<string[]>([])
@@ -218,13 +220,13 @@ const AppConfig = ({
 
 	const categories = useMemo(
 		() => [
-			{ key: 'General' as const, label: 'General', icon: Settings2 },
-			{ key: 'Appearance' as const, label: 'Appearance', icon: Palette },
-			{ key: 'Library' as const, label: 'Library', icon: Wrench },
-			{ key: 'Scanning' as const, label: 'Scanning', icon: ScanSearch },
-			{ key: 'DiscordRPC' as const, label: 'Discord RPC', icon: Link2 },
-			{ key: 'Update' as const, label: 'Update', icon: RefreshCw },
-			{ key: 'About' as const, label: 'About', icon: Info }
+			{ key: 'General' as const, label: 'settings.general', icon: Settings2 },
+			{ key: 'Appearance' as const, label: 'settings.appearance', icon: Palette },
+			{ key: 'Library' as const, label: 'library.title', icon: Wrench },
+			{ key: 'Scanning' as const, label: 'settings.scanning', icon: ScanSearch },
+			{ key: 'DiscordRPC' as const, label: 'settings.discordRpc', icon: Link2 },
+			{ key: 'Update' as const, label: 'settings.update', icon: RefreshCw },
+			{ key: 'About' as const, label: 'settings.about', icon: Info }
 		],
 		[]
 	)
@@ -1158,7 +1160,7 @@ const AppConfig = ({
 									}`}
 							>
 								<Icon className="w-4 h-4" />
-								<span>{category.label}</span>
+								<span>{t(category.label)}</span>
 							</button>
 						)
 					})}
@@ -1186,7 +1188,7 @@ const AppConfig = ({
 
 						{activeCategory === 'General' && (
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-							<p className="text-sm text-steam-100 mb-3">IGDB Source</p>
+							<p className="text-sm text-steam-100 mb-3">{t("AppConfig.igdbSource")}</p>
 							<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
 								<button
 									type="button"
@@ -1198,8 +1200,8 @@ const AppConfig = ({
 											<Globe className="w-4 h-4" />
 										</div>
 										<div>
-											<p className="text-sm font-semibold text-white">Use GameLibrary's API</p>
-											<p className="text-xs text-steam-300 mt-1">No Credentials needed (Recommended)</p>
+											<p className="text-sm font-semibold text-white">{t("AppConfig.gameLibraryAPIOption")}</p>
+											<p className="text-xs text-steam-300 mt-1">{t("AppConfig.noCredentialsNeededRecommended")}</p>
 										</div>
 									</div>
 								</button>
@@ -1214,8 +1216,8 @@ const AppConfig = ({
 											<KeyRound className="w-4 h-4" />
 										</div>
 										<div>
-											<p className="text-sm font-semibold text-white">Twitch Credentials</p>
-											<p className="text-xs text-steam-300 mt-1">Requires a Twitch app credentials</p>
+											<p className="text-sm font-semibold text-white">{t("AppConfig.twitchCredentials")}</p>
+											<p className="text-xs text-steam-300 mt-1">{t("AppConfig.requiresATwitchAppCredentials")}</p>
 										</div>
 									</div>
 								</button>
@@ -1239,8 +1241,8 @@ const AppConfig = ({
 													onClick={() => void handleResetGameLibraryApiBaseUrl()}
 													disabled={isConnectingCredentials}
 													className="inline-flex items-center rounded-md bg-red-950/35 px-2 py-1 text-xs text-red-100 transition-colors hover:bg-red-900/45 disabled:opacity-50"
-													aria-label="Reset GameLibrary API base URL"
-													title="Reset to default GameLibrary API"
+													aria-label={t("AppConfig.resetGameLibraryAPIBaseURL")}
+													title={t("Common.resetToDefaultGameLibraryAPI")}
 												>
 													Reset
 												</button>
@@ -1258,7 +1260,7 @@ const AppConfig = ({
 											</button>
 										</div>
 									</div>
-									<p className="text-xs text-steam-400">The API host can be changed if you want to point to your own deployment.</p>
+									<p className="text-xs text-steam-400">{t("AppConfig.apiHostDescription")}</p>
 								</div>
 							) : (
 								<div className="mt-4 space-y-3">
@@ -1267,7 +1269,7 @@ const AppConfig = ({
 										value={credentialsClientId}
 										onChange={(event) => setCredentialsClientId(event.target.value)}
 										disabled={isConnectingCredentials}
-										placeholder="Twitch Client ID"
+										placeholder={t("Common.twitchClientID")}
 										className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
 									/>
 
@@ -1277,7 +1279,7 @@ const AppConfig = ({
 											value={credentialsClientSecret}
 											onChange={(event) => setCredentialsClientSecret(event.target.value)}
 											disabled={isConnectingCredentials}
-											placeholder="Twitch Client Secret"
+											placeholder={t("Common.twitchClientSecret")}
 											className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 pr-20 text-sm text-sky-200 placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50 disabled:opacity-60"
 										/>
 										<button
@@ -1311,7 +1313,7 @@ const AppConfig = ({
 											: 'bg-red-700/30 text-red-200 border border-red-500/40'
 										}`}
 								>
-									{credentialsStatus.message}
+										{t(credentialsStatus.message)}
 								</div>
 							)}
 						</div>
@@ -1324,7 +1326,7 @@ const AppConfig = ({
 								<div className="flex items-center gap-2">
 									<Palette className="w-4 h-4 text-steam-300" />
 									<div>
-										<p className="text-sm text-steam-100">App Theme</p>
+										<p className="text-sm text-steam-100">{t("AppConfig.appTheme")}</p>
 									</div>
 								</div>
 								<div className="flex items-center gap-2">
@@ -1343,7 +1345,7 @@ const AppConfig = ({
 											className="inline-flex w-max min-w-32 items-center justify-between gap-3 rounded-md bg-steam-700 border border-steam-600 py-2 pl-3 pr-2 text-sm text-white transition-colors hover:bg-steam-600 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
 											aria-haspopup="listbox"
 											aria-expanded={isThemeMenuOpen}
-											aria-label="Select theme"
+											aria-label={t("AppConfig.selectTheme")}
 										>
 													<span>{selectedTheme === 'catpuccin' ? 'Catppuccin' : selectedTheme === 'ezzud-favorite' ? "Ezzud's Favorite" : selectedTheme === 'forest' ? 'Forest' : selectedTheme === 'galactic' ? 'Galactic' : 'Default'}</span>
 											<ChevronDown className={`h-4 w-4 text-steam-300 transition-transform ${isThemeMenuOpen ? 'rotate-180' : ''}`} />
@@ -1384,7 +1386,7 @@ const AppConfig = ({
 						</div>
 
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-							<p className="text-sm text-steam-100 mb-3">Card Hover Effect</p>
+							<p className="text-sm text-steam-100 mb-3">{t("AppConfig.cardHoverEffect")}</p>
 							<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
 								{hoverEffectOptions.map((option) => (
 									<button
@@ -1417,12 +1419,19 @@ const AppConfig = ({
 
 						{activeCategory === 'General' && (
 						<>
+							<div className="mb-6 rounded-xl bg-steam-800/60 p-4">
+								<label htmlFor="app-language" className="text-sm text-steam-100">{t('settings.language')}</label>
+								<select id="app-language" className="mt-2 w-full rounded bg-steam-700 p-2 text-white" value={selectedLanguage} onChange={(event) => void setLanguage(event.target.value)}>
+									<option value="">{t('language.systemDefault')}</option>
+									<option value="en-us">{t('language.english')}</option>
+								</select>
+							</div>
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-							<p className="text-sm text-steam-100 mb-3">Startup</p>
+							<p className="text-sm text-steam-100 mb-3">{t("AppConfig.startup")}</p>
 							<div className="flex items-center justify-between gap-4">
 								<div>
-									<p className="text-sm text-steam-100">Run when computer starts</p>
-									<p className="text-xs text-steam-400">Automatically launch GameLibrary on user login</p>
+									<p className="text-sm text-steam-100">{t("AppConfig.runWhenComputerStarts")}</p>
+									<p className="text-xs text-steam-400">{t("AppConfig.runAtLoginDescription")}</p>
 								</div>
 								<div className="flex items-center mr-2">
 									<div
@@ -1457,8 +1466,8 @@ const AppConfig = ({
 
 							<div className="mt-4 flex items-center justify-between gap-4">
 								<div>
-									<p className="text-sm text-steam-100">Start the app reduced</p>
-									<p className="text-xs text-steam-400">When launch on startup is enabled, begin in the tray instead of showing the window.</p>
+									<p className="text-sm text-steam-100">{t("AppConfig.startTheAppReduced")}</p>
+									<p className="text-xs text-steam-400">{t("AppConfig.startReducedDescription")}</p>
 								</div>
 								<div className="flex items-center mr-2">
 									<div
@@ -1493,8 +1502,8 @@ const AppConfig = ({
 
 							<div className="mt-4 flex items-center justify-between gap-4">
 								<div>
-									<p className="text-sm text-steam-100">Reduce when running a game</p>
-									<p className="text-xs text-steam-400">Hide the main window while a game is active, then bring it back when playtime tracking stops.</p>
+									<p className="text-sm text-steam-100">{t("AppConfig.reduceWhenRunningAGame")}</p>
+									<p className="text-xs text-steam-400">{t("AppConfig.reduceWhilePlayingDescription")}</p>
 								</div>
 								<div className="flex items-center mr-2">
 									<div
@@ -1529,8 +1538,8 @@ const AppConfig = ({
 
 							<div className="mt-4 flex items-center justify-between gap-4">
 								<div>
-									<p className="text-sm text-steam-100">Reduce when closing the app</p>
-									<p className="text-xs text-steam-400">Send the app to the tray instead of closing the window with the cross button.</p>
+									<p className="text-sm text-steam-100">{t("AppConfig.reduceWhenClosingTheApp")}</p>
+									<p className="text-xs text-steam-400">{t("AppConfig.closeToTrayDescription")}</p>
 								</div>
 								<div className="flex items-center mr-2">
 									<div
@@ -1565,8 +1574,8 @@ const AppConfig = ({
 
 							<div className="mt-4 flex items-center justify-between gap-4">
 								<div>
-									<p className="text-sm text-steam-100">Auto detect running games</p>
-									<p className="text-xs text-steam-400">If you are starting games without using the Library, it will still detect it and start playtime tracking.</p>
+									<p className="text-sm text-steam-100">{t("AppConfig.autoDetectRunningGames")}</p>
+									<p className="text-xs text-steam-400">{t("AppConfig.autoDetectGamesDescription")}</p>
 								</div>
 								<div className="flex items-center mr-2">
 									<div
@@ -1601,7 +1610,7 @@ const AppConfig = ({
 						</div>
 
 						<div className="mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-							<p className="text-sm text-steam-100 mb-3">Maintenance</p>
+							<p className="text-sm text-steam-100 mb-3">{t("AppConfig.maintenance")}</p>
 							<div className="flex flex-wrap gap-3">
 								<button
 									type="button"
@@ -1631,8 +1640,8 @@ const AppConfig = ({
 												}}
 												disabled={isScanning || isAnyMaintenanceActionRunning}
 												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												aria-label="Confirm clear all metadata"
-												title="Confirm"
+												aria-label={t("AppConfig.confirmClearAllMetadata")}
+												title={t("common.confirm")}
 											>
 												{isClearingMetadata ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
 											</button>
@@ -1644,8 +1653,8 @@ const AppConfig = ({
 												}}
 												disabled={isScanning || isAnyMaintenanceActionRunning}
 												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												aria-label="Cancel clear all metadata"
-												title="Cancel"
+												aria-label={t("AppConfig.cancelClearAllMetadata")}
+												title={t("common.cancel")}
 											>
 												<X className="w-3.5 h-3.5" />
 											</button>
@@ -1681,8 +1690,8 @@ const AppConfig = ({
 												}}
 												disabled={isScanning || isAnyMaintenanceActionRunning}
 												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												aria-label="Confirm clear cache"
-												title="Confirm"
+												aria-label={t("AppConfig.confirmClearCache")}
+												title={t("common.confirm")}
 											>
 												{isClearingCache ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
 											</button>
@@ -1694,8 +1703,8 @@ const AppConfig = ({
 												}}
 												disabled={isScanning || isAnyMaintenanceActionRunning}
 												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												aria-label="Cancel clear cache"
-												title="Cancel"
+												aria-label={t("AppConfig.cancelClearCache")}
+												title={t("common.cancel")}
 											>
 												<X className="w-3.5 h-3.5" />
 											</button>
@@ -1721,8 +1730,8 @@ const AppConfig = ({
 												}}
 												disabled={isScanning || isAnyMaintenanceActionRunning}
 												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												aria-label="Confirm clear play history"
-												title="Confirm"
+												aria-label={t("AppConfig.confirmClearPlayHistory")}
+												title={t("common.confirm")}
 											>
 												{isClearingPlayHistory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
 											</button>
@@ -1734,8 +1743,8 @@ const AppConfig = ({
 												}}
 												disabled={isScanning || isAnyMaintenanceActionRunning}
 												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												aria-label="Cancel clear play history"
-												title="Cancel"
+												aria-label={t("AppConfig.cancelClearPlayHistory")}
+												title={t("common.cancel")}
 											>
 												<X className="w-3.5 h-3.5" />
 											</button>
@@ -1761,8 +1770,8 @@ const AppConfig = ({
 												}}
 												disabled={isScanning || isAnyMaintenanceActionRunning}
 												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-emerald-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												aria-label="Confirm remove all"
-												title="Confirm"
+												aria-label={t("AppConfig.confirmRemoveAll")}
+												title={t("common.confirm")}
 											>
 												{isRemovingLibrary ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
 											</button>
@@ -1774,8 +1783,8 @@ const AppConfig = ({
 												}}
 												disabled={isScanning || isAnyMaintenanceActionRunning}
 												className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-												aria-label="Cancel remove all"
-												title="Cancel"
+												aria-label={t("AppConfig.cancelRemoveAll")}
+												title={t("common.cancel")}
 											>
 												<X className="w-3.5 h-3.5" />
 											</button>
@@ -1791,7 +1800,7 @@ const AppConfig = ({
 											: 'bg-red-700/30 text-red-200 border border-red-500/40'
 										}`}
 								>
-									{maintenanceStatus.message}
+									{t(maintenanceStatus.message)}
 								</div>
 							)}
 						</div>
@@ -1808,7 +1817,7 @@ const AppConfig = ({
 									<Folders className="w-4 h-4 text-steam-300" />
 									Custom Scan Folders
 								</h3>
-								<p className="text-xs text-steam-400 mt-1">Games in these folders are included when scanning Custom Folders.</p>
+								<p className="text-xs text-steam-400 mt-1">{t("AppConfig.customFoldersDescription")}</p>
 							</div>
 							<button
 								type="button"
@@ -1823,8 +1832,8 @@ const AppConfig = ({
 
 						{customFolders.length === 0 ? (
 							<div className="rounded-lg bg-steam-900/35 px-4 py-6 text-center shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-								<p className="text-sm text-steam-300">No custom folders added yet.</p>
-								<p className="text-xs text-steam-500 mt-1">Use Add Folder to include non-Steam locations.</p>
+								<p className="text-sm text-steam-300">{t("AppConfig.noCustomFoldersAddedYet")}</p>
+								<p className="text-xs text-steam-500 mt-1">{t("AppConfig.addFolderHelp")}</p>
 							</div>
 						) : (
 							<ul className="space-y-2">
@@ -1837,8 +1846,8 @@ const AppConfig = ({
 											type="button"
 											onClick={() => handleRemoveCustomFolder(folder)}
 											className="w-8 h-8 rounded-md bg-red-600/80 hover:bg-red-500 text-white inline-flex items-center justify-center transition-colors"
-											aria-label={`Remove folder ${folder}`}
-											title="Remove folder"
+												aria-label={t('appConfig.removeFolder').replace('{folder}', folder)}
+											title={t("AppConfig.removeFolder")}
 										>
 											<Trash2 className="w-4 h-4" />
 										</button>
@@ -1854,7 +1863,7 @@ const AppConfig = ({
 										<FolderOpen className="w-4 h-4 text-steam-300" />
 										Ignored Folders
 									</h3>
-									<p className="text-xs text-steam-400 mt-1">Folders listed here are excluded from all scans and game detection.</p>
+									<p className="text-xs text-steam-400 mt-1">{t("AppConfig.excludedFoldersDescription")}</p>
 								</div>
 								<button
 									type="button"
@@ -1869,7 +1878,7 @@ const AppConfig = ({
 
 							{ignoredFolders.length === 0 ? (
 								<div className="mt-3 rounded-lg bg-steam-900/35 px-4 py-4 text-center shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-									<p className="text-sm text-steam-300">No ignored folders configured.</p>
+									<p className="text-sm text-steam-300">{t("AppConfig.noIgnoredFoldersConfigured")}</p>
 								</div>
 							) : (
 								<ul className="mt-3 space-y-2">
@@ -1882,8 +1891,8 @@ const AppConfig = ({
 												type="button"
 												onClick={() => void handleRemoveIgnoredFolder(folder)}
 												className="w-8 h-8 rounded-md bg-red-600/80 hover:bg-red-500 text-white inline-flex items-center justify-center transition-colors"
-												aria-label={`Remove ignored folder ${folder}`}
-												title="Remove ignored folder"
+													aria-label={t('appConfig.removeIgnoredFolder').replace('{folder}', folder)}
+												title={t("AppConfig.removeIgnoredFolder")}
 											>
 												<Trash2 className="w-4 h-4" />
 											</button>
@@ -1902,7 +1911,7 @@ const AppConfig = ({
 								<ScanSearch className="w-4 h-4 text-steam-300" />
 								Platforms
 							</h3>
-							<p className="text-xs text-steam-400 mt-1">Select one or more sources, then run a combined scan.</p>
+							<p className="text-xs text-steam-400 mt-1">{t("AppConfig.combinedScanDescription")}</p>
 						</div>
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
 							{SCAN_PLATFORMS.map((platform) => {
@@ -1950,11 +1959,11 @@ const AppConfig = ({
 								<Link2 className="w-4 h-4 text-steam-300" />
 								Discord RPC
 							</h3>
-							<p className="text-xs text-steam-400 mt-1">Configure Discord Rich Presence behavior.</p>
+							<p className="text-xs text-steam-400 mt-1">{t("AppConfig.discordRPCDescription")}</p>
 						</div>
 
 						<div className="order-2 mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-							<p className="text-sm text-steam-100 mb-3">Ignored Games</p>
+							<p className="text-sm text-steam-100 mb-3">{t("AppConfig.ignoredGames")}</p>
 							<div ref={discordRpcGameSearchRef} className="relative">
 								<input
 									type="search"
@@ -1964,7 +1973,7 @@ const AppConfig = ({
 										setDiscordRpcGameSearch(event.target.value)
 										setIsDiscordRpcGameSearchOpen(true)
 									}}
-									placeholder="Search games by name"
+									placeholder={t("AppConfig.searchGamesByName")}
 									className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white placeholder:text-steam-400 focus:outline-none focus:ring-2 focus:ring-steam-400/50"
 								/>
 								{isDiscordRpcGameSearchOpen && discordRpcSearchResults.length > 0 && (
@@ -2010,8 +2019,8 @@ const AppConfig = ({
 												type="button"
 												onClick={() => void handleRemoveDiscordRpcIgnoredGame(game.id)}
 												className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-600/80 text-white transition-colors hover:bg-red-500"
-													aria-label={`Remove ${game.displayName?.trim() || game.name} from ignored Discord RPC games`}
-												title="Remove ignored game"
+													aria-label={t('appConfig.removeIgnoredDiscordGame').replace('{game}', game.displayName?.trim() || game.name)}
+												title={t("AppConfig.removeIgnoredGame")}
 											>
 												<X className="h-4 w-4" />
 											</button>
@@ -2024,8 +2033,8 @@ const AppConfig = ({
 						<div className="order-1 mt-4 rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
 							<div className="flex items-center justify-between gap-4">
 								<div>
-									<p className="text-sm text-steam-100">Enable Discord Presence</p>
-									<p className="text-xs text-steam-400">Controls whether GameLibrary updates Discord Rich Presence.</p>
+									<p className="text-sm text-steam-100">{t("AppConfig.enableDiscordPresence")}</p>
+									<p className="text-xs text-steam-400">{t("AppConfig.discordPresenceDescription")}</p>
 								</div>
 								<div className="flex items-center mr-2">
 									<div
@@ -2049,8 +2058,8 @@ const AppConfig = ({
 							<div className={`${discordRpcEnabled ? '' : 'pointer-events-none select-none opacity-45'}`}>
 								<div className="mt-4 flex items-center justify-between gap-4">
 									<div>
-										<p className="text-sm text-steam-100">Visible when no game is played</p>
-										<p className="text-xs text-steam-400">Shows Discord presence while browsing the app.</p>
+										<p className="text-sm text-steam-100">{t("AppConfig.visibleWhenNoGameIsPlayed")}</p>
+										<p className="text-xs text-steam-400">{t("AppConfig.presenceWhileBrowsingDescription")}</p>
 									</div>
 									<div className="flex items-center mr-2">
 										<div
@@ -2073,19 +2082,19 @@ const AppConfig = ({
 
 								<div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
 									<label className="space-y-2">
-										<span className="text-xs uppercase tracking-wide text-steam-400">Large image</span>
+										<span className="text-xs uppercase tracking-wide text-steam-400">{t("AppConfig.largeImage")}</span>
 										<select value={discordRpcLargeImage} onChange={(event) => void handleDiscordRpcImageChange('largeImage', event.target.value as DiscordRpcImageMode)} className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-steam-400/50">
-											<option value="game-icon">Game icon</option>
-											<option value="app-icon">App icon</option>
-											<option value="none">Nothing</option>
+											<option value="game-icon">{t("AppConfig.gameIcon")}</option>
+											<option value="app-icon">{t("AppConfig.appIcon")}</option>
+											<option value="none">{t("AppConfig.nothing")}</option>
 										</select>
 									</label>
 									<label className="space-y-2">
-										<span className="text-xs uppercase tracking-wide text-steam-400">Small image</span>
+										<span className="text-xs uppercase tracking-wide text-steam-400">{t("AppConfig.smallImage")}</span>
 										<select value={discordRpcSmallImage} onChange={(event) => void handleDiscordRpcImageChange('smallImage', event.target.value as DiscordRpcImageMode)} className="w-full rounded-lg bg-steam-700 border border-steam-600 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-steam-400/50">
-											<option value="game-icon">Game icon</option>
-											<option value="app-icon">App icon</option>
-											<option value="none">Nothing</option>
+											<option value="game-icon">{t("AppConfig.gameIcon")}</option>
+											<option value="app-icon">{t("AppConfig.appIcon")}</option>
+											<option value="none">{t("AppConfig.nothing")}</option>
 										</select>
 									</label>
 								</div>
@@ -2093,8 +2102,8 @@ const AppConfig = ({
 								<div className="mt-4 space-y-3">
 									<div className="flex items-center justify-between gap-4">
 										<div>
-											<p className="text-sm text-steam-100">Display time elapsed</p>
-											<p className="text-xs text-steam-400">Show the elapsed timer on the Discord presence.</p>
+											<p className="text-sm text-steam-100">{t("AppConfig.displayTimeElapsed")}</p>
+											<p className="text-xs text-steam-400">{t("AppConfig.elapsedTimeDescription")}</p>
 										</div>
 										<div className="flex items-center mr-2">
 											<div
@@ -2117,8 +2126,8 @@ const AppConfig = ({
 
 									<div className="flex items-center justify-between gap-4">
 										<div>
-											<p className="text-sm text-steam-100">Show GameLibrary button</p>
-											<p className="text-xs text-steam-400">Add a button in Discord presence that opens GameLibrary.</p>
+											<p className="text-sm text-steam-100">{t("AppConfig.showGameLibraryButton")}</p>
+											<p className="text-xs text-steam-400">{t("AppConfig.discordButtonDescription")}</p>
 										</div>
 										<div className="flex items-center mr-2">
 											<div
@@ -2151,18 +2160,18 @@ const AppConfig = ({
 								<RefreshCw className="w-4 h-4 text-steam-300" />
 								Update
 							</h3>
-							<p className="text-xs text-steam-400 mt-1">Check for new versions from github.com/Ezzud/gamelibrary.</p>
+							<p className="text-xs text-steam-400 mt-1">{t("AppConfig.updateCheckDescription")}</p>
 						</div>
 
 						<div className="rounded-lg bg-steam-900/45 px-4 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] space-y-3">
-							<div className="text-sm text-steam-200">Current version: <span className="text-steam-100 font-medium">{currentVersion}</span></div>
+							<div className="text-sm text-steam-200">{t("AppConfig.currentVersion") + " "}<span className="text-steam-100 font-medium">{currentVersion}</span></div>
 
 							<div className="flex items-center gap-3">
 								<div className="min-h-9 flex items-center">
 									{updateStatus === 'checking' && (
 										<div className="inline-flex items-center gap-2 text-steam-200">
 											<Loader2 className="w-4 h-4 animate-spin" />
-											<span>Checking for updates...</span>
+											<span>{t("AppConfig.checkingForUpdates")}</span>
 										</div>
 									)}
 
@@ -2176,7 +2185,7 @@ const AppConfig = ({
 									{updateStatus === 'error' && (
 										<div className="inline-flex items-center gap-2 text-red-300">
 											<AlertCircle className="w-4 h-4" />
-											<span>Unable to fetch version</span>
+											<span>{t("AppConfig.unableToFetchVersion")}</span>
 										</div>
 									)}
 
@@ -2216,14 +2225,14 @@ const AppConfig = ({
 								{isLoadingReleaseNotes ? (
 									<div className="mt-2 inline-flex items-center gap-2 text-steam-200 text-sm">
 										<Loader2 className="w-4 h-4 animate-spin" />
-										<span>Loading release notes...</span>
+										<span>{t("AppConfig.loadingReleaseNotes")}</span>
 									</div>
 								) : currentReleaseNotes ? (
 									<pre className="mt-2 whitespace-pre-wrap text-sm text-steam-100 bg-steam-900/40 rounded-md px-3 py-2">
 										{currentReleaseNotes}
 									</pre>
 								) : (
-									<div className="mt-2 text-sm text-steam-400">No release notes found for this version.</div>
+									<div className="mt-2 text-sm text-steam-400">{t("AppConfig.noReleaseNotes")}</div>
 								)}
 								{isInstallingUpdate && updateDownloadProgress !== null && (
 									<div className="mt-3 w-full">
@@ -2245,26 +2254,26 @@ const AppConfig = ({
 								<Info className="w-4 h-4 text-steam-300" />
 								About
 							</h3>
-							<p className="text-xs text-steam-400 mt-1">App identity, versioning and storage locations.</p>
+							<p className="text-xs text-steam-400 mt-1">{t("AppConfig.aboutDescription")}</p>
 						</div>
 
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 							<div className="rounded-lg bg-steam-900/45 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
 								<div className="space-y-2 text-sm">
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">Author</p>
+										<p className="text-steam-400 text-xs">{t("AppConfig.author")}</p>
 										<p className="text-white font-semibold tracking-wide">
 											{APP_AUTHOR}{' ('}
-											<a href="https://ezzud.fr" target="_blank" rel="noopener noreferrer" className="text-sky-300 hover:text-sky-200 underline font-normal">Website</a>
+											<a href="https://ezzud.fr" target="_blank" rel="noopener noreferrer" className="text-sky-300 hover:text-sky-200 underline font-normal">{t("AppConfig.website")}</a>
 											{')'}
 										</p>
 									</div>
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">OS Type</p>
+										<p className="text-steam-400 text-xs">{t("AppConfig.osType")}</p>
 										<p className="text-white font-semibold tracking-wide">{getOperatingSystem()}</p>
 									</div>
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">App version</p>
+										<p className="text-steam-400 text-xs">{t("AppConfig.appVersion")}</p>
 										<p className="text-white font-semibold tracking-wide">{currentVersion}</p>
 									</div>
 								</div>
@@ -2273,16 +2282,16 @@ const AppConfig = ({
 							<div className="rounded-lg bg-steam-900/45 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
 								<div className="space-y-2 text-sm">
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">Website</p>
-										<a href="https://gamelibrary.ezzud.fr" target="_blank" rel="noopener noreferrer" className="text-sky-300 hover:text-sky-200 underline break-all">gamelibrary.ezzud.fr</a>
+										<p className="text-steam-400 text-xs">{t("AppConfig.website")}</p>
+										<a href="https://gamelibrary.ezzud.fr" target="_blank" rel="noopener noreferrer" className="text-sky-300 hover:text-sky-200 underline break-all">{t("AppConfig.websiteDomain")}</a>
 									</div>
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">Repository URL</p>
+										<p className="text-steam-400 text-xs">{t("AppConfig.repositoryURL")}</p>
 										<a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex text-sky-300 hover:text-sky-200 underline break-all">{GITHUB_REPO_URL}</a>
 									</div>
 									<div className="rounded-md bg-steam-900/45 px-3 py-2">
-										<p className="text-steam-400 text-xs">Contact email</p>
-										<a href="mailto:contact@ezzud.fr" className="text-sky-300 hover:text-sky-200 underline break-all">contact@ezzud.fr</a>
+										<p className="text-steam-400 text-xs">{t("AppConfig.contactEmail")}</p>
+										<a href="mailto:contact@ezzud.fr" className="text-sky-300 hover:text-sky-200 underline break-all">{t("AppConfig.contactEmailAddress")}</a>
 									</div>
 								</div>
 							</div>
@@ -2290,15 +2299,15 @@ const AppConfig = ({
 							<div className="rounded-lg bg-steam-900/45 px-4 py-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] lg:col-span-2 space-y-3">
 								<div className="text-sm text-steam-200 flex items-center justify-between gap-3">
 									<div className="min-w-0">
-										<p className="text-steam-400">App location</p>
+										<p className="text-steam-400">{t("AppConfig.appLocation")}</p>
 										<p className="truncate text-white font-medium" title={aboutAppLocation}>{aboutAppLocation}</p>
 									</div>
 									<button
 										type="button"
 										onClick={() => void handleOpenDirectory(aboutAppLocation)}
 										className="w-8 h-8 shrink-0 rounded-md bg-steam-600 hover:bg-steam-500 transition-colors inline-flex items-center justify-center"
-										aria-label="Open app location"
-										title="Open app location"
+										aria-label={t("AppConfig.openAppLocation")}
+										title={t("AppConfig.openAppLocation")}
 									>
 										<FolderOpen className="w-4 h-4" />
 									</button>
@@ -2306,15 +2315,15 @@ const AppConfig = ({
 
 								<div className="text-sm text-steam-200 flex items-center justify-between gap-3">
 									<div className="min-w-0">
-										<p className="text-steam-400">Data location</p>
+										<p className="text-steam-400">{t("AppConfig.dataLocation")}</p>
 										<p className="truncate text-white font-medium" title={aboutDataLocation}>{aboutDataLocation}</p>
 									</div>
 									<button
 										type="button"
 										onClick={() => void handleOpenDirectory(aboutDataLocation)}
 										className="w-8 h-8 shrink-0 rounded-md bg-steam-600 hover:bg-steam-500 transition-colors inline-flex items-center justify-center"
-										aria-label="Open data location"
-										title="Open data location"
+										aria-label={t("AppConfig.openDataLocation")}
+										title={t("AppConfig.openDataLocation")}
 									>
 										<FolderOpen className="w-4 h-4" />
 									</button>

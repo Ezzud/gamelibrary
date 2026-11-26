@@ -33,7 +33,8 @@ const defaultConfig: Config = {
     reduceWhenClosingNoticeShown: false,
     autoDetectGames: true,
     sortField: 'name',
-    sortOrder: 'asc'
+    sortOrder: 'asc',
+    language: ''
 };
 const defaultGameConfig: GameConfig = {
     customArguments: '',
@@ -343,6 +344,7 @@ async function loadConfig() {
             twitchClientSecret: typeof parsed?.twitchClientSecret === 'string' ? parsed.twitchClientSecret : '',
             cardHoverEffect: typeof parsed?.cardHoverEffect === 'string' ? parsed.cardHoverEffect : 'zoom',
             theme: typeof parsed?.theme === 'string' && parsed.theme.trim().length > 0 ? parsed.theme.trim() : 'default',
+            language: typeof parsed?.language === 'string' ? parsed.language : '',
             igdbConnectionMode: resolveInitialIGDBConnectionMode(parsed),
             igdbApiBaseUrl: typeof parsed?.igdbApiBaseUrl === 'string' && parsed.igdbApiBaseUrl.trim().length > 0
                 ? normalizeApiBaseUrl(parsed.igdbApiBaseUrl)
@@ -362,6 +364,11 @@ async function loadConfig() {
 
 export async function getAppConfig() {
     return await loadConfig();
+}
+
+export async function setLanguage(language: string) {
+    const config = await loadConfig();
+    await saveConfig({ ...config, language });
 }
 
 export async function setTwitchCredentials(twitchClientId: string, twitchClientSecret: string) {
